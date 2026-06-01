@@ -1302,3 +1302,214 @@ class PermissionBasedAdminTests(BaseAPITest):
         _, udm_type, *_ = make_entity_with_type()
         resp = self.get(f"/types/{udm_type.id}/policies/", user=UserFactory())
         self.assertEqual(resp.status_code, 403)
+
+
+# ─── Draft-as-input export tests ─────────────────────────────────────────────
+
+class DraftAsInputTests(BaseAPITest):
+    def test_get_draft_as_input_roundtrip(self):
+        """GET draft/as-input/ returns a dict that can be PUT back to replace_draft."""
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
+        draft = ConfigVersionFactory(config=config, status="draft", notes="test notes")
+        from userdefinedmodel.models import FieldDefinition, FieldDefinitionTranslation
+        fd = FieldDefinition.objects.create(
+            version=draft, slug="title", data_type="text_short", sort_order=0, type_config={},
+        )
+        FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Title", help_text="Enter title")
+
+        resp = self.get(f"/configs/{config.id}/versions/draft/as-input/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["notes"], "test notes")
+        self.assertEqual(len(data["fields"]), 1)
+        field = data["fields"][0]
+        self.assertEqual(field["slug"], "title")
+        self.assertEqual(field["data_type"], "text_short")
+        self.assertEqual(field["labels"], {"en": "Title"})
+        self.assertIsNone(field["submodel_config_version_id"])
+        self.assertIsNone(field["workflow_definition_id"])
+
+        # Round-trip: PUT the output back into replace_draft
+        resp2 = self.put(f"/configs/{config.id}/versions/draft/", data)
+        self.assertEqual(resp2.status_code, 200, resp2.json())
+        result = resp2.json()
+        self.assertEqual(len(result["fields"]), 1)
+        self.assertEqual(result["fields"][0]["slug"], "title")
+
+    def test_get_draft_as_input_with_workflow(self):
+        """Workflow field references are exported as IDs, not nested objects."""
+        wf, _, _, _ = make_full_workflow()
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
+        draft = ConfigVersionFactory(config=config, status="draft")
+        from userdefinedmodel.models import FieldDefinition, FieldDefinitionTranslation
+        fd = FieldDefinition.objects.create(
+            version=draft, slug="status", data_type="workflow",
+            sort_order=0, workflow_definition=wf, type_config={},
+        )
+        FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Status")
+
+        resp = self.get(f"/configs/{config.id}/versions/draft/as-input/")
+        self.assertEqual(resp.status_code, 200)
+        field = resp.json()["fields"][0]
+        self.assertEqual(field["workflow_definition_id"], str(wf.id))
+        self.assertIsNone(field["submodel_config_version_id"])
+
+    def test_get_draft_as_input_404_when_no_draft(self):
+        config = FieldConfigFactory()
+        resp = self.get(f"/configs/{config.id}/versions/draft/as-input/")
+        self.assertEqual(resp.status_code, 404)
+
+
+# ─── ZIP bundle tests ─────────────────────────────────────────────────────────
+
+class BundleExportTests(BaseAPITest):
+    def _make_udm_type_with_workflow(self):
+        """Create a UDMType with a published config that uses a workflow."""
+        from userdefinedmodel.models import (
+            FieldConfig, ConfigLanguage, ConfigVersion, FieldDefinition,
+            FieldDefinitionTranslation, UserDefinedModelType, Policy, UserDefinedModelTypePolicy,
+        )
+        wf, _, _, _ = make_full_workflow()
+        config = FieldConfig.objects.create(name="Bundle Config")
+        ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True)
+        version = ConfigVersion.objects.create(config=config, status="published")
+        ConfigVersion.objects.create(config=config, status="draft")
+        fd = FieldDefinition.objects.create(
+            version=version, slug="status", data_type="workflow",
+            sort_order=0, workflow_definition=wf, type_config={},
+        )
+        FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Status")
+        udm_type = UserDefinedModelType.objects.create(name="Bundle Type", field_config=config)
+        policy = Policy.objects.create(slug=f"bundle-policy-{udm_type.id}", source=ALLOW_ALL_POLICY)
+        UserDefinedModelTypePolicy.objects.create(
+            user_defined_model_type=udm_type, policy=policy, sort_order=0
+        )
+        return udm_type, config, version, wf, policy
+
+    def _export_zip(self, type_ids):
+        resp = self.post("/export-bundle-zip/", {"scope_type_ids": type_ids})
+        self.assertEqual(resp.status_code, 200, resp.content[:200])
+        return resp.content
+
+    def test_export_zip_structure(self):
+        import zipfile, io, json as _json
+        udm_type, config, version, wf, policy = self._make_udm_type_with_workflow()
+        zip_bytes = self._export_zip([str(udm_type.id)])
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            names = zf.namelist()
+            self.assertIn("UDM_BUNDLE.json", names)
+            bundle = _json.loads(zf.read("UDM_BUNDLE.json").decode())
+            self.assertEqual(bundle["version"], 1)
+            self.assertIn(str(udm_type.id), bundle["scope_type_ids"])
+            for p in bundle.get("policies", []):
+                self.assertNotIn("source", p)
+            policy_file = f"policies/{policy.slug}.rego"
+            self.assertIn(policy_file, names)
+            self.assertIn("allow", zf.read(policy_file).decode())
+
+
+    def test_parse_bundle_zip(self):
+        import io
+        udm_type, *_ = self._make_udm_type_with_workflow()
+        zip_bytes = self._export_zip([str(udm_type.id)])
+        resp = self.client.post(
+            "/api/udm/parse-bundle-zip/",
+            {"file": io.BytesIO(zip_bytes)},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()
+        self.assertIn(str(udm_type.id), data["scope_type_ids"])
+
+    def test_import_zip_updates_in_place(self):
+        import io, zipfile, json as _json
+        udm_type, config, version, wf, policy = self._make_udm_type_with_workflow()
+        zip_bytes = self._export_zip([str(udm_type.id)])
+
+        # Mutate bundle JSON: rename config and workflow
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf_in:
+            items = {n: zf_in.read(n) for n in zf_in.namelist()}
+        bundle = _json.loads(items["UDM_BUNDLE.json"].decode())
+        bundle["field_configs"][0]["name"] = "Zip Config Updated"
+        bundle["workflows"][0]["name"] = "Updated Workflow"
+        items["UDM_BUNDLE.json"] = _json.dumps(bundle).encode()
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf_out:
+            for n, data in items.items():
+                zf_out.writestr(n, data)
+        modified_zip = buf.getvalue()
+
+        resp = self.client.post(
+            "/api/udm/import-bundle-zip/",
+            {"file": io.BytesIO(modified_zip),
+             "scope_type_ids": str(udm_type.id)},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        config.refresh_from_db()
+        self.assertEqual(config.name, "Zip Config Updated")
+        wf.refresh_from_db()
+        self.assertEqual(wf.name, "Updated Workflow")
+
+    def test_import_zip_updates_policy_from_file(self):
+        import io, zipfile, json as _json
+        from userdefinedmodel.models import Policy
+        udm_type, config, version, wf, policy = self._make_udm_type_with_workflow()
+        zip_bytes = self._export_zip([str(udm_type.id)])
+
+        # Mutate the policy rego file in the ZIP
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf_in:
+            items = {n: zf_in.read(n) for n in zf_in.namelist()}
+        policy_file = f"policies/{policy.slug}.rego"
+        items[policy_file] = b"package udm\nimport rego.v1\nallow := false\n"
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf_out:
+            for n, data in items.items():
+                zf_out.writestr(n, data)
+
+        resp = self.client.post(
+            "/api/udm/import-bundle-zip/",
+            {"file": io.BytesIO(buf.getvalue()),
+             "scope_type_ids": str(udm_type.id)},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        policy.refresh_from_db()
+        self.assertIn("allow := false", policy.source)
+
+    def test_import_zip_with_udm_bundle_rego(self):
+        """ZIP containing UDM_BUNDLE.rego instead of .json is also importable."""
+        import io, zipfile, json as _json
+        udm_type, config, version, wf, policy = self._make_udm_type_with_workflow()
+
+        # Get the bundle data from the exported ZIP and convert to UDM_BUNDLE.rego
+        zip_bytes = self._export_zip([str(udm_type.id)])
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            bundle = _json.loads(zf.read("UDM_BUNDLE.json").decode())
+            policy_source = zf.read(f"policies/{policy.slug}.rego").decode()
+
+        bundle_json = _json.dumps(bundle, ensure_ascii=False)
+        chunk_size = 400
+        chunks = [bundle_json[i:i+chunk_size] for i in range(0, len(bundle_json), chunk_size)]
+        chunk_rules = "\n".join(f"_UDM_J{i} := {_json.dumps(c)}" for i, c in enumerate(chunks))
+        concat_args = ", ".join(f"_UDM_J{i}" for i in range(len(chunks)))
+        rego_src = (
+            f"package udm\nimport rego.v1\n\n{chunk_rules}\n"
+            f"_UDM_BUNDLE_JSON := concat(\"\", [{concat_args}])\n"
+            f"UDM_BUNDLE := json.unmarshal(_UDM_BUNDLE_JSON)\n"
+        )
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("UDM_BUNDLE.rego", rego_src)
+            zf.writestr(f"policies/{policy.slug}.rego", policy_source)
+
+        resp = self.client.post(
+            "/api/udm/import-bundle-zip/",
+            {"file": io.BytesIO(buf.getvalue()),
+             "scope_type_ids": str(udm_type.id)},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)

@@ -708,3 +708,76 @@ class PolicyEvalOut(Schema):
     error: Optional[str] = None
     prints: list[str] = []           # stdout lines emitted by print() in Rego
     coverage: list[dict] = []        # per-file coverage: {path, covered, not_covered}
+
+
+# ─── Draft-as-input export schemas ───────────────────────────────────────────
+
+class FieldDefinitionDraftOut(Schema):
+    """FieldDefinition serialised in the same shape that FieldDefinitionIn accepts,
+    so the output can be fed back into PUT .../draft/ without modification."""
+    slug: str
+    data_type: str
+    sort_order: int
+    is_localized: bool
+    is_preview: bool
+    labels: Optional[dict[str, str]] = None
+    help_texts: dict[str, str]
+    type_config: dict[str, Any]
+    default: Optional[Any] = None
+    submodel_config_version_id: Optional[uuid.UUID] = None
+    workflow_definition_id: Optional[uuid.UUID] = None
+    parent_slug: Optional[str] = None
+
+
+class ConfigDraftExportOut(Schema):
+    """ConfigVersion serialised in ConfigDraftIn shape for round-trip export."""
+    notes: str
+    fields: list[FieldDefinitionDraftOut]
+
+
+# ─── Bundle export / import schemas ──────────────────────────────────────────
+
+class BundleWorkflowOut(Schema):
+    id: uuid.UUID
+    name: str
+    description: str
+    states: list[WorkflowStateOut]
+    transitions: list[WorkflowTransitionOut]
+    virtual_node_positions: dict[str, Any]
+
+
+class BundleFieldConfigOut(Schema):
+    id: uuid.UUID
+    name: str
+    description: str
+    languages: list[ConfigLanguageOut]
+    draft: ConfigDraftExportOut
+
+
+class BundleUDMTypeOut(Schema):
+    id: uuid.UUID
+    name: str
+    description: str
+    field_config_id: Optional[uuid.UUID]
+    policy_slugs: list[str]
+
+
+class BundleExportOut(Schema):
+    version: int = 1
+    scope_type_ids: list[uuid.UUID]
+    udm_types: list[BundleUDMTypeOut]
+    field_configs: list[BundleFieldConfigOut]
+    workflows: list[BundleWorkflowOut]
+    policies: list[PolicyOut]
+
+
+class BundleImportIn(Schema):
+    rego_source: Annotated[str, Field(min_length=1, max_length=2_000_000)]
+    scope_type_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+    policy_slug: Optional[Slug] = None
+    model_config = {"extra": "forbid"}
+
+
+class BundleExportIn(Schema):
+    scope_type_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+    model_config = {"extra": "forbid"}

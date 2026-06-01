@@ -18,6 +18,7 @@ import {
   udmUpdatePolicy,
   udmDeletePolicy,
   udmUpdateType,
+  udmDeleteType,
   udmListTypePolicies,
   udmAssignPolicy,
   udmRemovePolicy,
@@ -41,9 +42,10 @@ import {
 } from './apiUdm'
 import { usePermissions } from './usePermissions'
 import { BulkMigrationTab } from './UdmMigration'
+import { BundleTab } from './UdmBundleTab'
 import styles from './UdmAdminPage.module.css'
 
-type AdminTab = 'configs' | 'policies' | 'types' | 'migrations'
+type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle'
 type ConfigView = 'list' | 'detail'
 
 const DATA_TYPES: DataType[] = [
@@ -1902,17 +1904,19 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
 interface TypeDetailProps {
   udmType: UDMTypeOut
   onBack: () => void
+  onDeleted: () => void
   allConfigs: FieldConfigOut[]
   allPolicies: PolicyOut[]
   onUpdated: (t: UDMTypeOut) => void
   isSuperuser: boolean
 }
 
-function TypeDetail({ udmType, onBack, allConfigs, allPolicies, onUpdated, isSuperuser }: TypeDetailProps) {
+function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpdated, isSuperuser }: TypeDetailProps) {
   const [policies, setPolicies] = useState<PolicyOut[]>([])
   const [assignSlug, setAssignSlug] = useState('')
   const [configId, setConfigId] = useState(udmType.field_config_id ?? '')
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -1965,11 +1969,28 @@ function TypeDetail({ udmType, onBack, allConfigs, allPolicies, onUpdated, isSup
     }
   }
 
+  async function handleDelete() {
+    if (!window.confirm(`Delete UDM Type "${udmType.name}"? This cannot be undone.`)) return
+    setDeleting(true)
+    setError(null)
+    try {
+      await udmDeleteType(udmType.id)
+      onDeleted()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+      setDeleting(false)
+    }
+  }
+
   return (
     <div>
       <div className={styles.detailHeader}>
         <button type="button" className={styles.backBtn} onClick={onBack}>← Back to Types</button>
         <h2 className={styles.pageTitle} style={{ margin: 0 }}>{udmType.name}</h2>
+        <button type="button" className={`${styles.btn} ${styles.btnDanger}`}
+          onClick={() => void handleDelete()} disabled={deleting}>
+          {deleting ? 'Deleting…' : 'Delete Type'}
+        </button>
       </div>
 
       <div className={styles.section}>
@@ -2095,6 +2116,7 @@ function TypesTab() {
       <TypeDetail
         udmType={selectedType}
         onBack={() => { setSelectedType(null); void loadAll() }}
+        onDeleted={() => { setSelectedType(null); void loadAll() }}
         allConfigs={configs}
         allPolicies={allPolicies}
         onUpdated={updated => setSelectedType(updated)}
@@ -2191,6 +2213,7 @@ export function UdmAdminPage() {
           { key: 'types', label: 'UDM Types' },
           { key: 'policies', label: 'Rego Policies' },
           { key: 'migrations', label: 'Bulk Migration' },
+          { key: 'bundle', label: 'Export / Import' },
         ] as const).map(({ key, label }) => (
           <button key={key} type="button"
             className={`${styles.tab} ${tab === key ? styles.tabActive : ''}`}
@@ -2204,6 +2227,7 @@ export function UdmAdminPage() {
       {tab === 'types' && <TypesTab />}
       {tab === 'policies' && <PoliciesTab />}
       {tab === 'migrations' && <BulkMigrationTab />}
+      {tab === 'bundle' && <BundleTab />}
     </div>
   )
 }

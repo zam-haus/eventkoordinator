@@ -437,6 +437,16 @@ export async function udmUpdateType(typeId: string, fieldConfigId: string | null
   return resp.json() as Promise<UDMTypeOut>
 }
 
+export async function udmDeleteType(typeId: string): Promise<void> {
+  const token = await getCsrfToken()
+  const resp = await fetch(`/api/udm/types/${typeId}/`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: token ? { [CSRF_HEADER_NAME]: token } : {},
+  })
+  if (!resp.ok) await throwRawFetchError(resp, 'Failed to delete UDM type')
+}
+
 // ── Policies ──────────────────────────────────────────────────────────────────
 
 export async function udmListPolicies(): Promise<PolicyOut[]> {
@@ -703,4 +713,55 @@ export async function udmGetBulkMigration(planId: string): Promise<BulkMigration
   })
   if (error || !response.ok || !data) throw new Error('Bulk migration not found')
   return data as BulkMigrationOut
+}
+
+// ── Bundle export / import (ZIP) ───────────────────────────────────────────────
+
+export async function udmExportBundleZip(scopeTypeIds: string[]): Promise<Blob> {
+  const token = await getCsrfToken()
+  const resp = await fetch('/api/udm/export-bundle-zip/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'X-CSRFToken': token } : {}),
+    },
+    body: JSON.stringify({ scope_type_ids: scopeTypeIds }),
+    credentials: 'include',
+  })
+  if (!resp.ok) await throwRawFetchError(resp, 'Export failed')
+  return resp.blob()
+}
+
+export async function udmParseBundleZip(
+  file: File | Blob,
+): Promise<{ scope_type_ids: string[]; udm_types: Array<{ id: string; name: string; description: string }>; error?: string }> {
+  const token = await getCsrfToken()
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await fetch('/api/udm/parse-bundle-zip/', {
+    method: 'POST',
+    headers: { ...(token ? { 'X-CSRFToken': token } : {}) },
+    body: form,
+    credentials: 'include',
+  })
+  if (!resp.ok) return { scope_type_ids: [], error: 'Parse failed' }
+  return resp.json() as Promise<{ scope_type_ids: string[]; error?: string }>
+}
+
+export async function udmImportBundleZip(
+  file: File | Blob,
+  scopeTypeIds: string[],
+): Promise<{ status: string; imported_workflows: number; imported_configs: number; imported_policies: number }> {
+  const token = await getCsrfToken()
+  const form = new FormData()
+  form.append('file', file)
+  form.append('scope_type_ids', scopeTypeIds.join(','))
+  const resp = await fetch('/api/udm/import-bundle-zip/', {
+    method: 'POST',
+    headers: { ...(token ? { 'X-CSRFToken': token } : {}) },
+    body: form,
+    credentials: 'include',
+  })
+  if (!resp.ok) await throwRawFetchError(resp, 'Import failed')
+  return resp.json() as Promise<{ status: string; imported_workflows: number; imported_configs: number; imported_policies: number }>
 }
