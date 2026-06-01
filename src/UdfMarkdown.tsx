@@ -5,43 +5,85 @@ import rehypeComponents from 'rehype-components'
 import type { Element, ElementContent } from 'hast'
 import { udmGetTypePublicFields } from './apiUdm'
 
-// ── Countdown badge ───────────────────────────────────────────────────────────
+// ── Until-descriptor: recursive serialisation of <until> children ─────────────
+//
+// The hast tree is walked once (synchronously, in rehype-components) and turned
+// into a plain JSON array.  Each element in the array is one of:
+//   { t: 'text',  v: string }            – literal text node
+//   { t: 'rule',  n: string }            – <query-policy-rule name="n"/>
+//
+// Any other element is descended into so its text / rule leaf nodes are
+// captured (the recursive case).  The CountdownBadge then resolves the
+// descriptors asynchronously at render time to obtain the final date string.
 
-interface CountdownBadgeProps {
-  typeId: string
-  ruleName: string
+type UntilDescriptor =
+  | { t: 'text'; v: string }
+  | { t: 'rule'; n: string }
+
+function extractDescriptors(nodes: ElementContent[]): UntilDescriptor[] {
+  const out: UntilDescriptor[] = []
+  for (const node of nodes) {
+    if (node.type === 'text') {
+      const v = node.value.trim()
+      if (v) out.push({ t: 'text', v })
+    } else if (node.type === 'element') {
+      const el = node as Element
+      if (el.tagName === 'query-policy-rule') {
+        const n = String(el.properties?.name ?? '')
+        if (n) out.push({ t: 'rule', n })
+      } else {
+        // Recurse into any other element (e.g. <span>, <strong>, …)
+        out.push(...extractDescriptors(el.children ?? []))
+      }
+    }
+  }
+  return out
 }
 
-function CountdownBadge({ typeId, ruleName }: CountdownBadgeProps) {
+async function resolveDescriptors(
+  descriptors: UntilDescriptor[],
+  typeId: string,
+): Promise<string> {
+  // Fetch policy fields once for all rule descriptors in this batch.
+  const hasRules = descriptors.some(d => d.t === 'rule')
+  const fields = hasRules ? await udmGetTypePublicFields(typeId) : {}
+  return descriptors
+    .map(d => (d.t === 'text' ? d.v : String(fields[d.n] ?? '')))
+    .join('')
+    .trim()
+}
+
+// ── Countdown badge ───────────────────────────────────────────────────────────
+
+function CountdownBadge({ typeId, untilJson }: { typeId: string; untilJson: string }) {
   const [daysLeft, setDaysLeft] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    udmGetTypePublicFields(typeId)
-      .then(fields => {
-        const val = fields[ruleName]
-        if (typeof val === 'string') {
-          const target = new Date(val)
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
-          target.setHours(0, 0, 0, 0)
-          setDaysLeft(Math.round((target.getTime() - today.getTime()) / 86_400_000))
-        }
-      })
-      .finally(() => setLoading(false))
-  }, [typeId, ruleName])
+    let cancelled = false
+    const descriptors: UntilDescriptor[] = JSON.parse(untilJson)
+    resolveDescriptors(descriptors, typeId).then(dateStr => {
+      if (cancelled || !dateStr) return
+      const target = new Date(dateStr)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      target.setHours(0, 0, 0, 0)
+      if (!isNaN(target.getTime()))
+        setDaysLeft(Math.round((target.getTime() - today.getTime()) / 86_400_000))
+    }).finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [typeId, untilJson])
 
   if (loading) return <span style={badgeStyle('#e5e7eb', '#6b7280')}>…</span>
   if (daysLeft === null) return <span style={badgeStyle('#e5e7eb', '#6b7280')}>—</span>
 
   const overdue = daysLeft < 0
-  const urgent = daysLeft >= 0 && daysLeft <= 7
-  const bg = overdue ? '#fee2e2' : urgent ? '#fef3c7' : '#dbeafe'
+  const urgent  = daysLeft >= 0 && daysLeft <= 7
+  const bg    = overdue ? '#fee2e2' : urgent ? '#fef3c7' : '#dbeafe'
   const color = overdue ? '#991b1b' : urgent ? '#92400e' : '#1e40af'
   const label = overdue
     ? `${-daysLeft} day${daysLeft !== -1 ? 's' : ''} overdue`
-    : daysLeft === 0
-    ? 'Due today'
+    : daysLeft === 0 ? 'Due today'
     : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`
 
   return <span style={badgeStyle(bg, color)}>{label}</span>
@@ -71,10 +113,7 @@ function PolicyRuleValue({ typeId, ruleName }: { typeId: string; ruleName: strin
 
   useEffect(() => {
     udmGetTypePublicFields(typeId)
-      .then(fields => {
-        const val = fields[ruleName]
-        if (val !== undefined) setValue(String(val))
-      })
+      .then(fields => { const v = fields[ruleName]; if (v !== undefined) setValue(String(v)) })
       .finally(() => setLoading(false))
   }, [typeId, ruleName])
 
@@ -88,32 +127,34 @@ function PolicyRuleValue({ typeId, ruleName }: { typeId: string; ruleName: strin
 function makeRehypeComponents(typeId: string) {
   return {
     countdown: (_props: Record<string, unknown>, children: ElementContent[]) => {
-      // Traverse <until> → <query-policy-rule name="...">
-      let ruleName = ''
+      // Find <until>, recursively extract its descriptors, serialise to JSON.
+      let descriptors: UntilDescriptor[] = []
       for (const child of children) {
         if ((child as Element).tagName === 'until') {
-          for (const inner of (child as Element).children ?? []) {
-            if ((inner as Element).tagName === 'query-policy-rule') {
-              ruleName = String((inner as Element).properties?.name ?? '')
-            }
-          }
+          descriptors = extractDescriptors((child as Element).children ?? [])
+          break
         }
       }
       return {
         type: 'element' as const,
         tagName: 'countdown-badge',
-        properties: { 'data-type-id': typeId, 'data-rule': ruleName },
+        properties: {
+          'data-type-id': typeId,
+          'data-until': JSON.stringify(descriptors),
+        },
         children: [],
       }
     },
-    // Standalone <query-policy-rule> outside <countdown> renders the raw value inline.
+
+    // Standalone <query-policy-rule> outside <countdown>: show the raw value.
     'query-policy-rule': (props: Record<string, unknown>, _c: ElementContent[]) => ({
       type: 'element' as const,
       tagName: 'policy-rule-value',
       properties: { 'data-type-id': typeId, 'data-rule': String(props.name ?? '') },
       children: [],
     }),
-    // <until> that survives outside <countdown> is meaningless — absorb it.
+
+    // <until> surviving outside <countdown> is meaningless — absorb silently.
     until: (_p: Record<string, unknown>, _c: ElementContent[]) =>
       ({ type: 'element' as const, tagName: 'span', properties: {}, children: [] }),
   }
@@ -123,26 +164,21 @@ function makeRehypeComponents(typeId: string) {
 
 interface Snippet {
   label: string
-  /** Text inserted at the cursor. */
   text: string
-  /** Offset from the insertion point to start the post-insert selection (for easy fill-in). */
   selectOffset: number
-  /** Length of the post-insert selection. */
   selectLength: number
 }
 
 const SNIPPETS: Snippet[] = [
   {
     label: 'Countdown badge',
-    // <countdown><until><query-policy-rule name="get_countdown_date"/></until></countdown>
     text: '<countdown><until><query-policy-rule name="get_countdown_date"/></until></countdown>',
-    // select the rule name value so the user can type to replace it
     selectOffset: '<countdown><until><query-policy-rule name="'.length,
     selectLength: 'get_countdown_date'.length,
   },
 ]
 
-// ── Public component ──────────────────────────────────────────────────────────
+// ── Public components ─────────────────────────────────────────────────────────
 
 interface UdfMarkdownProps {
   content: string
@@ -158,25 +194,25 @@ export function UdfMarkdown({ content, typeId = '', className }: UdfMarkdownProp
 
   return (
     <div className={className}>
-    <ReactMarkdown
-      rehypePlugins={rehypePlugins}
-      components={{
-        'countdown-badge': ({ node, ...props }) => {
-          const tid = String((node as Element | undefined)?.properties?.['data-type-id'] ?? props['data-type-id'] ?? typeId)
-          const rule = String((node as Element | undefined)?.properties?.['data-rule'] ?? props['data-rule'] ?? '')
-          if (!tid || !rule) return null
-          return <CountdownBadge typeId={tid} ruleName={rule} />
-        },
-        'policy-rule-value': ({ node, ...props }) => {
-          const tid = String((node as Element | undefined)?.properties?.['data-type-id'] ?? props['data-type-id'] ?? typeId)
-          const rule = String((node as Element | undefined)?.properties?.['data-rule'] ?? props['data-rule'] ?? '')
-          if (!tid || !rule) return null
-          return <PolicyRuleValue typeId={tid} ruleName={rule} />
-        },
-      } as Parameters<typeof ReactMarkdown>[0]['components']}
-    >
-      {content}
-    </ReactMarkdown>
+      <ReactMarkdown
+        rehypePlugins={rehypePlugins}
+        components={{
+          'countdown-badge': ({ node, ...props }) => {
+            const tid  = String((node as Element | undefined)?.properties?.['data-type-id'] ?? props['data-type-id'] ?? typeId)
+            const until = String((node as Element | undefined)?.properties?.['data-until']   ?? props['data-until']   ?? '[]')
+            if (!tid) return null
+            return <CountdownBadge typeId={tid} untilJson={until} />
+          },
+          'policy-rule-value': ({ node, ...props }) => {
+            const tid  = String((node as Element | undefined)?.properties?.['data-type-id'] ?? props['data-type-id'] ?? typeId)
+            const rule = String((node as Element | undefined)?.properties?.['data-rule']    ?? props['data-rule']    ?? '')
+            if (!tid || !rule) return null
+            return <PolicyRuleValue typeId={tid} ruleName={rule} />
+          },
+        } as Parameters<typeof ReactMarkdown>[0]['components']}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }
@@ -193,7 +229,6 @@ interface MarkdownEditorProps {
 
 export function MarkdownEditor({ value, onChange, rows = 4, textareaClassName, textareaStyle }: MarkdownEditorProps) {
   const taRef = useRef<HTMLTextAreaElement>(null)
-  // Save cursor/selection on every interaction so it survives focus loss to the dropdown.
   const savedSel = useRef({ start: 0, end: 0 })
 
   function saveSel() {
@@ -210,7 +245,7 @@ export function MarkdownEditor({ value, onChange, rows = 4, textareaClassName, t
       if (!el) return
       el.focus()
       el.selectionStart = start + snippet.selectOffset
-      el.selectionEnd = start + snippet.selectOffset + snippet.selectLength
+      el.selectionEnd   = start + snippet.selectOffset + snippet.selectLength
     })
   }
 
@@ -219,16 +254,11 @@ export function MarkdownEditor({ value, onChange, rows = 4, textareaClassName, t
       <div style={{ marginBottom: '0.25rem' }}>
         <select
           value=""
-          onChange={e => {
-            const snippet = SNIPPETS.find(s => s.label === e.target.value)
-            if (snippet) insertSnippet(snippet)
-          }}
+          onChange={e => { const s = SNIPPETS.find(x => x.label === e.target.value); if (s) insertSnippet(s) }}
           style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#fff', cursor: 'pointer' }}
         >
           <option value="" disabled>Insert component…</option>
-          {SNIPPETS.map(s => (
-            <option key={s.label} value={s.label}>{s.label}</option>
-          ))}
+          {SNIPPETS.map(s => <option key={s.label} value={s.label}>{s.label}</option>)}
         </select>
       </div>
       <textarea
