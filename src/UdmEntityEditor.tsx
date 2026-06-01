@@ -657,7 +657,7 @@ export function UdmEntityEditor() {
     return (
       <div className={styles.page}>
         {errors.length > 0
-          ? <div className={styles.error}>{errors.map((m, i) => <div key={i}>{m}</div>)}</div>
+          ? <PolicyMessageList messages={errors.map(m => ({ level: 'error' as const, text: m }))} />
           : <div>Loading…</div>}
         {policyMessages.length > 0 && (
           <div style={{ marginTop: '1rem' }}>
@@ -759,8 +759,18 @@ export function UdmEntityEditor() {
         if (globalMsgs.length > 0) {
           setTransitionPopup(globalMsgs)
         } else {
-          const plainErrors = e.allMessages
-          setErrors(plainErrors.length > 0 ? plainErrors : ['Transition failed'])
+          const plainErrors: string[] = [
+            ...e.pydanticErrors.map(err => {
+              const loc = err.loc.filter(s => s !== 'body' && s !== 'payload').join(' → ')
+              return loc ? `${loc}: ${err.msg}` : err.msg
+            }),
+            ...Object.entries(e.fieldErrors).flatMap(([field, errs]) =>
+              errs.map(err => (field === '__all__' ? err : `${field}: ${err}`)),
+            ),
+          ]
+          if (plainErrors.length === 0 && e.policyMessages.length === 0) plainErrors.push(e.message)
+          setErrors(plainErrors)
+          setPolicyMessages(e.policyMessages)
         }
       } else {
         setErrors([e instanceof Error ? e.message : 'Transition failed'])
@@ -1083,8 +1093,8 @@ export function UdmEntityEditor() {
 
       {/* Errors and success messages */}
       {errors.length > 0 && (
-        <div className={styles.error} style={{ marginTop: '0.5rem' }}>
-          {errors.map((msg, i) => <div key={i}>{msg}</div>)}
+        <div style={{ marginTop: '0.5rem' }}>
+          <PolicyMessageList messages={errors.map(m => ({ level: 'error' as const, text: m }))} />
         </div>
       )}
       {globalPolicyMessages.length > 0 && (

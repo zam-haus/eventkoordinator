@@ -275,12 +275,6 @@
 
 .transitionBtn:hover { background: #e8f0fe; }
 
-.error {
-  color: #dc2626;
-  font-size: 0.85rem;
-  margin-top: 0.5rem;
-}
-
 .success {
   color: #16a34a;
   font-size: 0.85rem;

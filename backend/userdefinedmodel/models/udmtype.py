@@ -5,6 +5,7 @@ from userdefinedmodel.basemodels import MetaBase
 
 class UserDefinedModelType(MetaBase):
     name = models.CharField(max_length=200)
+    label = models.CharField(max_length=200, blank=True)
     description = models.TextField(blank=True)
     field_config = models.ForeignKey(
         "userdefinedmodel.FieldConfig",

@@ -692,13 +692,25 @@ class PolicyAssignIn(Schema):
 class UDMTypeOut(Schema):
     id: uuid.UUID
     name: str
+    label: str
     description: str
     field_config_id: Optional[uuid.UUID]
 
 
 class UDMTypeCreateIn(Schema):
     name: str = Field(min_length=1, max_length=200)
+    label: str = Field(default="", max_length=200)
     description: str = ""
+
+
+class UDMTypeUpdateIn(Schema):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    label: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = None
+
+
+class TypePublicFieldsOut(Schema):
+    fields: dict[str, Any]
 
 
 class PolicyEvalOut(Schema):

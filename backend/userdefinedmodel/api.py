@@ -71,8 +71,10 @@ from userdefinedmodel.schemas import (
     PolicyUpdateIn,
     StagingFileOut,
     TransitionIn,
+    TypePublicFieldsOut,
     UDMTypeOut,
     UDMTypeCreateIn,
+    UDMTypeUpdateIn,
     UserAutocompleteItem,
     UserRefOut,
     WorkflowCreateIn,
@@ -596,8 +598,11 @@ def list_udm_types(request):
     if denied := _require_perms(request, "userdefinedmodel.view_userdefinedmodeltype"):
         return denied
     types = UserDefinedModelType.objects.select_related("field_config").all()
-    return [UDMTypeOut(id=t.id, name=t.name, description=t.description, field_config_id=t.field_config_id)
-            for t in types]
+    return [_udmtype_out(t) for t in types]
+
+
+def _udmtype_out(t) -> UDMTypeOut:
+    return UDMTypeOut(id=t.id, name=t.name, label=t.label, description=t.description, field_config_id=t.field_config_id)
 
 
 @api.post("/types/", response={201: UDMTypeOut}, auth=django_auth)
@@ -605,8 +610,10 @@ def create_udm_type(request, payload: UDMTypeCreateIn):
     from userdefinedmodel.models import UserDefinedModelType
     if denied := _require_perms(request, "userdefinedmodel.add_userdefinedmodeltype"):
         return denied
-    udm_type = UserDefinedModelType.objects.create(name=payload.name, description=payload.description)
-    return 201, UDMTypeOut(id=udm_type.id, name=udm_type.name, description=udm_type.description, field_config_id=None)
+    udm_type = UserDefinedModelType.objects.create(
+        name=payload.name, label=payload.label, description=payload.description,
+    )
+    return 201, _udmtype_out(udm_type)
 
 
 @api.get("/types/{type_id}/", response=UDMTypeOut, auth=django_auth)
@@ -616,7 +623,7 @@ def get_udm_type(request, type_id: uuid.UUID):
         t = UserDefinedModelType.objects.get(id=type_id)
     except UserDefinedModelType.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
-    return UDMTypeOut(id=t.id, name=t.name, description=t.description, field_config_id=t.field_config_id)
+    return _udmtype_out(t)
 
 
 @api.get("/types/{type_id}/eval-policy/", response=PolicyEvalOut, auth=django_auth)
@@ -748,8 +755,31 @@ def get_type_config(request, type_id: uuid.UUID):
     return _serialize_config_version(version)
 
 
+@api.get("/types/{type_id}/public-fields/", response=TypePublicFieldsOut, auth=django_auth)
+def get_type_public_fields(request, type_id: uuid.UUID):
+    """Evaluate data.udm.public_type_fields from the type's policies.
+
+    Runs all policies for this type with a minimal input
+    (action=public_type_fields, no entity or user) and returns the resulting
+    dict.  Returns an empty dict when no policies are attached or the rule is
+    not defined.
+    """
+    from userdefinedmodel.models import UserDefinedModelType
+    from userdefinedmodel.engine import evaluate_type_public_fields
+    try:
+        udm_type = UserDefinedModelType.objects.get(id=type_id)
+    except UserDefinedModelType.DoesNotExist:
+        return JsonResponse({"detail": "Not found"}, status=404)
+    return TypePublicFieldsOut(fields=evaluate_type_public_fields(udm_type, user=request.user))
+
+
 @api.patch("/types/{type_id}/", response=UDMTypeOut, auth=django_auth)
-def update_udm_type(request, type_id: uuid.UUID, field_config_id: Optional[uuid.UUID] = None):
+def update_udm_type(
+    request,
+    type_id: uuid.UUID,
+    field_config_id: Optional[uuid.UUID] = None,
+    payload: Optional[UDMTypeUpdateIn] = None,
+):
     from userdefinedmodel.models import UserDefinedModelType, FieldConfig
     if denied := _require_perms(request, "userdefinedmodel.change_userdefinedmodeltype"):
         return denied
@@ -757,6 +787,14 @@ def update_udm_type(request, type_id: uuid.UUID, field_config_id: Optional[uuid.
         udm_type = UserDefinedModelType.objects.get(id=type_id)
     except UserDefinedModelType.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
+    if payload is not None:
+        if payload.name is not None:
+            udm_type.name = payload.name
+        if payload.label is not None:
+            udm_type.label = payload.label
+        if payload.description is not None:
+            udm_type.description = payload.description
+        udm_type.save()
     if field_config_id is not None:
         try:
             cfg = FieldConfig.objects.get(id=field_config_id)
@@ -774,7 +812,7 @@ def update_udm_type(request, type_id: uuid.UUID, field_config_id: Optional[uuid.
                 return JsonResponse({"detail": "Stale entities exist without a confirmed BulkMigrationPlan"}, status=400)
         udm_type.field_config = cfg
         udm_type.save()
-    return UDMTypeOut(id=udm_type.id, name=udm_type.name, description=udm_type.description, field_config_id=udm_type.field_config_id)
+    return _udmtype_out(udm_type)
 
 
 @api.delete("/types/{type_id}/", auth=django_auth)

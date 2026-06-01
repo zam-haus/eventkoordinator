@@ -261,6 +261,42 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
         return {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
 
 
+def evaluate_type_public_fields(udm_type, user=None) -> dict:
+    """Evaluate data.udm.public_type_fields from the type's policies.
+
+    Runs all policies assigned to the type with a minimal input document
+    that contains the requesting user (when provided) so that rules can vary
+    their output per-user.  The rule is expected to return a dict, e.g.:
+
+        public_type_fields["get_countdown_date"] := "2026-12-31"
+        public_type_fields["my_deadline"] := "2027-03-01" { input.user.is_staff }
+
+    Returns {} if the type has no policies, the rule is undefined, or
+    evaluation fails.
+    """
+    type_policies = list(
+        udm_type.type_policies.select_related("policy").order_by("sort_order")
+    )
+    if not type_policies:
+        return {}
+    try:
+        import regorus
+        eng = regorus.Engine()
+        for tp in type_policies:
+            eng.add_policy(f"policy_{tp.policy.slug}.rego", tp.policy.source)
+        input_doc: dict = {"action": "public_type_fields"}
+        if user is not None:
+            input_doc["user"] = _serialize_user(user)
+        eng.set_input_json(json.dumps(input_doc))
+        raw = json.loads(eng.eval_rule_as_json("data.udm.public_type_fields"))
+        if isinstance(raw, dict) and raw != _UNDEFINED:
+            return raw
+        return {}
+    except Exception as exc:
+        logger.debug("evaluate_type_public_fields failed: %s", exc)
+        return {}
+
+
 # ─── Policy / transition exceptions ──────────────────────────────────────────
 
 class PolicyError(Exception):

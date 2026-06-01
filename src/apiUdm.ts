@@ -415,12 +415,37 @@ export async function udmEvalPolicy(
   return data as PolicyEvalOut
 }
 
+export async function udmGetTypePublicFields(typeId: string): Promise<Record<string, unknown>> {
+  const resp = await fetch(`/api/udm/types/${typeId}/public-fields/`, { credentials: 'include' })
+  if (!resp.ok) return {}
+  const data = await resp.json() as { fields: Record<string, unknown> }
+  return data.fields ?? {}
+}
+
 export async function udmGetTypeConfig(typeId: string): Promise<ConfigVersionOut> {
   const { data, error, response } = await udmClient.GET('/api/udm/types/{type_id}/config/', {
     params: { path: { type_id: typeId } },
   })
   if (error || !response.ok || !data) throw new Error('No config for type')
   return data as ConfigVersionOut
+}
+
+export async function udmUpdateTypeMeta(
+  typeId: string,
+  payload: { name?: string; label?: string; description?: string },
+): Promise<UDMTypeOut> {
+  const token = await getCsrfToken()
+  const resp = await fetch(`/api/udm/types/${typeId}/`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { [CSRF_HEADER_NAME]: token } : {}),
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!resp.ok) return throwRawFetchError(resp, 'Failed to update UDM type')
+  return resp.json() as Promise<UDMTypeOut>
 }
 
 export async function udmUpdateType(typeId: string, fieldConfigId: string | null): Promise<UDMTypeOut> {

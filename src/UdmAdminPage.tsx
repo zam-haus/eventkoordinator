@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { UdfMarkdown } from './UdfMarkdown'
 import { useTranslation } from 'react-i18next'
 import { Tree } from 'primereact/tree'
 import type { TreeNode } from 'primereact/treenode'
@@ -18,6 +19,7 @@ import {
   udmUpdatePolicy,
   udmDeletePolicy,
   udmUpdateType,
+  udmUpdateTypeMeta,
   udmDeleteType,
   udmListTypePolicies,
   udmAssignPolicy,
@@ -1919,6 +1921,10 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [editingMeta, setEditingMeta] = useState(false)
+  const [editName, setEditName] = useState(udmType.name)
+  const [editLabel, setEditLabel] = useState(udmType.label)
+  const [editDesc, setEditDesc] = useState(udmType.description)
 
   const loadPolicies = useCallback(async () => {
     try {
@@ -1928,6 +1934,26 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
   }, [udmType.id])
 
   useEffect(() => { void loadPolicies() }, [loadPolicies])
+
+  async function handleSaveMeta() {
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const updated = await udmUpdateTypeMeta(udmType.id.toString(), {
+        name: editName.trim() || undefined,
+        label: editLabel,
+        description: editDesc,
+      })
+      onUpdated(updated)
+      setEditingMeta(false)
+      setSuccess('Saved.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function handleAssignConfig() {
     setSaving(true)
@@ -1984,6 +2010,59 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
 
   return (
     <div>
+      <div className={styles.section}>
+        <div className={styles.sectionTitle} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Type Info</span>
+          {!editingMeta && (
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+              onClick={() => { setEditingMeta(true); setEditName(udmType.name); setEditLabel(udmType.label); setEditDesc(udmType.description) }}>
+              Edit
+            </button>
+          )}
+        </div>
+        {editingMeta ? (
+          <>
+            <div className={styles.row}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Name *</label>
+                <input className={styles.input} value={editName} onChange={e => setEditName(e.target.value)} />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Label (display name)</label>
+                <input className={styles.input} value={editLabel} onChange={e => setEditLabel(e.target.value)} />
+              </div>
+            </div>
+            <div className={styles.formGroup} style={{ marginTop: '0.5rem' }}>
+              <label className={styles.label}>Description (markdown)</label>
+              <textarea className={styles.textarea} rows={6} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+              {editDesc && (
+                <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.875rem' }}>
+                  <UdfMarkdown content={editDesc} typeId={udmType.id.toString()} />
+                </div>
+              )}
+            </div>
+            {error && <div className={styles.error}>{error}</div>}
+            {success && <div className={styles.success}>{success}</div>}
+            <div className={styles.row} style={{ marginTop: '0.5rem' }}>
+              <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
+                onClick={() => void handleSaveMeta()} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                onClick={() => setEditingMeta(false)}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {udmType.label && <div><strong>Label:</strong> {udmType.label}</div>}
+            {udmType.description
+              ? <div style={{ marginTop: '0.5rem' }}><UdfMarkdown content={udmType.description} typeId={udmType.id.toString()} /></div>
+              : <div style={{ color: '#888', fontSize: '0.875rem' }}>No description.</div>}
+          </>
+        )}
+      </div>
       <div className={styles.detailHeader}>
         <button type="button" className={styles.backBtn} onClick={onBack}>← Back to Types</button>
         <h2 className={styles.pageTitle} style={{ margin: 0 }}>{udmType.name}</h2>
@@ -2081,6 +2160,7 @@ function TypesTab() {
   const [selectedType, setSelectedType] = useState<UDMTypeOut | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newLabel, setNewLabel] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
 
@@ -2101,9 +2181,10 @@ function TypesTab() {
     setCreateError(null)
     if (!newName.trim()) { setCreateError('Name is required'); return }
     try {
-      const t = await udmCreateType({ name: newName.trim(), description: newDesc })
+      const t = await udmCreateType({ name: newName.trim(), label: newLabel.trim(), description: newDesc })
       setTypes(prev => [...prev, t])
       setNewName('')
+      setNewLabel('')
       setNewDesc('')
       setCreating(false)
     } catch (e) {
@@ -2139,13 +2220,18 @@ function TypesTab() {
           <div className={styles.sectionTitle}>Create UDM Type</div>
           <div className={styles.row}>
             <div className={styles.formGroup}>
-              <label className={styles.label}>Name *</label>
+              <label className={styles.label}>Name * (internal identifier)</label>
               <input className={styles.input} value={newName} onChange={e => setNewName(e.target.value)}
+                placeholder="workshop" />
+            </div>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>Label (display name)</label>
+              <input className={styles.input} value={newLabel} onChange={e => setNewLabel(e.target.value)}
                 placeholder="Workshop" />
             </div>
             <div className={styles.formGroup} style={{ flex: 2 }}>
-              <label className={styles.label}>Description</label>
-              <input className={styles.input} value={newDesc} onChange={e => setNewDesc(e.target.value)} />
+              <label className={styles.label}>Description (markdown)</label>
+              <textarea className={styles.textarea} rows={4} value={newDesc} onChange={e => setNewDesc(e.target.value)} />
             </div>
           </div>
           {createError && <div className={styles.error}>{createError}</div>}
@@ -2167,6 +2253,7 @@ function TypesTab() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Label</th>
                 <th>Description</th>
                 <th>Field Config</th>
                 <th>Actions</th>
@@ -2178,7 +2265,8 @@ function TypesTab() {
                 return (
                   <tr key={t.id}>
                     <td><strong>{t.name}</strong></td>
-                    <td style={{ color: '#666', fontSize: '0.875rem' }}>{t.description || '—'}</td>
+                    <td>{t.label || <span style={{ color: '#999' }}>—</span>}</td>
+                    <td style={{ color: '#666', fontSize: '0.875rem' }}>{t.description ? '✓' : '—'}</td>
                     <td>{cfg ? cfg.name : <span style={{ color: '#999' }}>Not assigned</span>}</td>
                     <td>
                       <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
