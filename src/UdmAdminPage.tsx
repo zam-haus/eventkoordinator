@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Tree } from 'primereact/tree'
+import type { TreeNode } from 'primereact/treenode'
+import type { TreeDragDropEvent } from 'primereact/tree'
 import { UdmApiError } from './apiUdm'
 import {
   udmListConfigs,
@@ -51,6 +54,11 @@ const DATA_TYPES: DataType[] = [
   'submodel_select', 'submodel_list', 'entity_select', 'entity_select_multi',
   'slug_id', 'workflow',
 ]
+
+const STRUCTURAL_TYPES: DataType[] = ['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next']
+const STRUCTURAL_SET = new Set<string>(STRUCTURAL_TYPES)
+// Types that can have child fields via parent_slug
+const PARENT_TYPES = new Set<string>(['tab_container', 'tab', 'hstack', 'hstack_group'])
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -174,12 +182,15 @@ interface FieldEditorProps {
   onRemove: () => void
   languages: string[]
   allConfigs: FieldConfigOut[]
+  /** When true, skip the card header (used when embedded inside TreeItemRow) */
+  noHeader?: boolean
 }
 
 // Types that cannot have manual defaults (mirrors backend _NO_DEFAULT_TYPES + slug_id is auto)
 const NO_DEFAULT_TYPES = new Set<DataType>([
   'image', 'file', 'entity_select', 'entity_select_multi',
   'submodel_select', 'submodel_list', 'workflow',
+  ...(STRUCTURAL_TYPES as DataType[]),
 ])
 
 // FK-based types where defaults require a live lookup — deferred to a future picker
@@ -313,8 +324,8 @@ function DefaultValueEditor({ dt, tc, value, isLocalized, languages, onChange }:
   return renderInput(value, onChange)
 }
 
-function FieldEditor({ field, onChange, onRemove, languages, allConfigs }: FieldEditorProps) {
-  const [expanded, setExpanded] = useState(false)
+function FieldEditor({ field, onChange, onRemove, languages, allConfigs, noHeader }: FieldEditorProps) {
+  const [expanded, setExpanded] = useState(noHeader ?? false)
   const [choicesText, setChoicesText] = useState<string | null>(null)
 
   const setF = (updates: Partial<FieldDefinitionIn>) => onChange({ ...field, ...updates })
@@ -326,27 +337,29 @@ function FieldEditor({ field, onChange, onRemove, languages, allConfigs }: Field
   const tc = field.type_config ?? {}
 
   return (
-    <div className={styles.fieldCard}>
-      <div className={styles.fieldCardHeader}>
-        <span className={styles.fieldCardTitle}>
-          {field.slug || <em style={{ color: '#999' }}>new field</em>}
-          {' '}
-          <span className={styles.badge} style={{ background: '#eee', color: '#555', fontSize: '0.75rem' }}>
-            {field.data_type}
+    <div className={noHeader ? undefined : styles.fieldCard}>
+      {!noHeader && (
+        <div className={styles.fieldCardHeader}>
+          <span className={styles.fieldCardTitle}>
+            {field.slug || <em style={{ color: '#999' }}>new field</em>}
+            {' '}
+            <span className={styles.badge} style={{ background: '#eee', color: '#555', fontSize: '0.75rem' }}>
+              {field.data_type}
+            </span>
           </span>
-        </span>
-        <div className={styles.tableActions}>
-          <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-            onClick={() => setExpanded(!expanded)}>
-            {expanded ? 'Collapse' : 'Edit'}
-          </button>
-          <button type="button" className={`${styles.btn} ${styles.btnDanger}`} onClick={onRemove}>
-            Remove
-          </button>
+          <div className={styles.tableActions}>
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+              onClick={() => setExpanded(!expanded)}>
+              {expanded ? 'Collapse' : 'Edit'}
+            </button>
+            <button type="button" className={`${styles.btn} ${styles.btnDanger}`} onClick={onRemove}>
+              Remove
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {expanded && (
+      {(noHeader || expanded) && (
         <>
           <div className={styles.fieldCardBody}>
             <div className={styles.formGroup}>
@@ -391,7 +404,7 @@ function FieldEditor({ field, onChange, onRemove, languages, allConfigs }: Field
             {languages.map(lang => (
               <div key={lang} className={styles.formGroup} style={{ minWidth: '200px' }}>
                 <label className={styles.label}>Label [{lang}] *</label>
-                <input className={styles.input} value={field.labels[lang] ?? ''}
+                <input className={styles.input} value={(field.labels ?? {})[lang] ?? ''}
                   onChange={e => setLabel(lang, e.target.value)}
                   placeholder={`Label in ${lang}`} />
                 <label className={styles.label} style={{ marginTop: '0.25rem' }}>Help [{lang}]</label>
@@ -531,10 +544,233 @@ interface DraftEditorProps {
   allConfigs: FieldConfigOut[]
 }
 
+// ── Tree helpers (single source of truth: TreeNode[]) ─────────────────────────
+
+let _uid = 0
+function genKey() { return `k-${++_uid}` }
+
+type NodeData = { field: FieldDefinitionIn }
+
+// Convert flat field list (from API) to PrimeReact TreeNode[]
+function fieldsToNodes(fields: FieldDefinitionIn[]): TreeNode[] {
+  const sorted = [...fields].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  const childMap = new Map<string, FieldDefinitionIn[]>()
+  const roots: FieldDefinitionIn[] = []
+
+  for (const f of sorted) {
+    if (f.parent_slug) {
+      ;(childMap.get(f.parent_slug) ?? (childMap.set(f.parent_slug, []), childMap.get(f.parent_slug)!)).push(f)
+    } else {
+      roots.push(f)
+    }
+  }
+
+  function toNode(f: FieldDefinitionIn): TreeNode {
+    const children = (childMap.get(f.slug) ?? []).map(toNode)
+    const canHaveChildren = PARENT_TYPES.has(f.data_type)
+    return {
+      key: genKey(),
+      label: f.slug || '(new)',
+      data: { field: f } satisfies NodeData,
+      children: children.length > 0 ? children : (canHaveChildren ? [] : undefined),
+      leaf: !canHaveChildren || children.length === 0,
+      draggable: f.data_type !== 'tab_container',
+      droppable: canHaveChildren,
+    }
+  }
+
+  return roots.map(toNode)
+}
+
+// Convert TreeNode[] back to flat field list for API, deriving parent_slug and sort_order from tree position
+function nodesToFields(nodes: TreeNode[]): FieldDefinitionIn[] {
+  const out: FieldDefinitionIn[] = []
+  let so = 0
+
+  function walk(list: TreeNode[], parentSlug: string | null) {
+    for (const node of list) {
+      const field = (node.data as NodeData).field
+      out.push({ ...field, sort_order: so++, parent_slug: parentSlug })
+      if (node.children && node.children.length > 0) {
+        walk(node.children, field.slug)
+      }
+    }
+  }
+
+  walk(nodes, null)
+  return out
+}
+
+// Recursively update a node by key
+function updateNodeByKey(nodes: TreeNode[], key: string, updatedField: FieldDefinitionIn): TreeNode[] {
+  return nodes.map(n => {
+    if (n.key === key) {
+      return {
+        ...n,
+        label: updatedField.slug || '(new)',
+        data: { field: updatedField },
+        // When slug changes, we need to re-check droppable/leaf
+        droppable: PARENT_TYPES.has(updatedField.data_type),
+        leaf: !PARENT_TYPES.has(updatedField.data_type) || (n.children?.length ?? 0) === 0,
+      }
+    }
+    if (n.children) return { ...n, children: updateNodeByKey(n.children, key, updatedField) }
+    return n
+  })
+}
+
+// Recursively remove a node by key
+function removeNodeByKey(nodes: TreeNode[], key: string): TreeNode[] {
+  return nodes
+    .filter(n => n.key !== key)
+    .map(n => n.children ? { ...n, children: removeNodeByKey(n.children, key) } : n)
+}
+
+
+// Find expanded keys for structural container nodes
+function getInitialExpanded(nodes: TreeNode[]): Record<string, boolean> {
+  const out: Record<string, boolean> = {}
+  function walk(list: TreeNode[]) {
+    for (const n of list) {
+      const f = (n.data as NodeData)?.field
+      if (f && PARENT_TYPES.has(f.data_type)) out[n.key as string] = true
+      if (n.children) walk(n.children)
+    }
+  }
+  walk(nodes)
+  return out
+}
+
+function makeNewDataField(languages: string[]): FieldDefinitionIn {
+  const labels: Record<string, string> = {}
+  languages.forEach(l => { labels[l] = '' })
+  return { slug: '', data_type: 'text_short', sort_order: 0, is_localized: false, is_preview: false, labels, type_config: {}, default: null }
+}
+
+// Auto-generate unique slugs for structural fields based on existing nodes
+function makeStructuralField(dt: DataType, nodes: TreeNode[]): FieldDefinitionIn {
+  const allFields = nodesToFields(nodes)
+  const usedSlugs = new Set(allFields.map(f => f.slug))
+  const base = dt.replace(/_/g, '-')
+  let slug = base
+  let n = 1
+  while (usedSlugs.has(slug)) { slug = `${base}-${++n}` }
+  return { slug, data_type: dt, sort_order: 0, is_localized: false, is_preview: false, labels: null, type_config: {}, default: null }
+}
+
+// ── Structural field editor ────────────────────────────────────────────────────
+
+interface StructuralFieldEditorProps {
+  field: FieldDefinitionIn
+  onChange: (f: FieldDefinitionIn) => void
+}
+
+function StructuralFieldEditor({ field, onChange }: StructuralFieldEditorProps) {
+  const tc = field.type_config ?? {}
+  const setTc = (updates: Record<string, unknown>) => onChange({ ...field, type_config: { ...tc, ...updates } })
+
+  const slugRow = (
+    <div>
+      <label className={styles.label}>Slug</label>
+      <input className={styles.input} value={field.slug} onChange={e => onChange({ ...field, slug: e.target.value })} placeholder={field.data_type} />
+    </div>
+  )
+
+  if (field.data_type === 'tab_container') {
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {slugRow}
+        <div style={{ flex: 2 }}>
+          <label className={styles.label}>Title (optional)</label>
+          <input className={styles.input} value={(tc['title'] as string) ?? ''} onChange={e => setTc({ title: e.target.value })} placeholder="e.g. Form Sections" />
+        </div>
+      </div>
+    )
+  }
+
+  if (field.data_type === 'tab') {
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {slugRow}
+        <div style={{ flex: 2 }}>
+          <label className={styles.label}>Tab Title *</label>
+          <input className={styles.input} value={(tc['title'] as string) ?? ''} onChange={e => setTc({ title: e.target.value })} placeholder="e.g. General" />
+        </div>
+      </div>
+    )
+  }
+
+  if (field.data_type === 'save_button') {
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {slugRow}
+        <div style={{ flex: 2 }}>
+          <label className={styles.label}>Label</label>
+          <input className={styles.input} value={(tc['label'] as string) ?? ''} onChange={e => setTc({ label: e.target.value })} placeholder="Save" />
+        </div>
+        <div>
+          <label className={styles.label}>Variant</label>
+          <select className={styles.select} value={(tc['variant'] as string) ?? 'primary'}
+            onChange={e => setTc({ variant: e.target.value })}>
+            <option value="primary">Primary</option>
+            <option value="success">Success</option>
+          </select>
+        </div>
+      </div>
+    )
+  }
+
+  if (field.data_type === 'hstack') {
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {slugRow}
+        <div style={{ color: '#888', fontSize: '0.78rem', alignSelf: 'flex-end' }}>Add hstack_group children via tree</div>
+      </div>
+    )
+  }
+
+  if (field.data_type === 'hstack_group') {
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {slugRow}
+        <div>
+          <label className={styles.label}>Alignment</label>
+          <select className={styles.select} value={(tc['align'] as string) ?? 'left'}
+            onChange={e => setTc({ align: e.target.value })}>
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </div>
+      </div>
+    )
+  }
+
+  if (field.data_type === 'tab_prev' || field.data_type === 'tab_next') {
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {slugRow}
+        <div style={{ flex: 2 }}>
+          <label className={styles.label}>Label (optional)</label>
+          <input className={styles.input} value={(tc['label'] as string) ?? ''} onChange={e => setTc({ label: e.target.value })}
+            placeholder={field.data_type === 'tab_prev' ? '← Previous' : 'Next →'} />
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
+
+// ── DraftEditor ───────────────────────────────────────────────────────────────
+
 function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorProps) {
   const [draft, setDraft] = useState<ConfigVersionOut | null>(null)
   const [notes, setNotes] = useState('')
-  const [fields, setFields] = useState<FieldDefinitionIn[]>([])
+  const [nodes, setNodes] = useState<TreeNode[]>([])
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({})
+  const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({})
+  const [editingKey, setEditingKey] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -545,44 +781,89 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
       const v = await udmGetDraftVersion(configId)
       setDraft(v)
       setNotes(v.notes)
-      setFields(v.fields.map(fdToIn))
+      const ns = fieldsToNodes(v.fields.map(fdToIn))
+      setNodes(ns)
+      setExpandedKeys(getInitialExpanded(ns))
     } catch {
       setDraft(null)
-      setFields([])
+      setNodes([])
     }
   }, [configId])
 
   useEffect(() => { void load() }, [load])
 
   function fdToIn(fd: FieldDefinitionOut): FieldDefinitionIn {
+    const isStructural = STRUCTURAL_SET.has(fd.data_type)
     return {
       slug: fd.slug,
       data_type: fd.data_type as DataType,
       sort_order: fd.sort_order,
       is_localized: fd.is_localized,
       is_preview: fd.is_preview,
-      labels: fd.label as Record<string, string>,
+      labels: isStructural ? null : (fd.label as Record<string, string>),
       help_texts: fd.help_text as Record<string, string>,
       type_config: fd.type_config as Record<string, unknown>,
       default: fd.default ?? null,
       submodel_config_version_id: fd.submodel_config?.version_id ?? null,
       workflow_definition_id: (fd as FieldDefinitionOut & { workflow_definition?: { id?: string } }).workflow_definition?.id ?? null,
+      parent_slug: fd.parent_slug ?? null,
     }
   }
 
-  function addField() {
-    const labels: Record<string, string> = {}
-    languages.forEach(l => { labels[l] = '' })
-    setFields(prev => [...prev, {
-      slug: '',
-      data_type: 'text_short',
-      sort_order: prev.length,
-      is_localized: false,
-      is_preview: false,
-      labels,
-      type_config: {},
-      default: null,
-    }])
+  // ── Mutations (all operate on TreeNode[]) ─────────────────────────────────────
+
+  function addField(parentKey?: string) {
+    const field = makeNewDataField(languages)
+    addNode(field, parentKey)
+  }
+
+  function addStructural(dt: DataType, parentKey?: string) {
+    const field = makeStructuralField(dt, nodes)
+    addNode(field, parentKey)
+  }
+
+  function addNode(field: FieldDefinitionIn, parentKey?: string) {
+    const newNode: TreeNode = {
+      key: genKey(),
+      label: field.slug || '(new)',
+      data: { field } satisfies NodeData,
+      leaf: !PARENT_TYPES.has(field.data_type),
+      draggable: field.data_type !== 'tab_container',
+      droppable: PARENT_TYPES.has(field.data_type),
+      children: PARENT_TYPES.has(field.data_type) ? [] : undefined,
+    }
+
+    if (!parentKey) {
+      setNodes(prev => [...prev, newNode])
+    } else {
+      setNodes(prev => insertUnderKey(prev, parentKey, newNode))
+      setExpandedKeys(prev => ({ ...prev, [parentKey]: true }))
+    }
+  }
+
+  function insertUnderKey(nodeList: TreeNode[], parentKey: string, newNode: TreeNode): TreeNode[] {
+    return nodeList.map(n => {
+      if (n.key === parentKey) {
+        const children = [...(n.children ?? []), newNode]
+        return { ...n, children, leaf: false }
+      }
+      if (n.children) return { ...n, children: insertUnderKey(n.children, parentKey, newNode) }
+      return n
+    })
+  }
+
+  function handleDragDrop(e: TreeDragDropEvent) {
+    setNodes(e.value as TreeNode[])
+  }
+
+  function deleteSelected() {
+    let ns = nodes
+    for (const key of Object.keys(selectedKeys)) {
+      ns = removeNodeByKey(ns, key)
+    }
+    setNodes(ns)
+    setSelectedKeys({})
+    if (editingKey && selectedKeys[editingKey]) setEditingKey(null)
   }
 
   async function handleSave() {
@@ -590,8 +871,12 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
     setErrors([])
     setSuccess(null)
     try {
+      const fields = nodesToFields(nodes)
       const v = await udmReplaceDraft(configId, { notes, fields })
       setDraft(v)
+      const ns = fieldsToNodes(v.fields.map(fdToIn))
+      setNodes(ns)
+      setExpandedKeys(prev => ({ ...getInitialExpanded(ns), ...prev }))
       setSuccess('Draft saved.')
       onSaved(v)
     } catch (e) {
@@ -617,6 +902,107 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
     }
   }
 
+  // ── Node template ──────────────────────────────────────────────────────────────
+
+  function nodeTemplate(node: TreeNode) {
+    const field = (node.data as NodeData)?.field
+    if (!field) return <span>{node.label}</span>
+
+    const isStructural = STRUCTURAL_SET.has(field.data_type)
+    const isEditing = editingKey === node.key
+    const typeColors: Record<string, { bg: string; color: string }> = {
+      tab_container: { bg: '#dbeafe', color: '#1e40af' },
+      tab: { bg: '#e0f2fe', color: '#075985' },
+      hstack: { bg: '#fef9c3', color: '#854d0e' },
+      hstack_group: { bg: '#fef3c7', color: '#92400e' },
+      save_button: { bg: '#dcfce7', color: '#166534' },
+      tab_prev: { bg: '#f3e8ff', color: '#6b21a8' },
+      tab_next: { bg: '#f3e8ff', color: '#6b21a8' },
+    }
+    const colors = typeColors[field.data_type] ?? { bg: '#f3f4f6', color: '#374151' }
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        {/* Compact row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
+          <span style={{
+            background: colors.bg, color: colors.color,
+            fontSize: '0.65rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: '3px', flexShrink: 0,
+          }}>
+            {field.data_type}
+          </span>
+          <span style={{ fontWeight: 500, fontSize: '0.85rem', fontFamily: isStructural ? 'inherit' : 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {field.slug || <em style={{ color: '#bbb', fontStyle: 'italic' }}>new</em>}
+            {isStructural && (field.type_config as { title?: string })?.title
+              ? <span style={{ fontFamily: 'inherit', fontWeight: 400, color: '#666', marginLeft: '0.4rem' }}>
+                  {(field.type_config as { title?: string }).title}
+                </span>
+              : null}
+          </span>
+          <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
+            {/* Context-aware "Add child" button */}
+            {PARENT_TYPES.has(field.data_type) && (
+              <button
+                type="button"
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+                title="Add child"
+                onClick={e => {
+                  e.stopPropagation()
+                  if (field.data_type === 'tab_container') addStructural('tab', node.key as string)
+                  else if (field.data_type === 'tab') addField(node.key as string)
+                  else if (field.data_type === 'hstack') addStructural('hstack_group', node.key as string)
+                  else if (field.data_type === 'hstack_group') addField(node.key as string)
+                }}
+              >+</button>
+            )}
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnSecondary}`}
+              style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+              onClick={e => { e.stopPropagation(); setEditingKey(isEditing ? null : node.key as string) }}
+            >
+              {isEditing ? '✕' : '✎'}
+            </button>
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnDanger}`}
+              style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+              onClick={e => { e.stopPropagation(); setNodes(prev => removeNodeByKey(prev, node.key as string)) }}
+            >✕</button>
+          </div>
+        </div>
+
+        {/* Inline editor */}
+        {isEditing && (
+          <div style={{ marginTop: '0.4rem', padding: '0.6rem', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}
+            onClick={e => e.stopPropagation()}>
+            {isStructural
+              ? <StructuralFieldEditor
+                  field={field}
+                  onChange={updated => setNodes(prev => updateNodeByKey(prev, node.key as string, updated))}
+                />
+              : <FieldEditor
+                  field={field}
+                  onChange={updated => setNodes(prev => updateNodeByKey(prev, node.key as string, updated))}
+                  onRemove={() => setNodes(prev => removeNodeByKey(prev, node.key as string))}
+                  languages={languages}
+                  allConfigs={allConfigs}
+                  noHeader
+                />
+            }
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
+  const selectedCount = Object.keys(selectedKeys).length
+  const hasTabContainer = nodes.some(n => (n.data as NodeData)?.field?.data_type === 'tab_container')
+  const totalCount = nodesToFields(nodes).length
+
   return (
     <div>
       <div className={styles.subsectionTitle}>Draft Version</div>
@@ -631,31 +1017,61 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
           </div>
 
           <div style={{ marginTop: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span className={styles.subsectionTitle}>Fields ({fields.length})</span>
-              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={addField}>
-                + Add Field
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <span className={styles.subsectionTitle}>Fields ({totalCount})</span>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+                  onClick={() => addField()}>+ Field</button>
+                {!hasTabContainer && (
+                  <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+                    onClick={() => addStructural('tab_container')}>+ Tab Container</button>
+                )}
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+                  onClick={() => addStructural('save_button')}>+ Save Button</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+                  onClick={() => addStructural('hstack')}>+ HStack</button>
+                {selectedCount > 0 && (
+                  <button type="button" className={`${styles.btn} ${styles.btnDanger}`} style={{ fontSize: '0.78rem' }}
+                    onClick={deleteSelected}>Delete {selectedCount} selected</button>
+                )}
+              </div>
             </div>
-            {fields.length === 0 && <div className={styles.emptyState}>No fields yet. Add a field to get started.</div>}
-            {fields.map((f, i) => (
-              <FieldEditor
-                key={i}
-                field={f}
-                languages={languages}
-                allConfigs={allConfigs}
-                onChange={updated => setFields(prev => prev.map((x, j) => j === i ? updated : x))}
-                onRemove={() => setFields(prev => prev.filter((_, j) => j !== i))}
-              />
-            ))}
+
+            <div style={{ fontSize: '0.73rem', color: '#94a3b8', marginBottom: '0.4rem' }}>
+              Drag to reorder · Click ✎ to edit inline · Click + to add children · Multiselect then Delete
+            </div>
+
+            {totalCount === 0 && (
+              <div className={styles.emptyState}>No fields yet. Use the buttons above to add fields or a tab container.</div>
+            )}
+
+            {totalCount > 0 && (
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
+                <Tree
+                  value={nodes}
+                  expandedKeys={expandedKeys}
+                  onToggle={e => setExpandedKeys(e.value as Record<string, boolean>)}
+                  selectionMode="multiple"
+                  selectionKeys={selectedKeys}
+                  onSelectionChange={e => setSelectedKeys(e.value as Record<string, boolean>)}
+                  dragdropScope="field-config"
+                  onDragDrop={handleDragDrop}
+                  nodeTemplate={nodeTemplate}
+                  style={{ fontSize: '0.85rem' }}
+                  pt={{
+                    node: { style: { borderLeft: '3px solid transparent' } },
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {errors.length > 0 && (
-            <div className={styles.error}>
+            <div className={styles.error} style={{ marginTop: '0.75rem' }}>
               {errors.map((msg, i) => <div key={i}>{msg}</div>)}
             </div>
           )}
-          {success && <div className={styles.success}>{success}</div>}
+          {success && <div className={styles.success} style={{ marginTop: '0.5rem' }}>{success}</div>}
 
           <div className={styles.row} style={{ marginTop: '1rem' }}>
             <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
@@ -674,6 +1090,7 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
     </div>
   )
 }
+
 
 // ── Config Detail ─────────────────────────────────────────────────────────────
 

@@ -61,6 +61,24 @@ class DataType(str, Enum):
     ENTITY_SELECT = "entity_select"; ENTITY_SELECT_MULTI = "entity_select_multi"
     SLUG_ID = "slug_id"
     WORKFLOW = "workflow"
+    # Structural / layout types
+    TAB_CONTAINER = "tab_container"
+    TAB = "tab"
+    SAVE_BUTTON = "save_button"
+    HSTACK = "hstack"
+    HSTACK_GROUP = "hstack_group"
+    TAB_PREV = "tab_prev"
+    TAB_NEXT = "tab_next"
+
+STRUCTURAL_DATA_TYPES = frozenset({
+    DataType.TAB_CONTAINER,
+    DataType.TAB,
+    DataType.SAVE_BUTTON,
+    DataType.HSTACK,
+    DataType.HSTACK_GROUP,
+    DataType.TAB_PREV,
+    DataType.TAB_NEXT,
+})
 
 
 class ConfigVersionStatus(str, Enum):
@@ -122,6 +140,36 @@ class WorkflowTypeConfig(Schema):
     model_config = {"extra": "forbid"}
 
 
+class TabContainerTypeConfig(Schema):
+    title: Optional[Annotated[str, Field(max_length=_MAX_LABEL_LEN)]] = None
+    model_config = {"extra": "forbid"}
+
+
+class TabTypeConfig(Schema):
+    title: Optional[Annotated[str, Field(max_length=_MAX_LABEL_LEN)]] = None
+    model_config = {"extra": "forbid"}
+
+
+class SaveButtonTypeConfig(Schema):
+    label: Optional[Annotated[str, Field(max_length=_MAX_LABEL_LEN)]] = None
+    variant: Optional[Literal["primary", "success"]] = None
+    model_config = {"extra": "forbid"}
+
+
+class HStackTypeConfig(Schema):
+    model_config = {"extra": "forbid"}
+
+
+class HStackGroupTypeConfig(Schema):
+    align: Optional[Literal["left", "center", "right"]] = "left"
+    model_config = {"extra": "forbid"}
+
+
+class TabNavTypeConfig(Schema):
+    label: Optional[Annotated[str, Field(max_length=_MAX_LABEL_LEN)]] = None
+    model_config = {"extra": "forbid"}
+
+
 _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
     DataType.TEXT_SHORT: TextTypeConfig, DataType.TEXT_LONG: TextTypeConfig,
     DataType.TEXT_MARKDOWN: TextTypeConfig, DataType.TEXT_RICHTEXT: TextTypeConfig,
@@ -136,6 +184,13 @@ _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
     DataType.ENTITY_SELECT: EntitySelectTypeConfig, DataType.ENTITY_SELECT_MULTI: EntitySelectTypeConfig,
     DataType.SLUG_ID: SlugIdTypeConfig,
     DataType.WORKFLOW: WorkflowTypeConfig,
+    DataType.TAB_CONTAINER: TabContainerTypeConfig,
+    DataType.TAB: TabTypeConfig,
+    DataType.SAVE_BUTTON: SaveButtonTypeConfig,
+    DataType.HSTACK: HStackTypeConfig,
+    DataType.HSTACK_GROUP: HStackGroupTypeConfig,
+    DataType.TAB_PREV: TabNavTypeConfig,
+    DataType.TAB_NEXT: TabNavTypeConfig,
 }
 
 # ─── FieldDefinition schemas ──────────────────────────────────────────────────
@@ -146,16 +201,20 @@ class FieldDefinitionIn(Schema):
     sort_order: int = Field(0, ge=0, le=_MAX_SORT_ORDER)
     is_localized: bool = False
     is_preview: bool = False
-    labels: LocalizedLabel
+    labels: Optional[LocalizedLabel] = None
     help_texts: LocalizedHelpText = Field(default_factory=dict)
     type_config: dict[str, Any] = Field(default_factory=dict)
     default: Optional[Any] = None
     submodel_config_version_id: Optional[uuid.UUID] = None
     workflow_definition_id: Optional[uuid.UUID] = None
+    parent_slug: Optional[Annotated[str, Field(max_length=_MAX_SLUG_LEN, pattern=r"^[a-z][a-z0-9_-]*$")]] = None
     model_config = {"extra": "forbid"}
 
     @model_validator(mode="after")
     def validate_type_config(self) -> "FieldDefinitionIn":
+        is_structural = self.data_type in STRUCTURAL_DATA_TYPES
+        if not is_structural and not self.labels:
+            raise ValueError("labels is required for data fields")
         cls = _TYPE_CONFIG_CLS.get(self.data_type)
         if cls is None:
             if self.type_config:
@@ -187,6 +246,7 @@ class FieldDefinitionOut(Schema):
     submodel_config: Optional["ConfigVersionOut"] = None
     workflow_definition: Optional["WorkflowDefinitionOut"] = None
     default: Optional[Any] = None
+    parent_slug: Optional[str] = None
 
 # ─── Languages and FieldConfig schemas ───────────────────────────────────────
 

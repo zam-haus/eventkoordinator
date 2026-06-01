@@ -533,6 +533,7 @@ export function UdmEntityEditor() {
   const [policyMessages, setPolicyMessages] = useState<PolicyMessage[]>([])
   const [transitionPopup, setTransitionPopup] = useState<PolicyMessage[]>([])
   const [compact, setCompact] = useState(false)
+  const [activeTab, setActiveTab] = useState(0)
 
   const fieldSeverities = useMemo(() => {
     const out: Record<string, string> = {}
@@ -621,8 +622,12 @@ export function UdmEntityEditor() {
 
   const pendingValidation = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (!entityId || Object.keys(dirty).length === 0) {
-      setPolicyMessages([])
+    if (!entityId) return
+    if (Object.keys(dirty).length === 0) {
+      // Re-run ambient validation to keep messages current after save/transition
+      void udmValidateEntity(entityId, {})
+        .then(r => setPolicyMessages(r.policy_messages ?? []))
+        .catch(() => {})
       return
     }
     if (pendingValidation.current) clearTimeout(pendingValidation.current)
@@ -699,7 +704,7 @@ export function UdmEntityEditor() {
       setEntity(updated)
       setDirty({})
       setPolicyMessages((updated.policy_messages ?? []) as PolicyMessage[])
-      setSuccess('Saved successfully.')
+      setSuccess('Saved successfully.'  /* checkmark rendered in JSX */)
     } catch (e) {
       if (e instanceof UdmApiError) {
         const plainErrors: string[] = [
@@ -734,7 +739,7 @@ export function UdmEntityEditor() {
       if (globalMsgs.length > 0) {
         setTransitionPopup(globalMsgs)
       } else {
-        setSuccess(`Transition "${transitionName}" applied.`)
+        setSuccess(`Transition applied: ${transitionName}`)
       }
       await load()
     } catch (e) {
@@ -755,6 +760,207 @@ export function UdmEntityEditor() {
   }
 
   const dirtyCount = Object.keys(dirty).length
+
+  // ── Layout parsing ──────────────────────────────────────────────────────────
+  const STRUCTURAL = new Set(['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next'])
+  const sortedFields = [...fields].sort((a, b) => a.sort_order - b.sort_order)
+  const tabContainerField = sortedFields.find(f => f.data_type === 'tab_container') ?? null
+  const tabFields = sortedFields.filter(f => f.data_type === 'tab')
+  const hasTabs = tabContainerField !== null && tabFields.length > 0
+
+  const aboveFields = hasTabs
+    ? sortedFields.filter(f => f.sort_order < tabContainerField!.sort_order && f.data_type !== 'tab_container' && f.data_type !== 'tab')
+    : sortedFields.filter(f => f.data_type !== 'tab_container' && f.data_type !== 'tab')
+
+  const tabsWithFields = hasTabs
+    ? tabFields.map(tab => ({
+        tab,
+        fields: sortedFields.filter(f => f.parent_slug === tab.slug && f.data_type !== 'tab'),
+      }))
+    : []
+
+  const belowFields = hasTabs
+    ? sortedFields.filter(f => !f.parent_slug && f.sort_order > tabContainerField!.sort_order && f.data_type !== 'tab_container' && f.data_type !== 'tab')
+    : []
+
+  // Check if any save button exists in the config (inline save buttons suppress the toolbar save)
+  const hasSaveInConfig = sortedFields.some(f => f.data_type === 'save_button')
+
+  // Tab severity: worst severity among fields in each tab
+  function getTabSeverity(tabFields_: typeof sortedFields): string | undefined {
+    const severities = tabFields_.map(f => fieldSeverities[f.slug]).filter(Boolean)
+    if (!severities.length) return undefined
+    const order = ['info', 'warning', 'error', 'critical']
+    return severities.reduce((best, s) => order.indexOf(s) > order.indexOf(best) ? s : best)
+  }
+
+  function getTabMessages(tabFields_: typeof sortedFields): PolicyMessage[] {
+    const msgs: PolicyMessage[] = []
+    for (const f of tabFields_) {
+      const fMsgs = fieldMessages[f.slug]
+      if (fMsgs) for (const m of fMsgs) if (!msgs.includes(m)) msgs.push(m)
+    }
+    return msgs
+  }
+
+  function getTabTitle(tab: (typeof sortedFields)[0]): string {
+    const tc = tab.type_config as { title?: string } | undefined
+    return tc?.title || tab.slug
+  }
+
+  // ── Inline structural field renderer ───────────────────────────────────────
+  const onEntityRefreshCb = async (msgs?: PolicyMessage[]) => {
+    await load()
+    const globalMsgs = (msgs ?? []).filter((m: PolicyMessage) => !m.highlight_fields?.length)
+    if (globalMsgs.length > 0) setTransitionPopup(globalMsgs)
+  }
+
+  function renderFieldRow(fd: (typeof sortedFields)[0]) {
+    if (STRUCTURAL.has(fd.data_type)) return null  // structural fields rendered elsewhere
+    return (
+      <FieldRow
+        key={fd.slug}
+        fd={fd}
+        entity={entity!}
+        dirty={dirty}
+        onDirty={handleDirty}
+        onReset={handleReset}
+        editable={editable && (editableFieldSlugs == null || editableFieldSlugs.has(fd.slug))}
+        languages={fd.is_localized ? languages.filter(Boolean) : ['']}
+        uiLang={uiLang}
+        severity={fieldSeverities[fd.slug]}
+        messages={fieldMessages[fd.slug]}
+        subFieldSeverities={subFieldSeverities[fd.slug]}
+        subFieldMessages={subFieldMessages[fd.slug]}
+        onTransition={handleTransition}
+        transitioning={transitioning}
+        resetKey={discardCount}
+        compact={compact}
+        onEntityRefresh={onEntityRefreshCb}
+      />
+    )
+  }
+
+  function renderSaveButton(label?: string, variant?: string) {
+    const isSuccess = variant === 'success'
+    return (
+      <button
+        type="button"
+        className={`${styles.inlineBtn} ${isSuccess ? styles.inlineBtnSuccess : styles.inlineBtnPrimary}`}
+        onClick={() => void handleSave()}
+        disabled={saving || dirtyCount === 0 || !editable}
+      >
+        {saving ? 'Saving…' : (label || 'Save')}
+      </button>
+    )
+  }
+
+  // Build child map from all sortedFields for hstack rendering
+  const childMap = new Map<string, typeof sortedFields>()
+  for (const f of sortedFields) {
+    if (f.parent_slug) {
+      ;(childMap.get(f.parent_slug) ?? (childMap.set(f.parent_slug, []), childMap.get(f.parent_slug)!)).push(f)
+    }
+  }
+
+  function renderHstackGroupButton(fd: (typeof sortedFields)[0]) {
+    if (fd.data_type === 'save_button') {
+      const tc = fd.type_config as { label?: string; variant?: string } | undefined
+      return <span key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant)}</span>
+    }
+    if (fd.data_type === 'tab_prev') {
+      const tc = fd.type_config as { label?: string } | undefined
+      return (
+        <button key={fd.slug} type="button" className={styles.tabNavButton}
+          disabled={activeTab === 0} onClick={() => setActiveTab(t => Math.max(0, t - 1))}>
+          {tc?.label || '← Previous'}
+        </button>
+      )
+    }
+    if (fd.data_type === 'tab_next') {
+      const tc = fd.type_config as { label?: string } | undefined
+      return (
+        <button key={fd.slug} type="button" className={styles.tabNavButton}
+          disabled={activeTab >= tabsWithFields.length - 1}
+          onClick={() => setActiveTab(t => Math.min(tabsWithFields.length - 1, t + 1))}>
+          {tc?.label || 'Next →'}
+        </button>
+      )
+    }
+    return null
+  }
+
+  function renderStructuralField(fd: (typeof sortedFields)[0]) {
+    if (fd.data_type === 'save_button') {
+      const tc = fd.type_config as { label?: string; variant?: string } | undefined
+      return <div key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant)}</div>
+    }
+    if (fd.data_type === 'tab_prev') {
+      const tc = fd.type_config as { label?: string } | undefined
+      return (
+        <div key={fd.slug}>
+          <button type="button" className={styles.tabNavButton}
+            disabled={activeTab === 0} onClick={() => setActiveTab(t => Math.max(0, t - 1))}>
+            {tc?.label || '← Previous'}
+          </button>
+        </div>
+      )
+    }
+    if (fd.data_type === 'tab_next') {
+      const tc = fd.type_config as { label?: string } | undefined
+      return (
+        <div key={fd.slug}>
+          <button type="button" className={styles.tabNavButton}
+            disabled={activeTab >= tabsWithFields.length - 1}
+            onClick={() => setActiveTab(t => Math.min(tabsWithFields.length - 1, t + 1))}>
+            {tc?.label || 'Next →'}
+          </button>
+        </div>
+      )
+    }
+    if (fd.data_type === 'hstack') {
+      // Render hstack groups (children of this hstack)
+      const groups = childMap.get(fd.slug) ?? []
+      if (groups.length === 0) return null
+
+      const hasMultipleGroups = groups.length > 1
+      const groupElements = groups.map(group => {
+        const tc = group.type_config as { align?: string } | undefined
+        const align = tc?.align ?? 'left'
+        const groupItems = (childMap.get(group.slug) ?? []).map(renderHstackGroupButton).filter(Boolean)
+        if (groupItems.length === 0) return null
+        const alignClass = align === 'center' ? styles.hstackCenter : align === 'right' ? styles.hstackRight : styles.hstackLeft
+        return <div key={group.slug} className={`${styles.hstack} ${alignClass}`}>{groupItems}</div>
+      }).filter(Boolean)
+
+      if (groupElements.length === 0) return null
+      if (!hasMultipleGroups) return <div key={fd.slug}>{groupElements}</div>
+      return (
+        <div key={fd.slug} className={`${styles.hstack} ${styles.hstackSpaceBetween}`}>
+          {groupElements}
+        </div>
+      )
+    }
+    return null
+  }
+
+  // hstack_group, tab_prev, tab_next are rendered inside their hstack parent — exclude from lists
+  const CHILD_ONLY = new Set(['hstack_group', 'tab_prev', 'tab_next'])
+
+  function renderFieldList(fieldList: typeof sortedFields) {
+    const allItems = fieldList
+      .filter(fd => !CHILD_ONLY.has(fd.data_type))
+      .map(fd => {
+      if (STRUCTURAL.has(fd.data_type)) return renderStructuralField(fd)
+      return renderFieldRow(fd)
+    }).filter(Boolean)
+    if (allItems.length === 0) return null
+    return (
+      <div className={compact ? styles.formCompact : styles.form} style={{ marginBottom: '0.5rem' }}>
+        {allItems}
+      </div>
+    )
+  }
 
   return (
     <div className={styles.page}>
@@ -789,42 +995,112 @@ export function UdmEntityEditor() {
         />
       )}
 
-      {/* Dynamic form */}
       {fields.length === 0 && (
         <div style={{ color: '#888', fontStyle: 'italic', padding: '1rem' }}>
           {config ? 'This config has no fields defined.' : 'No config loaded for this entity type.'}
         </div>
       )}
 
-      <div className={compact ? styles.formCompact : styles.form}>
-        {fields.map(fd => (
-          <FieldRow
-            key={fd.slug}
-            fd={fd}
-            entity={entity}
-            dirty={dirty}
-            onDirty={handleDirty}
-            onReset={handleReset}
-            editable={editable && (editableFieldSlugs == null || editableFieldSlugs.has(fd.slug))}
-            languages={fd.is_localized ? languages.filter(Boolean) : ['']}
-            uiLang={uiLang}
-            severity={fieldSeverities[fd.slug]}
-            messages={fieldMessages[fd.slug]}
-            subFieldSeverities={subFieldSeverities[fd.slug]}
-            subFieldMessages={subFieldMessages[fd.slug]}
-            onTransition={handleTransition}
-            transitioning={transitioning}
-            resetKey={discardCount}
-            compact={compact}
-            onEntityRefresh={async (msgs) => {
-              await load()
-              const globalMsgs = (msgs ?? []).filter((m: PolicyMessage) => !m.highlight_fields?.length)
-              if (globalMsgs.length > 0) setTransitionPopup(globalMsgs)
-            }}
-          />
-        ))}
-      </div>
+      {/* Fields above tabs (or all fields if no tabs) */}
+      {renderFieldList(aboveFields)}
 
+      {/* Tab navigation */}
+      {hasTabs && (
+        <>
+          <div className={styles.tabNavigation} role="tablist">
+            {tabsWithFields.map(({ tab, fields: tabFieldList }, idx) => {
+              const tabSeverity = getTabSeverity(tabFieldList.filter(f => !STRUCTURAL.has(f.data_type)))
+              const tabMsgs = getTabMessages(tabFieldList.filter(f => !STRUCTURAL.has(f.data_type)))
+              const tabTitle = getTabTitle(tab)
+              const targetId = `tab-sev-${tab.slug.replace(/[^a-z0-9]/gi, '-')}`
+              return (
+                <button
+                  key={tab.slug}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === idx}
+                  className={`${styles.tabButton} ${activeTab === idx ? styles.tabButtonActive : ''}`}
+                  onClick={() => setActiveTab(idx)}
+                  disabled={saving || transitioning}
+                >
+                  <span className={styles.tabNumberContainer}>
+                    {tabSeverity && tabMsgs.length > 0 ? (
+                      <>
+                        <Tooltip target={`#${targetId}`} position="top">
+                          <ul style={{ margin: 0, padding: '0 0 0 1rem', fontSize: '0.78rem', maxWidth: '220px' }}>
+                            {tabMsgs.map((m, i) => <li key={i}>{m.text}</li>)}
+                          </ul>
+                        </Tooltip>
+                        <span
+                          id={targetId}
+                          className={styles.tabWarningIcon}
+                          title={tabMsgs.map(m => m.text).join('; ')}
+                        >
+                          {tabSeverity === 'info' ? 'ℹ' : '⚠'}
+                        </span>
+                      </>
+                    ) : (
+                      <span className={styles.tabNumber}>{idx + 1}</span>
+                    )}
+                  </span>
+                  <span className={styles.tabLabel}>{tabTitle}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Mobile dropdown */}
+          <div className={styles.tabNavigationDropdown}>
+            <select
+              value={activeTab}
+              onChange={e => setActiveTab(parseInt(e.target.value, 10))}
+              disabled={saving || transitioning}
+            >
+              {tabsWithFields.map(({ tab }, idx) => (
+                <option key={tab.slug} value={idx}>
+                  {idx + 1}. {getTabTitle(tab)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tab panels */}
+          <div className={styles.tabContent}>
+            {tabsWithFields.map(({ tab, fields: tabFieldList }, idx) => (
+              <div
+                key={tab.slug}
+                role="tabpanel"
+                className={activeTab === idx ? styles.tabPanelActive : styles.tabPanelHidden}
+              >
+                {renderFieldList(tabFieldList)}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Fields below tabs */}
+      {renderFieldList(belowFields)}
+
+      {/* Errors and success messages */}
+      {errors.length > 0 && (
+        <div className={styles.error} style={{ marginTop: '0.5rem' }}>
+          {errors.map((msg, i) => <div key={i}>{msg}</div>)}
+        </div>
+      )}
+      {globalPolicyMessages.length > 0 && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <PolicyMessageList messages={globalPolicyMessages} />
+        </div>
+      )}
+      {success && (
+        <div className={styles.successWithIcon}>
+          <span className={styles.successCheckIcon}>✓</span>
+          {success}
+        </div>
+      )}
+
+      {/* Default toolbar — hidden if the config has inline save buttons */}
       <div className={styles.toolbar}>
         <div style={{ fontSize: '0.875rem', color: '#888' }}>
           {dirtyCount > 0 ? `${dirtyCount} unsaved change${dirtyCount > 1 ? 's' : ''}` : 'No changes'}
@@ -846,24 +1122,14 @@ export function UdmEntityEditor() {
             onClick={() => setShowHistory(!showHistory)}>
             {showHistory ? 'Hide History' : 'View History'}
           </button>
-          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-            onClick={handleSave} disabled={saving || dirtyCount === 0 || !editable}>
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
+          {!hasSaveInConfig && (
+            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
+              onClick={() => void handleSave()} disabled={saving || dirtyCount === 0 || !editable}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          )}
         </div>
       </div>
-
-      {errors.length > 0 && (
-        <div className={styles.error} style={{ marginTop: '0.5rem' }}>
-          {errors.map((msg, i) => <div key={i}>{msg}</div>)}
-        </div>
-      )}
-      {globalPolicyMessages.length > 0 && (
-        <div style={{ marginTop: '0.5rem' }}>
-          <PolicyMessageList messages={globalPolicyMessages} />
-        </div>
-      )}
-      {success && <div className={styles.success} style={{ marginTop: '0.5rem' }}>{success}</div>}
 
       {showHistory && (
         <div className={styles.historySection}>

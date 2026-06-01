@@ -209,6 +209,7 @@ def _serialize_config_version(version) -> ConfigVersionOut:
             default=default_val,
             submodel_config=_serialize_config_version(fd.submodel_config) if fd.submodel_config else None,
             workflow_definition=workflow_def_out,
+            parent_slug=fd.parent_slug or None,
         ))
 
     return ConfigVersionOut(
@@ -449,13 +450,14 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
                 sort_order=fd_in.sort_order,
                 is_localized=fd_in.is_localized,
                 is_preview=fd_in.is_preview,
+                parent_slug=fd_in.parent_slug or "",
                 submodel_config=submodel_config,
                 workflow_definition=workflow_definition,
                 type_config=fd_in.type_config,
             )
             field_map[fd_in.slug] = fd
 
-            for lang, label in fd_in.labels.items():
+            for lang, label in (fd_in.labels or {}).items():
                 help_text = fd_in.help_texts.get(lang, "")
                 FieldDefinitionTranslation.objects.create(
                     field=fd, language=lang, label=label, help_text=help_text

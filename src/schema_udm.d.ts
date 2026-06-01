@@ -731,7 +731,7 @@ export interface components {
          * DataType
          * @enum {string}
          */
-        DataType: "text_short" | "text_long" | "text_markdown" | "text_richtext" | "integer" | "float" | "boolean" | "date" | "time" | "datetime" | "select_single" | "select_multi" | "image" | "file" | "user_select" | "user_select_multi" | "group_select" | "group_select_multi" | "submodel_select" | "submodel_list" | "entity_select" | "entity_select_multi" | "slug_id" | "workflow";
+        DataType: "text_short" | "text_long" | "text_markdown" | "text_richtext" | "integer" | "float" | "boolean" | "date" | "time" | "datetime" | "select_single" | "select_multi" | "image" | "file" | "user_select" | "user_select_multi" | "group_select" | "group_select_multi" | "submodel_select" | "submodel_list" | "entity_select" | "entity_select_multi" | "slug_id" | "workflow" | "tab_container" | "tab" | "save_button" | "hstack" | "hstack_group" | "tab_prev" | "tab_next";
         /** EditGroupOut */
         EditGroupOut: {
             /** Edits */
@@ -885,10 +885,10 @@ export interface components {
              * @default false
              */
             is_preview: boolean;
-            /** Labels */
-            labels: {
+            /** Labels (null/omit for structural types) */
+            labels?: {
                 [key: string]: string;
-            };
+            } | null;
             /** Slug */
             slug: string;
             /**
@@ -904,6 +904,8 @@ export interface components {
             };
             /** Workflow Definition Id */
             workflow_definition_id?: string | null;
+            /** Parent Slug (for fields inside tabs, or tabs inside tab_container) */
+            parent_slug?: string | null;
         };
         /** FieldDefinitionOut */
         FieldDefinitionOut: {
@@ -938,6 +940,8 @@ export interface components {
                 [key: string]: unknown;
             };
             workflow_definition?: components["schemas"]["WorkflowDefinitionOut"] | null;
+            /** Parent Slug (for fields inside tabs, or tabs inside tab_container) */
+            parent_slug?: string | null;
         };
         /** FieldEditOut */
         FieldEditOut: {

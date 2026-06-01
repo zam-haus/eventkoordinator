@@ -176,6 +176,7 @@ class ConfigVersion(MetaBase):
                 sort_order=old_field.sort_order,
                 is_localized=old_field.is_localized,
                 is_preview=old_field.is_preview,
+                parent_slug=old_field.parent_slug,
                 submodel_config=old_field.submodel_config,
                 workflow_definition=old_field.workflow_definition,
                 type_config=old_field.type_config,
@@ -269,10 +270,29 @@ class FieldDefinition(MetaBase):
         ENTITY_SELECT_MULTI = "entity_select_multi"
         SLUG_ID = "slug_id"
         WORKFLOW = "workflow"
+        # Structural / layout types (no data value)
+        TAB_CONTAINER = "tab_container"
+        TAB = "tab"
+        SAVE_BUTTON = "save_button"
+        HSTACK = "hstack"
+        HSTACK_GROUP = "hstack_group"
+        TAB_PREV = "tab_prev"
+        TAB_NEXT = "tab_next"
+
+    STRUCTURAL_TYPES = frozenset({
+        DataType.TAB_CONTAINER,
+        DataType.TAB,
+        DataType.SAVE_BUTTON,
+        DataType.HSTACK,
+        DataType.HSTACK_GROUP,
+        DataType.TAB_PREV,
+        DataType.TAB_NEXT,
+    })
 
     version = models.ForeignKey(ConfigVersion, on_delete=models.CASCADE, related_name="field_definitions")
     slug = models.SlugField(max_length=80)
     data_type = models.CharField(max_length=30, choices=DataType)
+    parent_slug = models.SlugField(max_length=80, blank=True, default="")
     sort_order = models.PositiveSmallIntegerField(default=0)
     is_localized = models.BooleanField(default=False)
     is_preview = models.BooleanField(default=False)
@@ -524,6 +544,7 @@ class FieldDefaultValue(TypedValue, MetaBase):
         FieldDefinition.DataType.SUBMODEL_LIST,
         FieldDefinition.DataType.SLUG_ID,
         FieldDefinition.DataType.WORKFLOW,
+        *FieldDefinition.STRUCTURAL_TYPES,
     ])
 
     def clean(self):

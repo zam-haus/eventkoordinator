@@ -128,6 +128,9 @@ def apply_patch(
         if field is None:
             unknown_slugs.append(slug)
             continue
+        if field.data_type in FieldDefinition.STRUCTURAL_TYPES:
+            # Layout fields have no value; silently skip them
+            continue
         if field.data_type == FieldDefinition.DataType.SUBMODEL_LIST:
             submodel_changes[slug] = value
         elif field.data_type == FieldDefinition.DataType.WORKFLOW:

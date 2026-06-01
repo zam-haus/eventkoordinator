@@ -517,3 +517,186 @@
   color: #1a73e8;
   border-color: #93c5fd;
 }
+
+/* ── Tab layout ────────────────────────────────────────────────────────────── */
+
+.tabNavigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 2px solid #ddd;
+  margin-bottom: 1rem;
+}
+
+.tabNavigationDropdown {
+  display: none;
+}
+
+.tabNavigationDropdown select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.tabButton {
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #555;
+  transition: all 150ms ease;
+  margin-bottom: -2px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tabButton .tabNumberContainer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #e0e0e0;
+  flex-shrink: 0;
+}
+
+.tabButton .tabNumber { color: #444; }
+
+.tabButton .tabWarningIcon {
+  background: #f59e0b;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: help;
+}
+
+.tabButton .tabSuccessIcon {
+  background: #16a34a;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.tabButton .tabLabel {
+  white-space: nowrap;
+}
+
+.tabButton:hover:not(:disabled) {
+  color: #222;
+  background: rgba(0,0,0,0.03);
+}
+
+.tabButtonActive {
+  color: #0066cc;
+  border-bottom-color: #0066cc;
+  font-weight: 600;
+}
+
+.tabButtonActive .tabNumberContainer { background: #dbeafe; }
+.tabButtonActive .tabNumber { color: #0066cc; }
+
+.tabButton:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.tabContent { display: flex; flex-direction: column; gap: 1rem; }
+
+.tabPanelActive { display: block; }
+.tabPanelHidden { display: none; }
+
+.tabNavigationButtons {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.tabNavButton {
+  padding: 0.5rem 1.2rem;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #333;
+  cursor: pointer;
+}
+
+.tabNavButton:hover:not(:disabled) { background: #e8e8e8; border-color: #ccc; }
+.tabNavButton:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── HStack layout ─────────────────────────────────────────────────────────── */
+
+.hstack {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hstackLeft { justify-content: flex-start; }
+.hstackCenter { justify-content: center; }
+.hstackRight { justify-content: flex-end; }
+.hstackSpaceBetween { justify-content: space-between; }
+
+.inlineBtn {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.inlineBtnPrimary { background: #0066cc; color: #fff; border-color: #0066cc; }
+.inlineBtnPrimary:hover:not(:disabled) { background: #0052a3; }
+.inlineBtnSuccess { background: #16a34a; color: #fff; border-color: #16a34a; }
+.inlineBtnSuccess:hover:not(:disabled) { background: #15803d; }
+.inlineBtnSecondary { background: #fff; color: #333; border-color: #ccc; }
+.inlineBtnSecondary:hover:not(:disabled) { background: #f5f5f5; }
+.inlineBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.successWithIcon {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #16a34a;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+.successCheckIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
