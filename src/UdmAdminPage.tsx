@@ -940,21 +940,37 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
               : null}
           </span>
           <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
-            {/* Context-aware "Add child" button */}
-            {PARENT_TYPES.has(field.data_type) && (
-              <button
-                type="button"
-                className={`${styles.btn} ${styles.btnSecondary}`}
-                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
-                title="Add child"
-                onClick={e => {
-                  e.stopPropagation()
-                  if (field.data_type === 'tab_container') addStructural('tab', node.key as string)
-                  else if (field.data_type === 'tab') addField(node.key as string)
-                  else if (field.data_type === 'hstack') addStructural('hstack_group', node.key as string)
-                  else if (field.data_type === 'hstack_group') addField(node.key as string)
-                }}
-              >+</button>
+            {/* Context-aware "Add child" buttons */}
+            {field.data_type === 'tab_container' && (
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Tab"
+                onClick={e => { e.stopPropagation(); addStructural('tab', node.key as string) }}>+ Tab</button>
+            )}
+            {field.data_type === 'tab' && (
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Field"
+                onClick={e => { e.stopPropagation(); addField(node.key as string) }}>+ Field</button>
+            )}
+            {field.data_type === 'hstack' && (
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add HStack Group"
+                onClick={e => { e.stopPropagation(); addStructural('hstack_group', node.key as string) }}>+ Group</button>
+            )}
+            {field.data_type === 'hstack_group' && (
+              <>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Save Button"
+                  onClick={e => { e.stopPropagation(); addStructural('save_button', node.key as string) }}>+ Save</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Previous Tab Button"
+                  onClick={e => { e.stopPropagation(); addStructural('tab_prev', node.key as string) }}>+ Prev</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Next Tab Button"
+                  onClick={e => { e.stopPropagation(); addStructural('tab_next', node.key as string) }}>+ Next</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Field"
+                  onClick={e => { e.stopPropagation(); addField(node.key as string) }}>+ Field</button>
+              </>
             )}
             <button
               type="button"
@@ -1029,7 +1045,13 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
                 <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
                   onClick={() => addStructural('save_button')}>+ Save Button</button>
                 <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+                  onClick={() => addStructural('tab_prev')}>+ Tab Prev</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+                  onClick={() => addStructural('tab_next')}>+ Tab Next</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
                   onClick={() => addStructural('hstack')}>+ HStack</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+                  onClick={() => addStructural('hstack_group')}>+ HStack Group</button>
                 {selectedCount > 0 && (
                   <button type="button" className={`${styles.btn} ${styles.btnDanger}`} style={{ fontSize: '0.78rem' }}
                     onClick={deleteSelected}>Delete {selectedCount} selected</button>

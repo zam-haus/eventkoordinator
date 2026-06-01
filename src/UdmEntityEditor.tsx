@@ -40,13 +40,14 @@ function getAllLangValues(entity: EntityOut, slug: string): Record<string, unkno
 
 // ── Severity helpers ──────────────────────────────────────────────────────────
 
-const SEVERITY_ORDER = ['info', 'warning', 'error', 'critical']
+const SEVERITY_ORDER = ['success', 'info', 'warning', 'error', 'critical']
 
 const SEVERITY_ICON: Record<string, string> = {
   critical: 'pi-times-circle',
   error:    'pi-times-circle',
   warning:  'pi-exclamation-circle',
   info:     'pi-info-circle',
+  success:  'pi-check-circle',
 }
 
 const SEVERITY_CLASS: Record<string, string> = {
@@ -54,6 +55,7 @@ const SEVERITY_CLASS: Record<string, string> = {
   error:    styles.severityIconError,
   warning:  styles.severityIconWarning,
   info:     styles.severityIconInfo,
+  success:  styles.severityIconSuccess,
 }
 
 interface SeverityIndicatorProps {
@@ -621,10 +623,17 @@ export function UdmEntityEditor() {
   useEffect(() => { void load() }, [load])
 
   const pendingValidation = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Set to true after save/transition so the useEffect skips overwriting server messages for one cycle
+  const skipAmbientValidation = useRef(false)
+
   useEffect(() => {
     if (!entityId) return
     if (Object.keys(dirty).length === 0) {
-      // Re-run ambient validation to keep messages current after save/transition
+      if (skipAmbientValidation.current) {
+        skipAmbientValidation.current = false
+        return  // keep server-response messages after save/transition
+      }
+      // Re-run ambient validation to keep messages current (e.g. after discard)
       void udmValidateEntity(entityId, {})
         .then(r => setPolicyMessages(r.policy_messages ?? []))
         .catch(() => {})
@@ -702,9 +711,10 @@ export function UdmEntityEditor() {
     try {
       const updated = await udmPatchEntity(resolvedEntityId, dirty)
       setEntity(updated)
+      skipAmbientValidation.current = true
       setDirty({})
       setPolicyMessages((updated.policy_messages ?? []) as PolicyMessage[])
-      setSuccess('Saved successfully.'  /* checkmark rendered in JSX */)
+      setSuccess('Saved successfully.')
     } catch (e) {
       if (e instanceof UdmApiError) {
         const plainErrors: string[] = [
@@ -734,6 +744,7 @@ export function UdmEntityEditor() {
     setSuccess(null)
     try {
       const updated = await udmTransitionEntity(resolvedEntityId, fieldSlug, transitionName, dirty)
+      skipAmbientValidation.current = true
       setDirty({})
       const globalMsgs = ((updated.policy_messages ?? []) as PolicyMessage[]).filter((m: PolicyMessage) => !m.highlight_fields?.length)
       if (globalMsgs.length > 0) {
@@ -768,9 +779,10 @@ export function UdmEntityEditor() {
   const tabFields = sortedFields.filter(f => f.data_type === 'tab')
   const hasTabs = tabContainerField !== null && tabFields.length > 0
 
+  // Only root fields (no parent_slug) go into above/below — children are pulled by their parent containers
   const aboveFields = hasTabs
-    ? sortedFields.filter(f => f.sort_order < tabContainerField!.sort_order && f.data_type !== 'tab_container' && f.data_type !== 'tab')
-    : sortedFields.filter(f => f.data_type !== 'tab_container' && f.data_type !== 'tab')
+    ? sortedFields.filter(f => !f.parent_slug && f.sort_order < tabContainerField!.sort_order && f.data_type !== 'tab_container' && f.data_type !== 'tab')
+    : sortedFields.filter(f => !f.parent_slug && f.data_type !== 'tab_container' && f.data_type !== 'tab')
 
   const tabsWithFields = hasTabs
     ? tabFields.map(tab => ({
@@ -785,23 +797,6 @@ export function UdmEntityEditor() {
 
   // Check if any save button exists in the config (inline save buttons suppress the toolbar save)
   const hasSaveInConfig = sortedFields.some(f => f.data_type === 'save_button')
-
-  // Tab severity: worst severity among fields in each tab
-  function getTabSeverity(tabFields_: typeof sortedFields): string | undefined {
-    const severities = tabFields_.map(f => fieldSeverities[f.slug]).filter(Boolean)
-    if (!severities.length) return undefined
-    const order = ['info', 'warning', 'error', 'critical']
-    return severities.reduce((best, s) => order.indexOf(s) > order.indexOf(best) ? s : best)
-  }
-
-  function getTabMessages(tabFields_: typeof sortedFields): PolicyMessage[] {
-    const msgs: PolicyMessage[] = []
-    for (const f of tabFields_) {
-      const fMsgs = fieldMessages[f.slug]
-      if (fMsgs) for (const m of fMsgs) if (!msgs.includes(m)) msgs.push(m)
-    }
-    return msgs
-  }
 
   function getTabTitle(tab: (typeof sortedFields)[0]): string {
     const tc = tab.type_config as { title?: string } | undefined
@@ -1008,11 +1003,19 @@ export function UdmEntityEditor() {
       {hasTabs && (
         <>
           <div className={styles.tabNavigation} role="tablist">
-            {tabsWithFields.map(({ tab, fields: tabFieldList }, idx) => {
-              const tabSeverity = getTabSeverity(tabFieldList.filter(f => !STRUCTURAL.has(f.data_type)))
-              const tabMsgs = getTabMessages(tabFieldList.filter(f => !STRUCTURAL.has(f.data_type)))
+            {tabsWithFields.map(({ tab }, idx) => {
+              // Tab icon and tooltip come ONLY from policy messages that highlight the tab's own slug
+              const tabSeverity = fieldSeverities[tab.slug]
+              const tabMsgs = fieldMessages[tab.slug] ?? []
               const tabTitle = getTabTitle(tab)
               const targetId = `tab-sev-${tab.slug.replace(/[^a-z0-9]/gi, '-')}`
+              const tabIconChar = tabSeverity === 'success' ? '✓'
+                : (tabSeverity === 'error' || tabSeverity === 'critical') ? '✕'
+                : tabSeverity === 'info' ? 'ℹ'
+                : '⚠'
+              const tabIconClass = tabSeverity === 'success' ? styles.tabSuccessIcon
+                : (tabSeverity === 'error' || tabSeverity === 'critical') ? styles.tabErrorIcon
+                : styles.tabWarningIcon
               return (
                 <button
                   key={tab.slug}
@@ -1031,12 +1034,8 @@ export function UdmEntityEditor() {
                             {tabMsgs.map((m, i) => <li key={i}>{m.text}</li>)}
                           </ul>
                         </Tooltip>
-                        <span
-                          id={targetId}
-                          className={styles.tabWarningIcon}
-                          title={tabMsgs.map(m => m.text).join('; ')}
-                        >
-                          {tabSeverity === 'info' ? 'ℹ' : '⚠'}
+                        <span id={targetId} className={tabIconClass}>
+                          {tabIconChar}
                         </span>
                       </>
                     ) : (
