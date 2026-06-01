@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { UdfMarkdown } from './UdfMarkdown'
+import { UdfMarkdown, MarkdownEditor } from './UdfMarkdown'
 import { useTranslation } from 'react-i18next'
 import { Tree } from 'primereact/tree'
 import type { TreeNode } from 'primereact/treenode'
@@ -2034,7 +2034,7 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
             </div>
             <div className={styles.formGroup} style={{ marginTop: '0.5rem' }}>
               <label className={styles.label}>Description (markdown)</label>
-              <textarea className={styles.textarea} rows={6} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+              <MarkdownEditor value={editDesc} onChange={setEditDesc} rows={6} textareaClassName={styles.textarea} />
               {editDesc && (
                 <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.875rem' }}>
                   <UdfMarkdown content={editDesc} typeId={udmType.id.toString()} />
@@ -2231,7 +2231,7 @@ function TypesTab() {
             </div>
             <div className={styles.formGroup} style={{ flex: 2 }}>
               <label className={styles.label}>Description (markdown)</label>
-              <textarea className={styles.textarea} rows={4} value={newDesc} onChange={e => setNewDesc(e.target.value)} />
+              <MarkdownEditor value={newDesc} onChange={setNewDesc} rows={4} textareaClassName={styles.textarea} />
             </div>
           </div>
           {createError && <div className={styles.error}>{createError}</div>}

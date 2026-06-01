@@ -277,23 +277,35 @@ def evaluate_type_public_fields(udm_type, user=None) -> dict:
     type_policies = list(
         udm_type.type_policies.select_related("policy").order_by("sort_order")
     )
+    logger.debug("evaluate_type_public_fields type=%s policies=%d", udm_type.id, len(type_policies))
     if not type_policies:
         return {}
     try:
         import regorus
         eng = regorus.Engine()
         for tp in type_policies:
+            logger.debug("evaluate_type_public_fields loading policy slug=%s", tp.policy.slug)
             eng.add_policy(f"policy_{tp.policy.slug}.rego", tp.policy.source)
         input_doc: dict = {"action": "public_type_fields"}
         if user is not None:
             input_doc["user"] = _serialize_user(user)
+        logger.debug("evaluate_type_public_fields input=%s", json.dumps(input_doc))
         eng.set_input_json(json.dumps(input_doc))
-        raw = json.loads(eng.eval_rule_as_json("data.udm.public_type_fields"))
-        if isinstance(raw, dict) and raw != _UNDEFINED:
-            return raw
+        # eval_rule_as_json doesn't support partial object rules; use eval_query instead.
+        # eval_query returns an already-parsed Python object, not a JSON string.
+        results = eng.eval_query("data.udm.public_type_fields")
+        logger.debug("evaluate_type_public_fields raw results type=%s value=%r", type(results).__name__, results)
+        # eval_query returns {"result": [...]} not a bare list
+        rows = results.get("result", results) if isinstance(results, dict) else results
+        if rows and isinstance(rows, list):
+            expr = rows[0].get("expressions", [{}])[0]
+            val = expr.get("value")
+            logger.debug("evaluate_type_public_fields extracted value type=%s value=%r", type(val).__name__, val)
+            if isinstance(val, dict):
+                return val
         return {}
     except Exception as exc:
-        logger.debug("evaluate_type_public_fields failed: %s", exc)
+        logger.debug("evaluate_type_public_fields failed: %s", exc, exc_info=True)
         return {}
 
 
