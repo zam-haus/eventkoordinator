@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { udmUploadStagingFile } from '../apiUdm'
 import type { FieldInputProps } from './types'
 import { fieldEditorRegistry } from './registry'
@@ -26,6 +26,10 @@ function FileEditor({ fd, value, onChange, disabled }: FieldInputProps) {
 
   const currentFile = value && typeof value === 'object' ? value as Record<string, string> : null
   const currentUrl = currentFile?.['url'] ?? null
+
+  useEffect(() => {
+    if (currentUrl) setStagingName(null)
+  }, [currentUrl])
   const isImage = fd.data_type === 'image'
   const hasValue = stagingName !== null || currentUrl !== null
 
