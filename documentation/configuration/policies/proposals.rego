@@ -867,3 +867,159 @@ any_critical_error if {
 
 # True when the engine is doing a dry-run (validate_only=true from the API).
 _is_validation if { input.validate_only == true }
+
+# ─── Submission checklist ───────────────────────────────────────────────────────
+# Warning-level messages shown to owner/editor during view/save that flag fields
+# not yet ready for submission.  Level "warning" never blocks save — only
+# "critical" entries do (see no_critical_errors above).
+
+_checklist_ctx if { _proposal_ctx; is_owner_or_editor }
+
+# title: 1–30 non-empty characters
+_title_complete if {
+	v := input.entity.fields.title.value
+	v != null
+	count(trim_space(v)) >= 1
+	count(v) <= 30
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _title_complete
+	msg := {"level": "warning", "text": "Title is required (1–30 characters).", "field_slug": "title"}
+}
+
+# abstract: 50–250 characters
+_abstract_complete if {
+	v := input.entity.fields.abstract.value
+	v != null
+	count(v) >= 50
+	count(v) <= 250
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _abstract_complete
+	msg := {"level": "warning", "text": "Abstract must be 50–250 characters.", "field_slug": "abstract"}
+}
+
+# description: 50–1000 characters
+_description_complete if {
+	v := input.entity.fields.description.value
+	v != null
+	count(v) >= 50
+	count(v) <= 1000
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _description_complete
+	msg := {"level": "warning", "text": "Description must be 50–1000 characters.", "field_slug": "description"}
+}
+
+# duration: duration-days >= 1 and duration-time-per-day parses to > 0 minutes
+_duration_complete if {
+	days := input.entity.fields["duration-days"].value
+	days != null
+	days >= 1
+	t := input.entity.fields["duration-time-per-day"].value
+	t != null
+	parts := split(t, ":")
+	count(parts) == 2
+	(to_number(parts[0]) * 60) + to_number(parts[1]) > 0
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _duration_complete
+	msg := {"level": "warning", "text": "Duration must be at least 1 day with a non-zero time per day (HH:MM).", "field_slug": "duration-days"}
+}
+
+# max-participants: >= 1
+_max_participants_complete if {
+	v := input.entity.fields["max-participants"].value
+	v != null
+	v >= 1
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _max_participants_complete
+	msg := {"level": "warning", "text": "Maximum number of participants must be at least 1.", "field_slug": "max-participants"}
+}
+
+# occurrence-count: >= 1
+_occurrence_count_complete if {
+	v := input.entity.fields["occurrence-count"].value
+	v != null
+	v >= 1
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _occurrence_count_complete
+	msg := {"level": "warning", "text": "Occurrence count must be at least 1.", "field_slug": "occurrence-count"}
+}
+
+# preferred-dates: non-empty text
+_preferred_dates_complete if {
+	v := input.entity.fields["preferred-dates"].value
+	v != null
+	count(trim_space(v)) >= 1
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _preferred_dates_complete
+	msg := {"level": "warning", "text": "Please specify your preferred dates.", "field_slug": "preferred-dates"}
+}
+
+# language: a choice has been selected
+_language_complete if {
+	v := input.entity.fields.language.value
+	v != null
+	count(v) > 0
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _language_complete
+	msg := {"level": "warning", "text": "Please select a language.", "field_slug": "language"}
+}
+
+# submission-type: a choice has been selected
+_submission_type_complete if {
+	v := input.entity.fields["submission-type"].value
+	v != null
+	count(v) > 0
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _submission_type_complete
+	msg := {"level": "warning", "text": "Please select a submission type.", "field_slug": "submission-type"}
+}
+
+# area: a choice has been selected
+_area_complete if {
+	v := input.entity.fields.area.value
+	v != null
+	count(v) > 0
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _area_complete
+	msg := {"level": "warning", "text": "Please select a workshop area.", "field_slug": "area"}
+}
+
+# photo: an image has been uploaded
+_photo_complete if {
+	input.entity.fields.photo.value != null
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _photo_complete
+	msg := {"level": "warning", "text": "Please upload a proposal image (min. 1440×1080 px).", "field_slug": "photo"}
+}
+
+# submission deadline: _deadline is defined in description.rego (same package)
+_within_deadline if {
+	time.now_ns() <= time.parse_rfc3339_ns(_deadline)
+}
+error_messages contains msg if {
+	_checklist_ctx
+	current_status == "draft"
+	not _within_deadline
+	msg := {"level": "warning", "text": "The submission deadline has passed.", "field_slug": null}
+}
