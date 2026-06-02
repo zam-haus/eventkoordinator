@@ -6,6 +6,10 @@ import rego.v1
 # Set to true to allow superusers to bypass all access restrictions.
 SUDO_ACTIVE := false
 
+# Deadline after which new proposals may no longer be created (ISO-8601 UTC).
+# Must match the deadline in description.rego.
+SUBMISSION_DEADLINE := "2026-12-31T23:59:59Z"
+
 # Group names whose members act as proposal moderators.
 MODERATOR_GROUP_NAMES := ["moderators"]
 
@@ -77,16 +81,50 @@ is_superuser_sudo if {
 }
 
 # ─── allow: view ───────────────────────────────────────────────────────────────
-allow if { input.action == "view"; is_owner_or_editor }
-allow if { input.action == "view"; is_superuser_sudo }
-allow if { input.action == "view"; is_moderator; current_status != "draft" }
-allow if { input.action == "view"; is_reviewer; current_status != "draft" }
+allow if {
+	input.action == "view"
+	is_owner_or_editor
+	print("[allow:view] owner/editor user=", input.user.username, "status=", current_status)
+}
+allow if {
+	input.action == "view"
+	is_superuser_sudo
+	print("[allow:view] sudo user=", input.user.username)
+}
+allow if {
+	input.action == "view"
+	is_moderator
+	current_status != "draft"
+	print("[allow:view] moderator user=", input.user.username, "status=", current_status)
+}
+allow if {
+	input.action == "view"
+	is_reviewer
+	current_status != "draft"
+	print("[allow:view] reviewer user=", input.user.username, "status=", current_status)
+}
 
 # ─── allow: browse ─────────────────────────────────────────────────────────────
-allow if { input.action == "browse"; is_owner_or_editor }
-allow if { input.action == "browse"; is_moderator }
-allow if { input.action == "browse"; is_reviewer }
-allow if { input.action == "browse"; is_superuser_sudo }
+allow if {
+	input.action == "browse"
+	is_owner_or_editor
+	print("[allow:browse] owner/editor user=", input.user.username)
+}
+allow if {
+	input.action == "browse"
+	is_moderator
+	print("[allow:browse] moderator user=", input.user.username)
+}
+allow if {
+	input.action == "browse"
+	is_reviewer
+	print("[allow:browse] reviewer user=", input.user.username)
+}
+allow if {
+	input.action == "browse"
+	is_superuser_sudo
+	print("[allow:browse] sudo user=", input.user.username)
+}
 
 # ─── allow: save ───────────────────────────────────────────────────────────────
 allow if {
@@ -94,12 +132,14 @@ allow if {
 	is_owner_or_editor
 	current_status in EDITABLE_STATUSES
 	no_critical_errors
+	print("[allow:save] owner/editor user=", input.user.username, "status=", current_status)
 }
 
 allow if {
 	input.action == "save"
 	is_moderator
 	no_critical_errors
+	print("[allow:save] moderator user=", input.user.username, "status=", current_status)
 }
 
 allow if {
@@ -107,39 +147,61 @@ allow if {
 	is_reviewer
 	current_status == "submitted"
 	no_critical_errors
+	print("[allow:save] reviewer user=", input.user.username)
 }
 
 allow if {
 	input.action == "save"
 	is_superuser_sudo
 	no_critical_errors
+	print("[allow:save] sudo user=", input.user.username)
 }
 
 # ─── allow: delete ─────────────────────────────────────────────────────────────
-allow if { input.action == "delete"; is_owner; current_status == "draft" }
-allow if { input.action == "delete"; is_superuser_sudo }
+allow if {
+	input.action == "delete"
+	is_owner
+	current_status == "draft"
+	print("[allow:delete] owner user=", input.user.username)
+}
+allow if {
+	input.action == "delete"
+	is_superuser_sudo
+	print("[allow:delete] sudo user=", input.user.username)
+}
 
 # ─── allow: create ─────────────────────────────────────────────────────────────
 # Any active logged-in user may create a new proposal before the deadline.
 allow if {
 	input.action == "create"
 	input.user.is_active
+	print("[allow:create] checking deadline for user=", input.user.username,
+	      "now_ns=", time.now_ns(), "deadline=", _deadline)
 	time.now_ns() <= time.parse_rfc3339_ns(_deadline)
+	print("[allow:create] deadline ok, user=", input.user.username)
 }
 
-allow if { input.action == "create"; is_superuser_sudo }
+allow if {
+	input.action == "create"
+	is_superuser_sudo
+	print("[allow:create] sudo user=", input.user.username)
+}
 
 # ─── allow: transition ─────────────────────────────────────────────────────────
 allow if {
 	input.action == "transition"
 	input.transition in {"submit", "resubmit"}
 	is_owner_or_editor
+	print("[allow:transition] submit/resubmit user=", input.user.username,
+	      "transition=", input.transition, "status=", current_status)
 }
 
 allow if {
 	input.action == "transition"
 	input.transition in {"reject", "request-revision", "allow-revision"}
 	is_moderator
+	print("[allow:transition] moderator action user=", input.user.username,
+	      "transition=", input.transition, "status=", current_status)
 }
 
 allow if {
@@ -147,6 +209,7 @@ allow if {
 	input.transition == "accept"
 	is_moderator
 	all_reviews_accepted
+	print("[allow:transition] accept granted user=", input.user.username)
 }
 
 # A reviewer may transition only the vote field on their own review node.
@@ -160,11 +223,15 @@ allow if {
 	some r in input.entity.children.reviews
 	r.id == input.node_id
 	r.fields.author.value.id == input.user.id
+	print("[allow:transition] vote user=", input.user.username,
+	      "transition=", input.transition, "node=", input.node_id)
 }
 
 allow if {
 	input.action == "transition"
 	is_superuser_sudo
+	print("[allow:transition] sudo user=", input.user.username,
+	      "transition=", input.transition)
 }
 
 # ─── Accept gate ────────────────────────────────────────────────────────────────
@@ -191,11 +258,20 @@ all_reviews_accepted if {
 
 	count(requested_user_ids) + count(requested_group_ids) > 0
 
+	print("[accept_gate] requested_users=", count(requested_user_ids),
+	      "accepting_users=", count(_accepting_user_ids),
+	      "missing_users=", count(requested_user_ids - _accepting_user_ids),
+	      "requested_groups=", count(requested_group_ids),
+	      "accepting_groups=", count(_accepting_group_ids),
+	      "missing_groups=", count(requested_group_ids - _accepting_group_ids))
+
 	# Every requested user must appear in the accepting set.
 	count(requested_user_ids - _accepting_user_ids) == 0
 
 	# Every requested group must have at least one accepting member.
 	count(requested_group_ids - _accepting_group_ids) == 0
+
+	print("[accept_gate] PASS all reviewers accepted")
 }
 
 # IDs of users who have cast any non-open vote (i.e., have actually reviewed).
@@ -222,6 +298,7 @@ error_messages contains msg if {
 	input.action == "save"
 	input.changed_fields["proposal-id"]
 	not is_superuser_sudo
+	print("[block:proposal-id] user=", input.user.username, "attempted to change proposal-id")
 	msg := {
 		"level": "critical",
 		"text": "The proposal ID cannot be changed.",
@@ -233,6 +310,7 @@ error_messages contains msg if {
 	input.action == "save"
 	input.changed_fields.owner
 	not is_superuser_sudo
+	print("[block:owner] user=", input.user.username, "attempted to change owner")
 	msg := {
 		"level": "critical",
 		"text": "The owner cannot be changed.",
@@ -252,6 +330,8 @@ error_messages contains msg if {
 	not is_moderator
 	not _reviewer_save_permitted
 	not current_status in EDITABLE_STATUSES
+	print("[block:status-edit] user=", input.user.username,
+	      "status=", current_status, "not in editable statuses:", EDITABLE_STATUSES)
 	msg := {
 		"level": "critical",
 		"text": "Proposals can only be edited in draft or revise status.",
@@ -270,6 +350,8 @@ error_messages contains msg if {
 	some existing in input.old_entity.children.reviews
 	existing.id == op.id
 	existing.fields.author.value.id != input.user.id
+	print("[block:review-modify] user=", input.user.username,
+	      "op=", op.op, "review_author=", existing.fields.author.value.id)
 	msg := {
 		"level": "critical",
 		"text": "You can only modify your own reviews.",
@@ -284,6 +366,8 @@ error_messages contains msg if {
 	some op in input.changed_fields.reviews.value
 	op.op == "update"
 	op.fields.author
+	print("[block:review-author-change] user=", input.user.username,
+	      "attempted to change author on review op=", op)
 	msg := {
 		"level": "critical",
 		"text": "The review author cannot be changed after creation.",
@@ -299,6 +383,8 @@ error_messages contains msg if {
 	op.op == "create"
 	op.fields.author != null
 	op.fields.author != input.user.id
+	print("[block:review-attribution] user=", input.user.username,
+	      "tried to create review as=", op.fields.author)
 	msg := {
 		"level": "critical",
 		"text": "You can only create reviews as yourself.",
@@ -313,6 +399,8 @@ error_messages contains msg if {
 	not is_reviewer
 	some op in input.changed_fields.reviews.value
 	op.op == "create"
+	print("[block:review-not-reviewer] user=", input.user.username,
+	      "is not a designated reviewer, status=", current_status)
 	msg := {
 		"level": "critical",
 		"text": "Only designated reviewers may add reviews.",
@@ -328,6 +416,8 @@ error_messages contains msg if {
 	not is_moderator
 	not is_superuser_sudo
 	_changing_reviewer_assignments
+	print("[block:reviewer-assignment] user=", input.user.username,
+	      "is not a moderator, changed_fields=", input.changed_fields)
 	msg := {
 		"level": "critical",
 		"text": "Only moderators may change reviewer assignments.",
@@ -341,6 +431,9 @@ error_messages contains msg if {
 	input.transition == "accept"
 	is_moderator
 	not all_reviews_accepted
+	print("[block:accept] not all reviews accepted, user=", input.user.username,
+	      "accepting_user_ids=", _accepting_user_ids,
+	      "accepting_group_ids=", _accepting_group_ids)
 	msg := {
 		"level": "error",
 		"text": "Acceptance requires all requested reviewers to have voted accept.",
@@ -878,148 +971,239 @@ _checklist_ctx if { _proposal_ctx; is_owner_or_editor }
 # title: 1–30 non-empty characters
 _title_complete if {
 	v := input.entity.fields.title.value
+	print("[check:title] value=", v)
 	v != null
 	count(trim_space(v)) >= 1
 	count(v) <= 30
+	print("[check:title] PASS len=", count(v))
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _title_complete
+	print("[checklist:title] FAIL title=", input.entity.fields.title.value)
 	msg := {"level": "warning", "text": "Title is required (1–30 characters).", "field_slug": "title"}
 }
 
 # abstract: 50–250 characters
 _abstract_complete if {
 	v := input.entity.fields.abstract.value
+	print("[check:abstract] value_len=", count(v) if v != null else 0)
 	v != null
 	count(v) >= 50
 	count(v) <= 250
+	print("[check:abstract] PASS len=", count(v))
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _abstract_complete
+	print("[checklist:abstract] FAIL len=", count(input.entity.fields.abstract.value) if input.entity.fields.abstract.value != null else 0)
 	msg := {"level": "warning", "text": "Abstract must be 50–250 characters.", "field_slug": "abstract"}
 }
 
 # description: 50–1000 characters
 _description_complete if {
 	v := input.entity.fields.description.value
+	print("[check:description] value_len=", count(v) if v != null else 0)
 	v != null
 	count(v) >= 50
 	count(v) <= 1000
+	print("[check:description] PASS len=", count(v))
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _description_complete
+	print("[checklist:description] FAIL len=", count(input.entity.fields.description.value) if input.entity.fields.description.value != null else 0)
 	msg := {"level": "warning", "text": "Description must be 50–1000 characters.", "field_slug": "description"}
 }
 
 # duration: duration-days >= 1 and duration-time-per-day parses to > 0 minutes
 _duration_complete if {
 	days := input.entity.fields["duration-days"].value
+	t := input.entity.fields["duration-time-per-day"].value
+	print("[check:duration] days=", days, "time=", t)
 	days != null
 	days >= 1
-	t := input.entity.fields["duration-time-per-day"].value
 	t != null
 	parts := split(t, ":")
 	count(parts) == 2
-	(to_number(parts[0]) * 60) + to_number(parts[1]) > 0
+	total_min := (to_number(parts[0]) * 60) + to_number(parts[1])
+	total_min > 0
+	print("[check:duration] PASS total_min=", total_min)
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _duration_complete
+	print("[checklist:duration] FAIL days=", input.entity.fields["duration-days"].value,
+	      "time=", input.entity.fields["duration-time-per-day"].value)
 	msg := {"level": "warning", "text": "Duration must be at least 1 day with a non-zero time per day (HH:MM).", "field_slug": "duration-days"}
 }
 
 # max-participants: >= 1
 _max_participants_complete if {
 	v := input.entity.fields["max-participants"].value
+	print("[check:max-participants] value=", v)
 	v != null
 	v >= 1
+	print("[check:max-participants] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _max_participants_complete
+	print("[checklist:max-participants] FAIL value=", input.entity.fields["max-participants"].value)
 	msg := {"level": "warning", "text": "Maximum number of participants must be at least 1.", "field_slug": "max-participants"}
 }
 
 # occurrence-count: >= 1
 _occurrence_count_complete if {
 	v := input.entity.fields["occurrence-count"].value
+	print("[check:occurrence-count] value=", v)
 	v != null
 	v >= 1
+	print("[check:occurrence-count] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _occurrence_count_complete
+	print("[checklist:occurrence-count] FAIL value=", input.entity.fields["occurrence-count"].value)
 	msg := {"level": "warning", "text": "Occurrence count must be at least 1.", "field_slug": "occurrence-count"}
 }
 
 # preferred-dates: non-empty text
 _preferred_dates_complete if {
 	v := input.entity.fields["preferred-dates"].value
+	print("[check:preferred-dates] value=", v)
 	v != null
 	count(trim_space(v)) >= 1
+	print("[check:preferred-dates] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _preferred_dates_complete
+	print("[checklist:preferred-dates] FAIL value=", input.entity.fields["preferred-dates"].value)
 	msg := {"level": "warning", "text": "Please specify your preferred dates.", "field_slug": "preferred-dates"}
 }
 
 # language: a choice has been selected
 _language_complete if {
 	v := input.entity.fields.language.value
+	print("[check:language] value=", v)
 	v != null
 	count(v) > 0
+	print("[check:language] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _language_complete
+	print("[checklist:language] FAIL value=", input.entity.fields.language.value)
 	msg := {"level": "warning", "text": "Please select a language.", "field_slug": "language"}
 }
 
 # submission-type: a choice has been selected
 _submission_type_complete if {
 	v := input.entity.fields["submission-type"].value
+	print("[check:submission-type] value=", v)
 	v != null
 	count(v) > 0
+	print("[check:submission-type] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _submission_type_complete
+	print("[checklist:submission-type] FAIL value=", input.entity.fields["submission-type"].value)
 	msg := {"level": "warning", "text": "Please select a submission type.", "field_slug": "submission-type"}
 }
 
 # area: a choice has been selected
 _area_complete if {
 	v := input.entity.fields.area.value
+	print("[check:area] value=", v)
 	v != null
 	count(v) > 0
+	print("[check:area] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _area_complete
+	print("[checklist:area] FAIL value=", input.entity.fields.area.value)
 	msg := {"level": "warning", "text": "Please select a workshop area.", "field_slug": "area"}
 }
 
 # photo: an image has been uploaded
 _photo_complete if {
+	print("[check:photo] value=", input.entity.fields.photo.value)
 	input.entity.fields.photo.value != null
+	print("[check:photo] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _photo_complete
+	print("[checklist:photo] FAIL no image uploaded")
 	msg := {"level": "warning", "text": "Please upload a proposal image (min. 1440×1080 px).", "field_slug": "photo"}
+}
+
+# photo-copyright-consent: uploading a new (non-null) image requires the
+# copyright checkbox to be ticked.  Clearing the image (value → null) is
+# always permitted so authors can remove an image without re-ticking.
+error_messages contains msg if {
+	input.action == "save"
+	is_owner_or_editor
+	not is_superuser_sudo
+	"photo" in input.changed_fields
+	print("[copyright] photo in changed_fields, post-write photo=", input.entity.fields.photo.value,
+	      "consent=", input.entity.fields["photo-copyright-consent"].value,
+	      "user=", input.user.username)
+	input.entity.fields.photo.value != null
+	not input.entity.fields["photo-copyright-consent"].value == true
+	print("[copyright] BLOCK: upload without consent")
+	msg := {
+		"level": "critical",
+		"text": "You must confirm copyright consent before uploading an image.",
+		"field_slug": "photo-copyright-consent",
+	}
 }
 
 # submission deadline: _deadline is defined in description.rego (same package)
 _within_deadline if {
+	print("[check:deadline] now_ns=", time.now_ns(), "deadline=", _deadline,
+	      "deadline_ns=", time.parse_rfc3339_ns(_deadline))
 	time.now_ns() <= time.parse_rfc3339_ns(_deadline)
+	print("[check:deadline] PASS still within deadline")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	current_status == "draft"
 	not _within_deadline
+	print("[checklist:deadline] FAIL deadline has passed, deadline=", _deadline)
 	msg := {"level": "warning", "text": "The submission deadline has passed.", "field_slug": null}
+}
+
+# speakers: at least one speaker submodel must exist
+_at_least_one_speaker if {
+	print("[check:speakers] count=", count(input.entity.children.speakers))
+	count(input.entity.children.speakers) >= 1
+	print("[check:speakers] PASS")
+}
+error_messages contains msg if {
+	_checklist_ctx
+	not _at_least_one_speaker
+	print("[checklist:speakers] FAIL no speakers, count=", count(input.entity.children.speakers))
+	msg := {"level": "warning", "text": "At least one speaker must be added.", "field_slug": "speakers"}
+}
+
+# speakersHaveBio: every speaker must have a non-empty biography
+_all_speakers_have_bio if {
+	print("[check:speakers-bio] checking", count(input.entity.children.speakers), "speakers")
+	every s in input.entity.children.speakers {
+		v := s.fields.biography.value
+		v != null
+		count(trim_space(v)) > 0
+	}
+	print("[check:speakers-bio] PASS all speakers have biography")
+}
+error_messages contains msg if {
+	_checklist_ctx
+	count(input.entity.children.speakers) > 0
+	not _all_speakers_have_bio
+	print("[checklist:speakers-bio] FAIL some speakers missing biography")
+	msg := {"level": "warning", "text": "All speakers must have a biography.", "field_slug": "speakers"}
 }

@@ -194,9 +194,26 @@
             "parent_slug": "tab-general"
           },
           {
+            "slug": "photo-copyright-consent",
+            "data_type": "boolean",
+            "sort_order": 25,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {
+              "en": "I will only upload images that I hold the copyright of and permit the ZAM to use publicly",
+              "de": "Ich lade nur Bilder hoch, an denen ich das Urheberrecht besitze, und erlaube dem ZAM, diese öffentlich zu verwenden"
+            },
+            "help_texts": {},
+            "type_config": {},
+            "default": false,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": "tab-general"
+          },
+          {
             "slug": "photo",
             "data_type": "image",
-            "sort_order": 25,
+            "sort_order": 26,
             "is_localized": false,
             "is_preview": false,
             "labels": {"en": "Proposal image", "de": "Vorschlagsbild"},
@@ -806,6 +823,23 @@
           },
 
           {
+            "slug": "speakers",
+            "data_type": "submodel_list",
+            "sort_order": 195,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {"en": "Speakers", "de": "Referent*innen"},
+            "help_texts": {
+              "en": "People who will present this session. At least one speaker is required.",
+              "de": "Personen, die diese Veranstaltung präsentieren. Mindestens eine Referent*in ist erforderlich."
+            },
+            "type_config": {"renderer": "list"},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
             "slug": "reviews",
             "data_type": "submodel_list",
             "sort_order": 200,
@@ -814,6 +848,96 @@
             "labels": {"en": "Reviews", "de": "Bewertungen"},
             "help_texts": {},
             "type_config": {"renderer": "list"},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          }
+        ]
+      }
+    }
+    ,
+    {
+      "id": "7c8d9e0f-1a2b-4c4d-8e6f-7a8b9c0d1e2f",
+      "name": "Speaker",
+      "description": "Submodel config for proposal speakers",
+      "languages": [
+        {"code": "en", "label": "English", "is_default": true, "sort_order": 0}
+      ],
+      "draft": {
+        "notes": "",
+        "fields": [
+          {
+            "slug": "display-name",
+            "data_type": "text_short",
+            "sort_order": 0,
+            "is_localized": false,
+            "is_preview": true,
+            "labels": {"en": "Display Name", "de": "Anzeigename"},
+            "help_texts": {},
+            "type_config": {},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "email",
+            "data_type": "text_short",
+            "sort_order": 1,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {"en": "Email", "de": "E-Mail"},
+            "help_texts": {},
+            "type_config": {},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "biography",
+            "data_type": "text_long",
+            "sort_order": 2,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {"en": "Biography", "de": "Biografie"},
+            "help_texts": {
+              "en": "Brief speaker biography (minimum 50 characters recommended).",
+              "de": "Kurze Referent*innenbiografie (mindestens 50 Zeichen empfohlen)."
+            },
+            "type_config": {},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "use-gravatar",
+            "data_type": "boolean",
+            "sort_order": 3,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {"en": "Use Gravatar for profile picture", "de": "Gravatar für Profilbild verwenden"},
+            "help_texts": {},
+            "type_config": {},
+            "default": false,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "photo",
+            "data_type": "image",
+            "sort_order": 4,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {"en": "Speaker image", "de": "Referent*innenbild"},
+            "help_texts": {
+              "en": "Upload a JPG or PNG image up to 10 MB for this speaker.",
+              "de": "Lade ein JPG- oder PNG-Bild bis zu 10 MB für diese Referent*in hoch."
+            },
+            "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
             "workflow_definition_id": null,

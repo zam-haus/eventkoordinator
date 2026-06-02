@@ -412,6 +412,16 @@ def _apply_submodel_ops(parent_node, field, ops, user, edit_group, validate_only
         sort_order = op_data.get("sort_order")
 
         if op == "create":
+            if field.submodel_config is None:
+                from userdefinedmodel.engine import PolicyError
+                raise PolicyError([{
+                    "level": "error",
+                    "text": (
+                        f"Submodel field '{field.slug}' has no config version assigned. "
+                        "Link a published config version to this field before adding items."
+                    ),
+                }])
+
             # Determine sort_order
             if sort_order is None:
                 max_order = parent_node.children.filter(parent_field=field).aggregate(
