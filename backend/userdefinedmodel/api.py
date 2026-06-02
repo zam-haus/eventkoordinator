@@ -793,8 +793,6 @@ def update_udm_type(
             udm_type.name = payload.name
         if payload.label is not None:
             udm_type.label = payload.label
-        if payload.description is not None:
-            udm_type.description = payload.description
         udm_type.save()
     if field_config_id is not None:
         try:
@@ -1164,8 +1162,9 @@ def remove_policy(request, type_id: uuid.UUID, slug: str):
 # ─── Entities ─────────────────────────────────────────────────────────────────
 
 @api.post("/entities/", response={201: EntityOut}, auth=django_auth)
-def create_entity(request, payload: EntityCreateIn):
+def create_entity(request, payload: EntityCreateIn, validate: bool = False):
     from userdefinedmodel.models import UserDefinedModelType, UserDefinedModelEntity, ConfigVersion
+    from userdefinedmodel.engine import evaluate_policy
     try:
         udm_type = UserDefinedModelType.objects.select_related("field_config").get(id=payload.user_defined_model_type_id)
     except UserDefinedModelType.DoesNotExist:
@@ -1176,6 +1175,22 @@ def create_entity(request, payload: EntityCreateIn):
         version = ConfigVersion.objects.get(config=udm_type.field_config, status=ConfigVersion.Status.PUBLISHED)
     except ConfigVersion.DoesNotExist:
         return JsonResponse({"detail": "No published config version"}, status=400)
+
+    if validate:
+        with transaction.atomic():
+            entity = UserDefinedModelEntity.objects.create(
+                config_version=version, user_defined_model_type=udm_type,
+            )
+            entity.materialize_defaults()
+            entity.materialize_user_defaults(request.user)
+            result = evaluate_policy(entity, request.user, "create")
+            transaction.set_rollback(True)
+        return JsonResponse({
+            "valid": result.get("allow", False),
+            "policy_messages": result.get("messages", []),
+            "errors": {},
+        })
+
     with transaction.atomic():
         entity = UserDefinedModelEntity.objects.create(
             config_version=version, user_defined_model_type=udm_type,
@@ -1894,7 +1909,6 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
         bundle_udm_types.append(BundleUDMTypeOut(
             id=t.id,
             name=t.name,
-            description=t.description,
             field_config_id=t.field_config_id,
             policy_slugs=[tp.policy.slug for tp in t.type_policies.all()],
         ))
@@ -2192,7 +2206,6 @@ def import_bundle_zip(
                 udmt = UserDefinedModelType.objects.create(
                     id=udmt_id,
                     name=udmt_data["name"],
-                    description=udmt_data.get("description", ""),
                 )
             old_cfg_id = str(udmt_data.get("field_config_id") or "")
             if old_cfg_id in config_id_map:

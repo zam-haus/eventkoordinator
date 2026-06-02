@@ -9,6 +9,9 @@ import {
   udmPatchEntity,
   udmTransitionEntity,
   udmEntityHistory,
+  udmListTypes,
+  udmSearchEntities,
+  udmCanCreateEntity,
   UdmApiError,
   type EntityOut,
   type ConfigVersionOut,
@@ -17,11 +20,13 @@ import {
   type WorkflowDefinitionOut,
   type EditHistoryOut,
   type PolicyMessage,
+  type UDMTypeOut,
+  type EntityAutocompleteItem,
 } from './apiUdm'
 import { MigrationAssistant } from './UdmMigration'
 import { FieldInput, getLang, PolicyMessageList } from './udm-editors'
-import { EntityCombobox } from './udm-editors/EntityCombobox'
 import styles from './UdmEntityEditor.module.css'
+import dsStyles from './DefaultScreen.module.css'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1154,93 +1159,116 @@ export function UdmEntityEditor() {
 
 export function UdmEntityPanel() {
   const navigate = useNavigate()
-  const [types, setTypes] = useState<import('./apiUdm').UDMTypeOut[]>([])
-  const [filterTypeId, setFilterTypeId] = useState('')
-  const [selectedEntity, setSelectedEntity] = useState<import('./apiUdm').EntityAutocompleteItem | null>(null)
-  const [createTypeId, setCreateTypeId] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [types, setTypes] = useState<UDMTypeOut[]>([])
+  const [entityMap, setEntityMap] = useState<Record<string, EntityAutocompleteItem[]>>({})
+  const [canCreateMap, setCanCreateMap] = useState<Record<string, boolean>>({})
+  const [loading, setLoading] = useState(true)
+  const [creatingTypeId, setCreatingTypeId] = useState<string | null>(null)
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    import('./apiUdm').then(({ udmListTypes }) => {
-      udmListTypes().then(setTypes).catch(() => {})
-    })
+    const load = async () => {
+      setLoading(true)
+      try {
+        const loadedTypes = await udmListTypes()
+        setTypes(loadedTypes)
+        const typesWithConfig = loadedTypes.filter(t => t.field_config_id !== null)
+        const [entityResults, createResults] = await Promise.all([
+          Promise.all(loadedTypes.map(t => udmSearchEntities('', t.id).catch(() => [] as EntityAutocompleteItem[]))),
+          Promise.all(typesWithConfig.map(t => udmCanCreateEntity(t.id).catch(() => ({ valid: false, policy_messages: [], errors: {} })))),
+        ])
+        const entityMap: Record<string, EntityAutocompleteItem[]> = {}
+        loadedTypes.forEach((t, i) => { entityMap[t.id] = entityResults[i] })
+        setEntityMap(entityMap)
+        const canCreate: Record<string, boolean> = {}
+        typesWithConfig.forEach((t, i) => { canCreate[t.id] = createResults[i].valid })
+        setCanCreateMap(canCreate)
+      } catch {
+        // silently fail — types stays empty
+      } finally {
+        setLoading(false)
+      }
+    }
+    void load()
   }, [])
 
-  // Clear entity selection when type filter changes
-  useEffect(() => { setSelectedEntity(null) }, [filterTypeId])
-
-  async function handleCreate() {
-    if (!createTypeId) { setError('Select a UDM type'); return }
-    setCreating(true)
-    setError(null)
+  async function handleCreate(typeId: string) {
+    setCreatingTypeId(typeId)
+    setCreateErrors(prev => { const n = { ...prev }; delete n[typeId]; return n })
     try {
       const { udmCreateEntity } = await import('./apiUdm')
-      const e = await udmCreateEntity({ user_defined_model_type_id: createTypeId })
+      const e = await udmCreateEntity({ user_defined_model_type_id: typeId })
       navigate(`/udm-entity/${e.id}`)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Create failed')
+    } catch (err) {
+      setCreateErrors(prev => ({ ...prev, [typeId]: err instanceof Error ? err.message : 'Create failed' }))
     } finally {
-      setCreating(false)
+      setCreatingTypeId(null)
     }
   }
 
-  function handleOpen() {
-    if (!selectedEntity) { setError('Select an entity'); return }
-    navigate(`/udm-entity/${selectedEntity.id}`)
-  }
-
-  const panelStyle: React.CSSProperties = {
-    background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1.25rem', marginBottom: '1rem',
-  }
-  const selectStyle: React.CSSProperties = {
-    width: '100%', padding: '0.45rem 0.7rem', border: '1px solid #ccc',
-    borderRadius: '4px', marginBottom: '0.5rem', boxSizing: 'border-box', fontSize: '0.9rem', background: '#fff',
-  }
-  const labelStyle: React.CSSProperties = { fontSize: '0.82rem', color: '#666', display: 'block', marginBottom: '0.25rem' }
-
   return (
-    <div style={{ padding: '2rem', maxWidth: '560px', margin: '0 auto' }}>
-      <h2 style={{ fontWeight: 600, marginBottom: '1.5rem' }}>UDM Entities</h2>
+    <div className={dsStyles.container}>
+      <div className={dsStyles.content}>
+        {loading && <p className={dsStyles.stateBox}>Loading…</p>}
 
-      <div style={panelStyle}>
-        <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>Open Existing Entity</div>
-        <label style={labelStyle}>Filter by type (optional)</label>
-        <select style={selectStyle} value={filterTypeId} onChange={e => setFilterTypeId(e.target.value)}>
-          <option value="">— all types —</option>
-          {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <label style={{ ...labelStyle, marginBottom: '0.4rem' }}>Entity</label>
-        <EntityCombobox
-          value={selectedEntity}
-          onChange={entity => { setSelectedEntity(entity); setError(null) }}
-          typeId={filterTypeId || undefined}
-        />
-        {error && <div style={{ color: '#dc2626', fontSize: '0.85rem', margin: '0.5rem 0' }}>{error}</div>}
-        <button
-          style={{ padding: '0.45rem 1rem', background: '#0066cc', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', opacity: !selectedEntity ? 0.5 : 1, marginTop: '0.75rem' }}
-          onClick={handleOpen} disabled={!selectedEntity}>
-          Open
-        </button>
-      </div>
-
-      <div style={panelStyle}>
-        <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>Create New Entity</div>
-        {types.length === 0 ? (
-          <div style={{ color: '#888', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-            No UDM types available. Create types in the UDM Admin page first.
-          </div>
-        ) : (
-          <select style={selectStyle} value={createTypeId} onChange={e => setCreateTypeId(e.target.value)}>
-            <option value="">— select type —</option>
-            {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+        {!loading && types.length === 0 && (
+          <p className={dsStyles.stateBox}>No types available.</p>
         )}
-        <button
-          style={{ padding: '0.45rem 1rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', opacity: creating || !createTypeId ? 0.5 : 1 }}
-          onClick={handleCreate} disabled={creating || !createTypeId}>
-          {creating ? 'Creating…' : 'Create Entity'}
-        </button>
+
+        {!loading && types.length > 0 && (
+          <div className={dsStyles.callList}>
+            {types.map(type => {
+              const entities = entityMap[type.id] ?? []
+              const canCreate = canCreateMap[type.id] === true
+              const isCreating = creatingTypeId === type.id
+              const createError = createErrors[type.id]
+              return (
+                <div key={type.id} className={dsStyles.callCard}>
+                  <div className={dsStyles.callCardBody}>
+                    <h2 className={dsStyles.callCardTitle}>{type.label || type.name}</h2>
+                  </div>
+                  <div className={dsStyles.submissionsSection}>
+                    {entities.length === 0 ? (
+                      <p style={{ color: '#9ca3af', fontSize: '0.85rem', margin: 0 }}>No entities</p>
+                    ) : (
+                      entities.map(e => (
+                        <div key={e.id} className={dsStyles.submissionRow}>
+                          <div className={dsStyles.submissionInfo}>
+                            <span>{e.display || e.id.slice(0, 8)}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className={dsStyles.submissionOpenBtn}
+                            onClick={() => navigate(`/udm-entity/${e.id}`)}
+                          >
+                            Open
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {canCreate && (
+                    <div className={dsStyles.callCardFooter}>
+                      <button
+                        type="button"
+                        className={dsStyles.btnSubmit}
+                        onClick={() => void handleCreate(type.id)}
+                        disabled={isCreating}
+                      >
+                        {isCreating ? 'Creating…' : 'Create New'}
+                      </button>
+                    </div>
+                  )}
+                  {createError && (
+                    <div style={{ padding: '0.5rem 1.5rem', color: '#dc2626', fontSize: '0.85rem' }}>
+                      {createError}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -766,7 +766,6 @@ class BundleFieldConfigOut(Schema):
 class BundleUDMTypeOut(Schema):
     id: uuid.UUID
     name: str
-    description: str
     field_config_id: Optional[uuid.UUID]
     policy_slugs: list[str]
 

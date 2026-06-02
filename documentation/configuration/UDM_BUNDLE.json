@@ -1,0 +1,298 @@
+{
+  "version": 1,
+  "scope_type_ids": [
+    "e08720eb-1491-4920-9386-cc2fa520de25"
+  ],
+  "udm_types": [
+    {
+      "id": "e08720eb-1491-4920-9386-cc2fa520de25",
+      "name": "Proposal",
+      "field_config_id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
+      "policy_slugs": [
+        "proposals",
+        "description"
+      ]
+    }
+  ],
+  "field_configs": [
+    {
+      "id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
+      "name": "Proposal",
+      "description": "A",
+      "languages": [
+        {
+          "code": "en",
+          "label": "English",
+          "is_default": true,
+          "sort_order": 0
+        }
+      ],
+      "draft": {
+        "notes": "",
+        "fields": [
+          {
+            "slug": "proposal-id",
+            "data_type": "slug_id",
+            "sort_order": 0,
+            "is_localized": false,
+            "is_preview": true,
+            "labels": {
+              "en": "Proposal ID"
+            },
+            "help_texts": {
+              "en": "This is the proposal ID, it starts with \"PROP-\""
+            },
+            "type_config": {
+              "prefix": "PROP"
+            },
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "status",
+            "data_type": "workflow",
+            "sort_order": 1,
+            "is_localized": false,
+            "is_preview": true,
+            "labels": {
+              "en": "Status"
+            },
+            "help_texts": {},
+            "type_config": {},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": "5817d01a-0b1f-4b9e-92e3-4c92bb1b9642",
+            "parent_slug": null
+          },
+          {
+            "slug": "owner",
+            "data_type": "user_select",
+            "sort_order": 2,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {
+              "en": "Owner"
+            },
+            "help_texts": {},
+            "type_config": {
+              "default_current_user": true
+            },
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "editors",
+            "data_type": "user_select_multi",
+            "sort_order": 3,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {
+              "en": "Editors"
+            },
+            "help_texts": {},
+            "type_config": {},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "requested-reviewer-groups",
+            "data_type": "group_select_multi",
+            "sort_order": 4,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {
+              "en": "Requested Reviewer Groups"
+            },
+            "help_texts": {},
+            "type_config": {},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "requested-reviewer-users",
+            "data_type": "user_select_multi",
+            "sort_order": 5,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {
+              "en": "Requested Reviewer Users"
+            },
+            "help_texts": {},
+            "type_config": {},
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          },
+          {
+            "slug": "reviews",
+            "data_type": "submodel_list",
+            "sort_order": 6,
+            "is_localized": false,
+            "is_preview": false,
+            "labels": {
+              "en": "Reviews"
+            },
+            "help_texts": {},
+            "type_config": {
+              "renderer": "list"
+            },
+            "default": null,
+            "submodel_config_version_id": null,
+            "workflow_definition_id": null,
+            "parent_slug": null
+          }
+        ]
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "id": "5817d01a-0b1f-4b9e-92e3-4c92bb1b9642",
+      "name": "Proposal Workflow",
+      "description": "Lifecycle for proposals: draft → submitted → accepted/rejected/revise",
+      "states": [
+        {
+          "name": "draft",
+          "label": {
+            "en": "Draft"
+          },
+          "is_initial": true,
+          "position_x": 0.0,
+          "position_y": 0.0,
+          "background_color": "#ffffff",
+          "text_color": "#000000"
+        },
+        {
+          "name": "submitted",
+          "label": {
+            "en": "Submitted"
+          },
+          "is_initial": false,
+          "position_x": 250.0,
+          "position_y": 0.0,
+          "background_color": "#ffffff",
+          "text_color": "#000000"
+        },
+        {
+          "name": "revise",
+          "label": {
+            "en": "Revise"
+          },
+          "is_initial": false,
+          "position_x": 250.0,
+          "position_y": 180.0,
+          "background_color": "#ffffff",
+          "text_color": "#000000"
+        },
+        {
+          "name": "accepted",
+          "label": {
+            "en": "Accepted"
+          },
+          "is_initial": false,
+          "position_x": 500.0,
+          "position_y": 0.0,
+          "background_color": "#ffffff",
+          "text_color": "#000000"
+        },
+        {
+          "name": "rejected",
+          "label": {
+            "en": "Rejected"
+          },
+          "is_initial": false,
+          "position_x": 500.0,
+          "position_y": 180.0,
+          "background_color": "#ffffff",
+          "text_color": "#000000"
+        }
+      ],
+      "transitions": [
+        {
+          "name": "submit",
+          "label": {
+            "en": "Submit"
+          },
+          "from_state": "draft",
+          "from_undefined_only": false,
+          "to_state": "submitted",
+          "source_handle": "",
+          "target_handle": ""
+        },
+        {
+          "name": "resubmit",
+          "label": {
+            "en": "Resubmit"
+          },
+          "from_state": "revise",
+          "from_undefined_only": false,
+          "to_state": "submitted",
+          "source_handle": "",
+          "target_handle": ""
+        },
+        {
+          "name": "accept",
+          "label": {
+            "en": "Accept"
+          },
+          "from_state": "submitted",
+          "from_undefined_only": false,
+          "to_state": "accepted",
+          "source_handle": "",
+          "target_handle": ""
+        },
+        {
+          "name": "reject",
+          "label": {
+            "en": "Reject"
+          },
+          "from_state": "submitted",
+          "from_undefined_only": false,
+          "to_state": "rejected",
+          "source_handle": "",
+          "target_handle": ""
+        },
+        {
+          "name": "request-revision",
+          "label": {
+            "en": "Request Revision"
+          },
+          "from_state": "submitted",
+          "from_undefined_only": false,
+          "to_state": "revise",
+          "source_handle": "",
+          "target_handle": ""
+        },
+        {
+          "name": "allow-revision",
+          "label": {
+            "en": "Allow Revision"
+          },
+          "from_state": "rejected",
+          "from_undefined_only": false,
+          "to_state": "revise",
+          "source_handle": "",
+          "target_handle": ""
+        }
+      ],
+      "virtual_node_positions": {}
+    }
+  ],
+  "policies": [
+    {
+      "slug": "proposals"
+    },
+    {
+      "slug": "description"
+    }
+  ]
+}

@@ -206,7 +206,6 @@ class UserDefinedModelTypeFactory(DjangoModelFactory):
         model = "userdefinedmodel.UserDefinedModelType"
 
     name = factory.Sequence(lambda n: f"Type {n}")
-    description = ""
     field_config = None
 
     @factory.post_generation

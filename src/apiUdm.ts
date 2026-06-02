@@ -528,6 +528,21 @@ export async function udmRemovePolicy(typeId: string, slug: string): Promise<voi
 
 // ── Entities ──────────────────────────────────────────────────────────────────
 
+export async function udmCanCreateEntity(typeId: string): Promise<ValidationResult> {
+  const token = await getCsrfToken()
+  const resp = await fetch('/api/udm/entities/?validate=true', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'X-CSRFToken': token } : {}),
+    },
+    body: JSON.stringify({ user_defined_model_type_id: typeId }),
+    credentials: 'include',
+  })
+  if (!resp.ok) return { valid: false, policy_messages: [], errors: {} }
+  return resp.json() as Promise<ValidationResult>
+}
+
 export async function udmCreateEntity(payload: EntityCreateIn): Promise<EntityOut> {
   const { data, error, response } = await udmClient.POST('/api/udm/entities/', { body: payload })
   if (error || !response.ok || !data) throw new Error('Failed to create entity')

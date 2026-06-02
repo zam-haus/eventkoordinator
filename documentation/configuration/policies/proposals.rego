@@ -119,6 +119,16 @@ allow if {
 allow if { input.action == "delete"; is_owner; current_status == "draft" }
 allow if { input.action == "delete"; is_superuser_sudo }
 
+# ─── allow: create ─────────────────────────────────────────────────────────────
+# Any active logged-in user may create a new proposal before the deadline.
+allow if {
+	input.action == "create"
+	input.user.is_active
+	time.now_ns() <= time.parse_rfc3339_ns(_deadline)
+}
+
+allow if { input.action == "create"; is_superuser_sudo }
+
 # ─── allow: transition ─────────────────────────────────────────────────────────
 allow if {
 	input.action == "transition"

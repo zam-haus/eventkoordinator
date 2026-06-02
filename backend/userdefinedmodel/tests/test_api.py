@@ -27,7 +27,7 @@ from userdefinedmodel.tests.factories import (
     FieldDefinitionTranslationFactory, UserDefinedModelTypeFactory,
     UserDefinedModelEntityFactory, PolicyFactory,
     make_simple_config, make_full_workflow, add_workflow_field, make_entity_with_type,
-    ALLOW_ALL_POLICY, REGO_DENY_ALL, REGO_OWNER_EDIT, REGO_BLOCK_SUBMIT_IF_TITLE_EMPTY,
+    ALLOW_ALL_POLICY, REGO_DENY_ALL, REGO_OWNER_EDIT, REGO_BLOCK_SUBMIT_IF_TITLE_EMPTY, REGO_STAFF_ONLY,
 )
 
 User = get_user_model()
@@ -271,6 +271,29 @@ class EntityCRUDTests(BaseAPITest):
         udm_type = UserDefinedModelTypeFactory(field_config=None)
         resp = self.post("/entities/", {"user_defined_model_type_id": str(udm_type.id)})
         self.assertEqual(resp.status_code, 400)
+
+    def test_create_entity_validate_allowed(self):
+        _, udm_type, _, _ = make_entity_with_type(policy_source=ALLOW_ALL_POLICY)
+        from userdefinedmodel.models import UserDefinedModelEntity
+        count_before = UserDefinedModelEntity.objects.filter(user_defined_model_type=udm_type).count()
+        resp = self.post("/entities/?validate=true", {"user_defined_model_type_id": str(udm_type.id)})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["valid"])
+        # Validate must not persist an entity
+        self.assertEqual(UserDefinedModelEntity.objects.filter(user_defined_model_type=udm_type).count(), count_before)
+
+    def test_create_entity_validate_denied(self):
+        _, udm_type, _, _ = make_entity_with_type(policy_source=REGO_STAFF_ONLY)
+        from userdefinedmodel.models import UserDefinedModelEntity
+        count_before = UserDefinedModelEntity.objects.filter(user_defined_model_type=udm_type).count()
+        # Non-staff user — REGO_STAFF_ONLY denies create for non-staff
+        resp = self.post("/entities/?validate=true", {"user_defined_model_type_id": str(udm_type.id)}, user=self.user)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data["valid"])
+        # Validate must not persist an entity
+        self.assertEqual(UserDefinedModelEntity.objects.filter(user_defined_model_type=udm_type).count(), count_before)
 
     def test_get_entity(self):
         entity, udm_type, version, config = make_entity_with_type()
