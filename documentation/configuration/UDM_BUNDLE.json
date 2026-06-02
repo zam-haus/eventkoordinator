@@ -20,12 +20,7 @@
       "name": "Proposal",
       "description": "",
       "languages": [
-        {
-          "code": "en",
-          "label": "English",
-          "is_default": true,
-          "sort_order": 0
-        }
+        {"code": "en", "label": "English", "is_default": true, "sort_order": 0}
       ],
       "draft": {
         "notes": "",
@@ -36,8 +31,8 @@
             "sort_order": 0,
             "is_localized": false,
             "is_preview": true,
-            "labels": {"en": "Proposal ID"},
-            "help_texts": {"en": "Auto-generated identifier, starts with \"PROP-\""},
+            "labels": {"en": "Proposal ID", "de": "Vorschlags-ID"},
+            "help_texts": {"en": "Auto-generated identifier, starts with \"PROP-\"", "de": "Automatisch generierter Bezeichner, beginnt mit \"PROP-\""},
             "type_config": {"prefix": "PROP"},
             "default": null,
             "submodel_config_version_id": null,
@@ -50,8 +45,8 @@
             "sort_order": 1,
             "is_localized": false,
             "is_preview": true,
-            "labels": {"en": "Title"},
-            "help_texts": {"en": "Short title for your proposal (max. 30 characters)"},
+            "labels": {"en": "Title (max 30 characters)", "de": "Titel (max. 30 Zeichen)"},
+            "help_texts": {},
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -64,7 +59,7 @@
             "sort_order": 2,
             "is_localized": false,
             "is_preview": true,
-            "labels": {"en": "Status"},
+            "labels": {"en": "Status", "de": "Status"},
             "help_texts": {},
             "type_config": {},
             "default": null,
@@ -78,8 +73,11 @@
             "sort_order": 3,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Owner"},
-            "help_texts": {"en": "The person responsible for this proposal. Set automatically on creation."},
+            "labels": {"en": "Creator", "de": "Ersteller*in"},
+            "help_texts": {
+              "en": "The creator is automatically set to the user who creates the proposal and cannot be changed.",
+              "de": "Der Ersteller wird automatisch auf den Benutzer festgelegt, der den Vorschlag erstellt, und kann nicht geändert werden."
+            },
             "type_config": {"default_current_user": true},
             "default": null,
             "submodel_config_version_id": null,
@@ -122,8 +120,11 @@
             "sort_order": 20,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Submission Type"},
-            "help_texts": {"en": "The format of your proposed session"},
+            "labels": {"en": "Submission Type", "de": "Einreichungstyp"},
+            "help_texts": {
+              "en": "Workshop: Fixed booking, fee required, providers receive a remuneration; Open offer: No booking or fee required; takes place in the main building.",
+              "de": "Workshop: Feste Buchung, Gebühr erforderlich, Anbieter erhalten eine Vergütung; Offenes Angebot: Keine Buchung oder Gebühr erforderlich; findet im Hauptgebäude statt."
+            },
             "type_config": {"choices": ["workshop", "course", "talk", "lightning-talk", "open-space", "other"]},
             "default": null,
             "submodel_config_version_id": null,
@@ -136,8 +137,8 @@
             "sort_order": 21,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Area"},
-            "help_texts": {"en": "Thematic area your proposal belongs to"},
+            "labels": {"en": "Area (optional)", "de": "Bereich (optional)"},
+            "help_texts": {},
             "type_config": {"choices": ["digital", "creative", "culture", "community", "health", "sport", "science", "other"]},
             "default": null,
             "submodel_config_version_id": null,
@@ -150,9 +151,9 @@
             "sort_order": 22,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Language"},
-            "help_texts": {"en": "Language(s) in which the session will be held"},
-            "type_config": {"choices": ["de", "en", "de-en"]},
+            "labels": {"en": "Language", "de": "Sprache"},
+            "help_texts": {},
+            "type_config": {"choices": ["de", "en"]},
             "default": null,
             "submodel_config_version_id": null,
             "workflow_definition_id": null,
@@ -164,8 +165,11 @@
             "sort_order": 23,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Abstract"},
-            "help_texts": {"en": "Brief summary visible to reviewers and in the programme (max. 250 characters)"},
+            "labels": {"en": "Abstract (50–250 characters)", "de": "Zusammenfassung (50–250 Zeichen)"},
+            "help_texts": {
+              "en": "This will be published on our website in the program overview. (50–250 characters)",
+              "de": "Dies wird auf unserer Website in der Programmübersicht veröffentlicht. (50–250 Zeichen)"
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -178,8 +182,11 @@
             "sort_order": 24,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Description"},
-            "help_texts": {"en": "Full description of your proposal. Markdown is supported (max. 1000 characters)."},
+            "labels": {"en": "Description (50–1000 characters)", "de": "Beschreibung (50–1000 Zeichen)"},
+            "help_texts": {
+              "en": "This will be published on our website in the detailed description. Please include goal, prerequisites and whether participants take something home. (50–1000 characters)",
+              "de": "Dies wird auf unserer Website in der detaillierten Beschreibung veröffentlicht. Bitte Ziel, Voraussetzungen und ob Teilnehmer*innen etwas mitnehmen angeben. (50–1000 Zeichen)"
+            },
             "type_config": {"renderer": "markdown_preview"},
             "default": null,
             "submodel_config_version_id": null,
@@ -192,8 +199,11 @@
             "sort_order": 25,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Photo"},
-            "help_texts": {"en": "Cover image for the session (only available after initial save)"},
+            "labels": {"en": "Proposal image", "de": "Vorschlagsbild"},
+            "help_texts": {
+              "en": "Upload a JPG or PNG image up to 10 MB for this proposal. Minimum resolution: 1440×1080 pixels.",
+              "de": "Laden Sie ein JPG- oder PNG-Bild bis zu 10 MB für diesen Vorschlag hoch. Mindestauflösung: 1440×1080 Pixel."
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -263,8 +273,11 @@
             "sort_order": 41,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Basic Course"},
-            "help_texts": {"en": "Tick if this is a basic/introductory course requiring no prior knowledge"},
+            "labels": {"en": "This workshop is a basic course", "de": "Dieser Workshop ist ein Grundlagenkurs"},
+            "help_texts": {
+              "en": "A basic course is one that is mandatory for using certain resources, such as machines or rooms.",
+              "de": "Ein Grundlagenkurs ist ein Kurs, der für die Nutzung bestimmter Maschinen, Räume, etc. verpflichtend ist."
+            },
             "type_config": {},
             "default": false,
             "submodel_config_version_id": null,
@@ -277,8 +290,8 @@
             "sort_order": 42,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Max. Participants"},
-            "help_texts": {"en": "Maximum number of participants (0 = unlimited)"},
+            "labels": {"en": "Max. number of participants", "de": "Max. Anzahl der Teilnehmer*innen"},
+            "help_texts": {},
             "type_config": {},
             "default": 0,
             "submodel_config_version_id": null,
@@ -291,8 +304,8 @@
             "sort_order": 43,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Material Cost (€)"},
-            "help_texts": {"en": "Expected material cost per participant in euros"},
+            "labels": {"en": "Material cost per participant (EUR)", "de": "Materialkosten pro Teilnehmer*in (EUR)"},
+            "help_texts": {},
             "type_config": {"decimal_places": 2},
             "default": 0.0,
             "submodel_config_version_id": null,
@@ -390,8 +403,11 @@
             "sort_order": 61,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Number of Days"},
-            "help_texts": {"en": "How many days does this session span?"},
+            "labels": {"en": "Number of Days", "de": "Anzahl der Tage"},
+            "help_texts": {
+              "en": "Number of days for a single occurrence of the event (minimum 1).",
+              "de": "Anzahl der Tage für eine einzelne Durchführung der Veranstaltung (mindestens 1)."
+            },
             "type_config": {},
             "default": 1,
             "submodel_config_version_id": null,
@@ -404,8 +420,11 @@
             "sort_order": 62,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Time per Day"},
-            "help_texts": {"en": "Duration per day in HH:MM format (e.g. 02:30 for 2.5 hours)"},
+            "labels": {"en": "Duration per day (HH:MM or minutes)", "de": "Dauer pro Tag (HH:MM oder Minuten)"},
+            "help_texts": {
+              "en": "Duration per day in HH:MM format. The product of days and time must be greater than zero. (Example: 08:30 for 8 hours 30 minutes)",
+              "de": "Dauer pro Tag im HH:MM Format. Produkt aus Tagen und Zeit sollte größer als null sein. (Beispiel: 08:30 für 8 Stunden 30 Minuten)"
+            },
             "type_config": {},
             "default": "00:00",
             "submodel_config_version_id": null,
@@ -418,8 +437,11 @@
             "sort_order": 63,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Number of Occurrences"},
-            "help_texts": {"en": "How many times should this session be offered?"},
+            "labels": {"en": "How often would you offer this event?", "de": "Wie oft würdest du diese Veranstaltung anbieten?"},
+            "help_texts": {
+              "en": "E.g. 4 = monthly for a trimester call for proposals.",
+              "de": "Z.B. 4 = monatlich bei einem Trimester-Ausschreibungsverfahren."
+            },
             "type_config": {},
             "default": 1,
             "submodel_config_version_id": null,
@@ -432,8 +454,11 @@
             "sort_order": 64,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Preferred Dates"},
-            "help_texts": {"en": "List any date preferences or constraints (e.g. not on weekends)"},
+            "labels": {"en": "Preferred Dates, Time of Day and Alternatives", "de": "Bevorzugte Termine, Tageszeit und Alternativen"},
+            "help_texts": {
+              "en": "Please specify dates, preferred time of day (e.g. morning, afternoon, evening) and alternatives.",
+              "de": "Bitte spezifische Daten, bevorzugte Tageszeit (z. B. Vormittag, Nachmittag, Abend) und Alternativen angeben."
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -531,8 +556,8 @@
             "sort_order": 81,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Has Building Access"},
-            "help_texts": {"en": "Tick if the presenter already has building access"},
+            "labels": {"en": "At least one speaker has access to the ZAM building", "de": "Mind. ein Referent hat Zugang zum ZAM-Gebäude"},
+            "help_texts": {},
             "type_config": {},
             "default": false,
             "submodel_config_version_id": null,
@@ -545,8 +570,11 @@
             "sort_order": 82,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Editors"},
-            "help_texts": {"en": "Other users who may edit this proposal alongside the owner"},
+            "labels": {"en": "Editors", "de": "Mitbearbeiter*innen"},
+            "help_texts": {
+              "en": "If you want to create and edit this proposal together with others, please enter their usernames here. They must have registered an account beforehand.",
+              "de": "Falls du deinen Vorschlag gemeinsam mit anderen Personen erstellen und hier bearbeiten willst, trage die Benutzernamen anderen Personen bitte hier ein. Sie müssen sich vorher hier angemeldet haben."
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -644,8 +672,11 @@
             "sort_order": 101,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Internal Notes"},
-            "help_texts": {"en": "Private notes only visible to the owner and editors, not to reviewers"},
+            "labels": {"en": "Additional Information for the ZAM (optional)", "de": "Hinweise an das ZAM (optional)"},
+            "help_texts": {
+              "en": "Not public. Use this to communicate with the ZAM team, e.g. equipment needs (laptops, projector, laser cutter) or other notes.",
+              "de": "Nicht öffentlich. Nutze dieses Feld für Rückmeldungen ans ZAM-Team, z.B. Gerätebedarf (Laptops, Beamer, Laser) oder sonstige Hinweise."
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -658,8 +689,11 @@
             "sort_order": 102,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Moderation Comment"},
-            "help_texts": {"en": "Feedback from moderators to the submitter (editable by moderators only)"},
+            "labels": {"en": "Moderation Comment", "de": "Moderationskommentar"},
+            "help_texts": {
+              "en": "Feedback from moderators to the submitter. Editable by moderators only.",
+              "de": "Rückmeldung der Moderatoren an den Einreicher. Nur von Moderatoren bearbeitbar."
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -672,8 +706,11 @@
             "sort_order": 103,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Requested Reviewer Groups"},
-            "help_texts": {"en": "Groups whose members are asked to review this proposal (moderators only)"},
+            "labels": {"en": "Requested Reviewer Groups", "de": "Angeforderte Bewertungsgruppen"},
+            "help_texts": {
+              "en": "Groups whose members are asked to review this proposal. Editable by moderators only.",
+              "de": "Gruppen, deren Mitglieder gebeten werden, diesen Vorschlag zu bewerten. Nur von Moderatoren bearbeitbar."
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -686,8 +723,11 @@
             "sort_order": 104,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Requested Reviewer Users"},
-            "help_texts": {"en": "Individual users asked to review this proposal (moderators only)"},
+            "labels": {"en": "Requested Reviewer Users", "de": "Angeforderte Bewertende"},
+            "help_texts": {
+              "en": "Individual users asked to review this proposal. Editable by moderators only.",
+              "de": "Einzelne Benutzer*innen, die gebeten werden, diesen Vorschlag zu bewerten. Nur von Moderatoren bearbeitbar."
+            },
             "type_config": {},
             "default": null,
             "submodel_config_version_id": null,
@@ -758,7 +798,7 @@
             "is_preview": false,
             "labels": null,
             "help_texts": {},
-            "type_config": {"label": "Save", "variant": "success"},
+            "type_config": {"label": "Save / Speichern", "variant": "success"},
             "default": null,
             "submodel_config_version_id": null,
             "workflow_definition_id": null,
@@ -771,7 +811,7 @@
             "sort_order": 200,
             "is_localized": false,
             "is_preview": false,
-            "labels": {"en": "Reviews"},
+            "labels": {"en": "Reviews", "de": "Bewertungen"},
             "help_texts": {},
             "type_config": {"renderer": "list"},
             "default": null,
@@ -791,7 +831,7 @@
       "states": [
         {
           "name": "draft",
-          "label": {"en": "Draft"},
+          "label": {"en": "Draft", "de": "Entwurf"},
           "is_initial": true,
           "position_x": 0.0,
           "position_y": 0.0,
@@ -800,7 +840,7 @@
         },
         {
           "name": "submitted",
-          "label": {"en": "Submitted"},
+          "label": {"en": "Submitted", "de": "Eingereicht"},
           "is_initial": false,
           "position_x": 250.0,
           "position_y": 0.0,
@@ -809,7 +849,7 @@
         },
         {
           "name": "revise",
-          "label": {"en": "Revise"},
+          "label": {"en": "Revise", "de": "Überarbeitung"},
           "is_initial": false,
           "position_x": 250.0,
           "position_y": 180.0,
@@ -818,7 +858,7 @@
         },
         {
           "name": "accepted",
-          "label": {"en": "Accepted"},
+          "label": {"en": "Accepted", "de": "Angenommen"},
           "is_initial": false,
           "position_x": 500.0,
           "position_y": 0.0,
@@ -827,7 +867,7 @@
         },
         {
           "name": "rejected",
-          "label": {"en": "Rejected"},
+          "label": {"en": "Rejected", "de": "Abgelehnt"},
           "is_initial": false,
           "position_x": 500.0,
           "position_y": 180.0,
@@ -838,7 +878,7 @@
       "transitions": [
         {
           "name": "submit",
-          "label": {"en": "Submit"},
+          "label": {"en": "Submit", "de": "Einreichen"},
           "from_state": "draft",
           "from_undefined_only": false,
           "to_state": "submitted",
@@ -847,7 +887,7 @@
         },
         {
           "name": "resubmit",
-          "label": {"en": "Resubmit"},
+          "label": {"en": "Resubmit", "de": "Erneut einreichen"},
           "from_state": "revise",
           "from_undefined_only": false,
           "to_state": "submitted",
@@ -856,7 +896,7 @@
         },
         {
           "name": "accept",
-          "label": {"en": "Accept"},
+          "label": {"en": "Accept", "de": "Annehmen"},
           "from_state": "submitted",
           "from_undefined_only": false,
           "to_state": "accepted",
@@ -865,7 +905,7 @@
         },
         {
           "name": "reject",
-          "label": {"en": "Reject"},
+          "label": {"en": "Reject", "de": "Ablehnen"},
           "from_state": "submitted",
           "from_undefined_only": false,
           "to_state": "rejected",
@@ -874,7 +914,7 @@
         },
         {
           "name": "request-revision",
-          "label": {"en": "Request Revision"},
+          "label": {"en": "Request Revision", "de": "Überarbeitung anfordern"},
           "from_state": "submitted",
           "from_undefined_only": false,
           "to_state": "revise",
@@ -883,7 +923,7 @@
         },
         {
           "name": "allow-revision",
-          "label": {"en": "Allow Revision"},
+          "label": {"en": "Allow Revision", "de": "Überarbeitung nach Ablehnung erlauben"},
           "from_state": "rejected",
           "from_undefined_only": false,
           "to_state": "revise",
