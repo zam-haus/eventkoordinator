@@ -415,11 +415,11 @@ export async function udmEvalPolicy(
   return data as PolicyEvalOut
 }
 
-export async function udmGetTypePublicFields(typeId: string): Promise<Record<string, unknown>> {
+export async function udmGetTypeDescriptions(typeId: string): Promise<Record<string, string>> {
   const resp = await fetch(`/api/udm/types/${typeId}/public-fields/`, { credentials: 'include' })
   if (!resp.ok) return {}
-  const data = await resp.json() as { fields: Record<string, unknown> }
-  return data.fields ?? {}
+  const data = await resp.json() as { descriptions: Record<string, string> }
+  return data.descriptions ?? {}
 }
 
 export async function udmGetTypeConfig(typeId: string): Promise<ConfigVersionOut> {

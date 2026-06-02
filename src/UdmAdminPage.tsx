@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { UdfMarkdown, MarkdownEditor } from './UdfMarkdown'
+import { UdfMarkdown } from './UdfMarkdown'
 import { useTranslation } from 'react-i18next'
 import { Tree } from 'primereact/tree'
 import type { TreeNode } from 'primereact/treenode'
@@ -20,6 +20,7 @@ import {
   udmDeletePolicy,
   udmUpdateType,
   udmUpdateTypeMeta,
+  udmGetTypeDescriptions,
   udmDeleteType,
   udmListTypePolicies,
   udmAssignPolicy,
@@ -1924,7 +1925,15 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
   const [editingMeta, setEditingMeta] = useState(false)
   const [editName, setEditName] = useState(udmType.name)
   const [editLabel, setEditLabel] = useState(udmType.label)
-  const [editDesc, setEditDesc] = useState(udmType.description)
+  const { i18n } = useTranslation()
+  const [typeDescriptions, setTypeDescriptions] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    udmGetTypeDescriptions(udmType.id.toString()).then(setTypeDescriptions).catch(() => {})
+  }, [udmType.id])
+
+  const uiLang = i18n.language.split('-')[0]
+  const typeDescription = typeDescriptions[uiLang] ?? typeDescriptions[''] ?? Object.values(typeDescriptions)[0] ?? ''
 
   const loadPolicies = useCallback(async () => {
     try {
@@ -1943,7 +1952,6 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
       const updated = await udmUpdateTypeMeta(udmType.id.toString(), {
         name: editName.trim() || undefined,
         label: editLabel,
-        description: editDesc,
       })
       onUpdated(updated)
       setEditingMeta(false)
@@ -2015,7 +2023,7 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
           <span>Type Info</span>
           {!editingMeta && (
             <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-              onClick={() => { setEditingMeta(true); setEditName(udmType.name); setEditLabel(udmType.label); setEditDesc(udmType.description) }}>
+              onClick={() => { setEditingMeta(true); setEditName(udmType.name); setEditLabel(udmType.label) }}>
               Edit
             </button>
           )}
@@ -2031,15 +2039,6 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
                 <label className={styles.label}>Label (display name)</label>
                 <input className={styles.input} value={editLabel} onChange={e => setEditLabel(e.target.value)} />
               </div>
-            </div>
-            <div className={styles.formGroup} style={{ marginTop: '0.5rem' }}>
-              <label className={styles.label}>Description (markdown)</label>
-              <MarkdownEditor value={editDesc} onChange={setEditDesc} rows={6} textareaClassName={styles.textarea} />
-              {editDesc && (
-                <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.875rem' }}>
-                  <UdfMarkdown content={editDesc} typeId={udmType.id.toString()} />
-                </div>
-              )}
             </div>
             {error && <div className={styles.error}>{error}</div>}
             {success && <div className={styles.success}>{success}</div>}
@@ -2057,9 +2056,9 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
         ) : (
           <>
             {udmType.label && <div><strong>Label:</strong> {udmType.label}</div>}
-            {udmType.description
-              ? <div style={{ marginTop: '0.5rem' }}><UdfMarkdown content={udmType.description} typeId={udmType.id.toString()} /></div>
-              : <div style={{ color: '#888', fontSize: '0.875rem' }}>No description.</div>}
+            {typeDescription
+              ? <div style={{ marginTop: '0.5rem' }}><UdfMarkdown content={typeDescription} /></div>
+              : <div style={{ color: '#888', fontSize: '0.875rem' }}>No description (define TYPE_DESCRIPTION in policy).</div>}
           </>
         )}
       </div>
@@ -2161,7 +2160,6 @@ function TypesTab() {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newLabel, setNewLabel] = useState('')
-  const [newDesc, setNewDesc] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
 
   const loadAll = useCallback(async () => {
@@ -2181,11 +2179,10 @@ function TypesTab() {
     setCreateError(null)
     if (!newName.trim()) { setCreateError('Name is required'); return }
     try {
-      const t = await udmCreateType({ name: newName.trim(), label: newLabel.trim(), description: newDesc })
+      const t = await udmCreateType({ name: newName.trim(), label: newLabel.trim() })
       setTypes(prev => [...prev, t])
       setNewName('')
       setNewLabel('')
-      setNewDesc('')
       setCreating(false)
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Create failed')
@@ -2229,10 +2226,6 @@ function TypesTab() {
               <input className={styles.input} value={newLabel} onChange={e => setNewLabel(e.target.value)}
                 placeholder="Workshop" />
             </div>
-            <div className={styles.formGroup} style={{ flex: 2 }}>
-              <label className={styles.label}>Description (markdown)</label>
-              <MarkdownEditor value={newDesc} onChange={setNewDesc} rows={4} textareaClassName={styles.textarea} />
-            </div>
           </div>
           {createError && <div className={styles.error}>{createError}</div>}
           <div className={styles.row} style={{ marginTop: '0.75rem' }}>
@@ -2254,7 +2247,6 @@ function TypesTab() {
               <tr>
                 <th>Name</th>
                 <th>Label</th>
-                <th>Description</th>
                 <th>Field Config</th>
                 <th>Actions</th>
               </tr>
@@ -2266,7 +2258,6 @@ function TypesTab() {
                   <tr key={t.id}>
                     <td><strong>{t.name}</strong></td>
                     <td>{t.label || <span style={{ color: '#999' }}>—</span>}</td>
-                    <td style={{ color: '#666', fontSize: '0.875rem' }}>{t.description ? '✓' : '—'}</td>
                     <td>{cfg ? cfg.name : <span style={{ color: '#999' }}>Not assigned</span>}</td>
                     <td>
                       <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}

@@ -602,7 +602,7 @@ def list_udm_types(request):
 
 
 def _udmtype_out(t) -> UDMTypeOut:
-    return UDMTypeOut(id=t.id, name=t.name, label=t.label, description=t.description, field_config_id=t.field_config_id)
+    return UDMTypeOut(id=t.id, name=t.name, label=t.label, field_config_id=t.field_config_id)
 
 
 @api.post("/types/", response={201: UDMTypeOut}, auth=django_auth)
@@ -611,7 +611,7 @@ def create_udm_type(request, payload: UDMTypeCreateIn):
     if denied := _require_perms(request, "userdefinedmodel.add_userdefinedmodeltype"):
         return denied
     udm_type = UserDefinedModelType.objects.create(
-        name=payload.name, label=payload.label, description=payload.description,
+        name=payload.name, label=payload.label,
     )
     return 201, _udmtype_out(udm_type)
 
@@ -770,7 +770,8 @@ def get_type_public_fields(request, type_id: uuid.UUID):
         udm_type = UserDefinedModelType.objects.get(id=type_id)
     except UserDefinedModelType.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
-    return TypePublicFieldsOut(fields=evaluate_type_public_fields(udm_type, user=request.user))
+    _, descriptions = evaluate_type_public_fields(udm_type, user=request.user)
+    return TypePublicFieldsOut(descriptions=descriptions)
 
 
 @api.patch("/types/{type_id}/", response=UDMTypeOut, auth=django_auth)

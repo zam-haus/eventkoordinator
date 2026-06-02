@@ -1161,18 +1161,13 @@ export interface components {
         };
         /** UDMTypeCreateIn */
         UDMTypeCreateIn: {
-            /**
-             * Description
-             * @default
-             */
-            description: string;
+            /** Label */
+            label?: string;
             /** Name */
             name: string;
         };
         /** UDMTypeOut */
         UDMTypeOut: {
-            /** Description */
-            description: string;
             /** Field Config Id */
             field_config_id: string | null;
             /**
@@ -1180,6 +1175,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Label */
+            label: string;
             /** Name */
             name: string;
         };

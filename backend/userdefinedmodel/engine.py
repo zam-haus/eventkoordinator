@@ -261,25 +261,23 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
         return {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
 
 
-def evaluate_type_public_fields(udm_type, user=None) -> dict:
-    """Evaluate data.udm.public_type_fields from the type's policies.
+def evaluate_type_public_fields(udm_type, user=None) -> tuple[dict, dict]:
+    """Evaluate data.udm.public_type_fields and data.udm.TYPE_DESCRIPTION.
 
-    Runs all policies assigned to the type with a minimal input document
-    that contains the requesting user (when provided) so that rules can vary
-    their output per-user.  The rule is expected to return a dict, e.g.:
+    Runs all policies for the type with a minimal input that includes the
+    requesting user so that rules can vary per-user.
 
-        public_type_fields["get_countdown_date"] := "2026-12-31"
-        public_type_fields["my_deadline"] := "2027-03-01" { input.user.is_staff }
-
-    Returns {} if the type has no policies, the rule is undefined, or
-    evaluation fails.
+    Returns (fields_dict, descriptions) where descriptions is a
+    ``{lang_code: markdown}`` dict.  A plain-string TYPE_DESCRIPTION is
+    normalised to ``{"": value}``.  Both default to empty when no policies are
+    attached, the rule is undefined, or evaluation fails.
     """
     type_policies = list(
         udm_type.type_policies.select_related("policy").order_by("sort_order")
     )
     logger.debug("evaluate_type_public_fields type=%s policies=%d", udm_type.id, len(type_policies))
     if not type_policies:
-        return {}
+        return {}, {}
     try:
         import regorus
         eng = regorus.Engine()
@@ -291,22 +289,30 @@ def evaluate_type_public_fields(udm_type, user=None) -> dict:
             input_doc["user"] = _serialize_user(user)
         logger.debug("evaluate_type_public_fields input=%s", json.dumps(input_doc))
         eng.set_input_json(json.dumps(input_doc))
-        # eval_rule_as_json doesn't support partial object rules; use eval_query instead.
-        # eval_query returns an already-parsed Python object, not a JSON string.
-        results = eng.eval_query("data.udm.public_type_fields")
-        logger.debug("evaluate_type_public_fields raw results type=%s value=%r", type(results).__name__, results)
-        # eval_query returns {"result": [...]} not a bare list
-        rows = results.get("result", results) if isinstance(results, dict) else results
-        if rows and isinstance(rows, list):
-            expr = rows[0].get("expressions", [{}])[0]
-            val = expr.get("value")
-            logger.debug("evaluate_type_public_fields extracted value type=%s value=%r", type(val).__name__, val)
-            if isinstance(val, dict):
-                return val
-        return {}
+
+        def _query_value(query: str):
+            result = eng.eval_query(query)
+            rows = result.get("result", result) if isinstance(result, dict) else result
+            if rows and isinstance(rows, list):
+                return rows[0].get("expressions", [{}])[0].get("value")
+            return None
+
+        fields_val = _query_value("data.udm.public_type_fields")
+        fields = fields_val if isinstance(fields_val, dict) else {}
+
+        desc_val = _query_value("data.udm.TYPE_DESCRIPTION")
+        if isinstance(desc_val, str):
+            descriptions = {"": desc_val}
+        elif isinstance(desc_val, dict):
+            descriptions = {str(k): str(v) for k, v in desc_val.items() if isinstance(v, str)}
+        else:
+            descriptions = {}
+
+        logger.debug("evaluate_type_public_fields fields=%r descriptions keys=%r", fields, list(descriptions))
+        return fields, descriptions
     except Exception as exc:
         logger.debug("evaluate_type_public_fields failed: %s", exc, exc_info=True)
-        return {}
+        return {}, {}
 
 
 # ─── Policy / transition exceptions ──────────────────────────────────────────
