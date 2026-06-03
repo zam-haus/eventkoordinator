@@ -1195,13 +1195,10 @@ error_messages contains msg if {
 	input.action == "save"
 	is_owner_or_editor
 	not is_superuser_sudo
-	"photo" in input.changed_fields
-	print("[copyright] photo in changed_fields, post-write photo=", input.entity.fields.photo.value,
-	      "consent=", input.entity.fields["photo-copyright-consent"].value,
-	      "user=", input.user.username)
 	input.entity.fields.photo.value != null
 	not input.entity.fields["photo-copyright-consent"].value == true
-	print("[copyright] BLOCK: upload without consent")
+	print("[copyright] BLOCK: photo present without consent user=", input.user.username,
+	      "consent=", input.entity.fields["photo-copyright-consent"].value)
 	msg := {
 		"level": "critical",
 		"text": "You must confirm copyright consent before uploading an image.",
