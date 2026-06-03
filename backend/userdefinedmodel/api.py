@@ -722,12 +722,12 @@ def eval_policy_for_type(
             }
 
             try:
-                raw_full = eng.eval_rule_as_json("data.udm")
+                raw_full = eng.eval_query_as_json("data.udm")
                 logger.debug("policy full document entity=%s action=%s raw=%s", entity_id, action, raw_full)
                 parsed_full = _json.loads(raw_full)
                 full_document = None if parsed_full == "<undefined>" else parsed_full
             except Exception as full_exc:
-                logger.debug("policy full document error entity=%s action=%s: %s", entity_id, action, full_exc)
+                logger.debug("policy full document error entity=%s action=%s", entity_id, action, exc_info=full_exc)
                 eval_rule_errors.append(f"data.udm: {full_exc}")
                 full_document = None
 

@@ -244,7 +244,7 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
 
         if logger.isEnabledFor(logging.DEBUG):
             try:
-                full_doc = eng.eval_rule_as_json("data.udm")
+                full_doc = eng.eval_query_as_json("data.udm")
                 logger.debug("policy full document node=%s action=%s: %s", node.id, action, full_doc)
             except Exception as exc:
                 logger.debug("policy full document unavailable: %s", exc)

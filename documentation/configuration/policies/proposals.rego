@@ -86,7 +86,11 @@ is_superuser_sudo if {
 	print("[role] is_superuser_sudo user=", input.user.username)
 }
 
+# ─── allow ─────────────────────────────────────────────────────────────────────
+default allow := false
+
 # ─── allow: view ───────────────────────────────────────────────────────────────
+
 allow if {
 	input.action == "view"
 	is_owner_or_editor
@@ -198,7 +202,7 @@ allow if {
 	input.action == "transition"
 	input.transition in {"submit", "resubmit"}
 	is_owner_or_editor
-	no_checklist_warnings
+	_checklist_complete
 	print("[allow:transition] submit/resubmit user=", input.user.username,
 	      "transition=", input.transition, "status=", current_status)
 }
@@ -247,8 +251,8 @@ allow if {
 # Uses set operations instead of `every` for regorus compatibility.
 
 _reviews := object.get(input.entity.children, "reviews", [])
-_reviewer_users := object.get(input.entity.fields["requested-reviewer-users"], "value", [])
-_reviewer_groups := object.get(input.entity.fields["requested-reviewer-groups"], "value", [])
+_reviewer_users := v if { v := input.entity.fields["requested-reviewer-users"].value; v != null } else := []
+_reviewer_groups := v if { v := input.entity.fields["requested-reviewer-groups"].value; v != null } else := []
 
 _accepting_user_ids := {r.fields.author.value.id |
 	some r in _reviews
@@ -448,7 +452,7 @@ error_messages contains msg if {
 	input.action == "transition"
 	input.transition in {"submit", "resubmit"}
 	is_owner_or_editor
-	not no_checklist_warnings
+	not _checklist_complete
 	print("[block:submit] checklist incomplete, user=", input.user.username,
 	      "transition=", input.transition)
 	msg := {
@@ -1210,6 +1214,7 @@ error_messages contains msg if {
 	input.action == "save"
 	is_owner_or_editor
 	not is_superuser_sudo
+	input.changed_fields.photo
 	input.entity.fields.photo.value != null
 	not input.entity.fields["photo-copyright-consent"].value == true
 	print("[copyright] BLOCK: photo present without consent user=", input.user.username,
@@ -1271,7 +1276,9 @@ error_messages contains msg if {
 
 # True when every content-completeness check passes — no warnings are attached to
 # proposal fields.  Used to gate the submit/resubmit transitions.
-no_checklist_warnings if {
+default _checklist_complete := false
+
+_checklist_complete if {
 	_title_complete
 	_abstract_complete
 	_description_complete
@@ -1324,6 +1331,7 @@ error_messages contains msg if {
 	input.action == "save"
 	is_owner_or_editor
 	not is_superuser_sudo
+	input.changed_fields.photo
 	input.entity.fields.photo.value != null
 	not input.entity.fields["photo-copyright-consent"].value == true
 	msg := {"level": "critical", "text": "You must confirm copyright consent before uploading an image.", "field_slug": "tab-general"}
