@@ -714,7 +714,9 @@ class PolicyEvalOut(Schema):
     input_document: dict[str, Any]
     policies: list[dict[str, str]]   # [{"slug": ..., "source": ...}]
     output: dict[str, Any]           # allow, messages, viewable_fields, editable_fields
+    full_document: Optional[dict[str, Any]] = None  # full data.udm namespace
     error: Optional[str] = None
+    rule_errors: list[str] = []      # per-rule evaluation errors
     prints: list[str] = []           # stdout lines emitted by print() in Rego
     coverage: list[dict] = []        # per-file coverage: {path, covered, not_covered}
 

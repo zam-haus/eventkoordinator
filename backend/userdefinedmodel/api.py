@@ -679,6 +679,8 @@ def eval_policy_for_type(
     output = {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
     eval_prints: list[str] = []
     eval_coverage: list[dict] = []
+    eval_rule_errors: list[str] = []
+    full_document = None
     if policy_entries:
         try:
             import json as _json
@@ -694,7 +696,8 @@ def eval_policy_for_type(
                 try:
                     raw = _json.loads(eng.eval_rule_as_json(rule_path))
                     return raw if isinstance(raw, list) else []
-                except Exception:
+                except Exception as exc:
+                    eval_rule_errors.append(f"{rule_path}: {exc}")
                     return []
 
             def _eval_bool(rule_path, default=True):
@@ -707,16 +710,26 @@ def eval_policy_for_type(
                     if isinstance(raw, list):
                         return bool(raw[0]) if raw else default
                     return bool(raw)
-                except Exception:
+                except Exception as exc:
+                    eval_rule_errors.append(f"{rule_path}: {exc}")
                     return default
 
             output = {
                 "allow": _eval_bool("data.udm.allow", default=False),
-                "deny": _eval_list("data.udm.deny"),
                 "messages": _eval_list("data.udm.messages"),
                 "viewable_fields": _eval_list("data.udm.viewable_fields"),
                 "editable_fields": _eval_list("data.udm.editable_fields"),
             }
+
+            try:
+                raw_full = eng.eval_rule_as_json("data.udm")
+                logger.debug("policy full document entity=%s action=%s raw=%s", entity_id, action, raw_full)
+                parsed_full = _json.loads(raw_full)
+                full_document = None if parsed_full == "<undefined>" else parsed_full
+            except Exception as full_exc:
+                logger.debug("policy full document error entity=%s action=%s: %s", entity_id, action, full_exc)
+                eval_rule_errors.append(f"data.udm: {full_exc}")
+                full_document = None
 
             eval_prints = eng.take_prints()
             coverage_json = _json.loads(eng.get_coverage_report_as_json())
@@ -733,7 +746,9 @@ def eval_policy_for_type(
         input_document=input_doc,
         policies=policy_entries,
         output=output,
+        full_document=full_document if policy_entries else None,
         error=error_msg,
+        rule_errors=eval_rule_errors,
         prints=eval_prints,
         coverage=eval_coverage,
     )

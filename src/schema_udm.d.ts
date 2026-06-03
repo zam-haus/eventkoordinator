@@ -1080,6 +1080,10 @@ export interface components {
             }[];
             /** Error */
             error?: string | null;
+            /** Full Document */
+            full_document?: {
+                [key: string]: unknown;
+            } | null;
             /** Input Document */
             input_document: {
                 [key: string]: unknown;
@@ -1092,6 +1096,11 @@ export interface components {
             policies: {
                 [key: string]: string;
             }[];
+            /**
+             * Rule Errors
+             * @default []
+             */
+            rule_errors: string[];
             /**
              * Prints
              * @default []

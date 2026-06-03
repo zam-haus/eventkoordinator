@@ -1647,7 +1647,7 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<PolicyEvalOut | null>(null)
   const [evalError, setEvalError] = useState<string | null>(null)
-  const [activeResultTab, setActiveResultTab] = useState<'output' | 'input' | 'policies' | 'prints'>('output')
+  const [activeResultTab, setActiveResultTab] = useState<'output' | 'full_doc' | 'input' | 'policies' | 'prints'>('output')
 
   useEffect(() => {
     udmSearchEntities('', typeId).then(setEntities).catch(() => {})
@@ -1796,13 +1796,16 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
 
           {/* Detail tabs */}
           <div className={styles.tabs} style={{ marginBottom: '0.5rem' }}>
-            {(['output', 'input', 'policies', 'prints'] as const).map(tab => {
+            {(['output', 'full_doc', 'input', 'policies', 'prints'] as const).map(tab => {
               if (tab === 'prints' && !(result.prints?.length)) return null
+              if (tab === 'full_doc' && !result.full_document && !(result.rule_errors?.length)) return null
               return (
                 <button key={tab} type="button"
                   className={`${styles.tab} ${activeResultTab === tab ? styles.tabActive : ''}`}
                   onClick={() => setActiveResultTab(tab)}>
-                  {tab === 'output' ? 'Full Output'
+                  {tab === 'output' ? 'Output'
+                    : tab === 'full_doc'
+                      ? `Full Document${result.rule_errors?.length ? ` (${result.rule_errors.length} errors)` : ''}`
                     : tab === 'input' ? 'Input Document'
                     : tab === 'policies' ? `Policies (${result.policies.length})`
                     : `Prints (${result.prints!.length})`}
@@ -1815,6 +1818,26 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
             <pre className={styles.monoText} style={{ margin: 0, padding: '0.75rem', background: '#f8f8f8', borderRadius: '6px', overflow: 'auto', maxHeight: '400px', fontSize: '0.8rem', border: '1px solid #e0e0e0' }}>
               {JSON.stringify(result.output, null, 2)}
             </pre>
+          )}
+
+          {activeResultTab === 'full_doc' && (
+            <div>
+              {result.rule_errors && result.rule_errors.length > 0 && (
+                <div style={{ marginBottom: '0.5rem' }}>
+                  {result.rule_errors.map((e, i) => (
+                    <div key={i} style={{ fontSize: '0.85rem', color: '#dc2626', fontFamily: 'monospace', marginBottom: '0.2rem' }}>
+                      {e}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {result.full_document
+                ? <pre className={styles.monoText} style={{ margin: 0, padding: '0.75rem', background: '#f8f8f8', borderRadius: '6px', overflow: 'auto', maxHeight: '600px', fontSize: '0.8rem', border: '1px solid #e0e0e0' }}>
+                    {JSON.stringify(result.full_document, null, 2)}
+                  </pre>
+                : <div className={styles.emptyState}>Full document unavailable — check debug log for raw value.</div>
+              }
+            </div>
           )}
 
           {activeResultTab === 'input' && (

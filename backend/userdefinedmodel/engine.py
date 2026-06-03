@@ -242,7 +242,16 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
         viewable_fields = _eval_list("data.udm.viewable_fields", default=None)
         editable_fields = _eval_list("data.udm.editable_fields", default=[])
 
-        eng.take_prints()  # drain and discard prints from policy source
+        if logger.isEnabledFor(logging.DEBUG):
+            try:
+                full_doc = eng.eval_rule_as_json("data.udm")
+                logger.debug("policy full document node=%s action=%s: %s", node.id, action, full_doc)
+            except Exception as exc:
+                logger.debug("policy full document unavailable: %s", exc)
+
+        prints = eng.take_prints()
+        if prints and logger.isEnabledFor(logging.DEBUG):
+            logger.debug("policy prints node=%s action=%s:\n%s", node.id, action, prints)
 
         result = {
             "allow": allow,

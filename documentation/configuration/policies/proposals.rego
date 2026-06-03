@@ -39,6 +39,7 @@ is_owner if {
 	owner_val := input.entity.fields.owner.value
 	owner_val != null
 	owner_val.id == input.user.id
+	print("[role] is_owner user=", input.user.username)
 }
 
 is_editor if {
@@ -46,6 +47,7 @@ is_editor if {
 	editors != null
 	some ed in editors
 	ed.id == input.user.id
+	print("[role] is_editor user=", input.user.username)
 }
 
 is_owner_or_editor if is_owner
@@ -55,6 +57,7 @@ is_moderator if {
 	some group_name in MODERATOR_GROUP_NAMES
 	some ug in input.user.groups
 	ug.name == group_name
+	print("[role] is_moderator user=", input.user.username, "group=", ug.name)
 }
 
 is_direct_reviewer if {
@@ -62,6 +65,7 @@ is_direct_reviewer if {
 	reviewer_users != null
 	some ru in reviewer_users
 	ru.id == input.user.id
+	print("[role] is_direct_reviewer user=", input.user.username)
 }
 
 is_group_reviewer if {
@@ -70,6 +74,7 @@ is_group_reviewer if {
 	some rg in reviewer_groups
 	some ug in input.user.groups
 	rg.id == ug.id
+	print("[role] is_group_reviewer user=", input.user.username, "group=", rg.name)
 }
 
 is_reviewer if is_direct_reviewer
@@ -78,6 +83,7 @@ is_reviewer if is_group_reviewer
 is_superuser_sudo if {
 	SUDO_ACTIVE
 	input.user.is_superuser
+	print("[role] is_superuser_sudo user=", input.user.username)
 }
 
 # ─── allow: view ───────────────────────────────────────────────────────────────
@@ -220,7 +226,7 @@ allow if {
 	input.field == "vote"
 	input.transition in {"accept", "reject", "revise", "reset"}
 	current_status == "submitted"
-	some r in input.entity.children.reviews
+	some r in _reviews
 	r.id == input.node_id
 	r.fields.author.value.id == input.user.id
 	print("[allow:transition] vote user=", input.user.username,
@@ -239,22 +245,26 @@ allow if {
 # individual/group must have voted "accept".
 # Uses set operations instead of `every` for regorus compatibility.
 
+_reviews := object.get(input.entity.children, "reviews", [])
+_reviewer_users := object.get(input.entity.fields["requested-reviewer-users"], "value", [])
+_reviewer_groups := object.get(input.entity.fields["requested-reviewer-groups"], "value", [])
+
 _accepting_user_ids := {r.fields.author.value.id |
-	some r in input.entity.children.reviews
+	some r in _reviews
 	r.fields.vote.value == "accept"
 }
 
 _accepting_group_ids := {rg.id |
-	some rg in input.entity.fields["requested-reviewer-groups"].value
+	some rg in _reviewer_groups
 	some member in rg.members
-	some r in input.entity.children.reviews
+	some r in _reviews
 	r.fields.author.value.id == member.id
 	r.fields.vote.value == "accept"
 }
 
 all_reviews_accepted if {
-	requested_user_ids := {u.id | some u in input.entity.fields["requested-reviewer-users"].value}
-	requested_group_ids := {g.id | some g in input.entity.fields["requested-reviewer-groups"].value}
+	requested_user_ids := {u.id | some u in _reviewer_users}
+	requested_group_ids := {g.id | some g in _reviewer_groups}
 
 	count(requested_user_ids) + count(requested_group_ids) > 0
 
@@ -276,16 +286,16 @@ all_reviews_accepted if {
 
 # IDs of users who have cast any non-open vote (i.e., have actually reviewed).
 _voted_user_ids := {r.fields.author.value.id |
-	some r in input.entity.children.reviews
+	some r in _reviews
 	r.fields.vote.value != null
 	r.fields.vote.value != "open"
 }
 
 # IDs of requested groups for which at least one member has cast a non-open vote.
 _voted_group_ids := {rg.id |
-	some rg in input.entity.fields["requested-reviewer-groups"].value
+	some rg in _reviewer_groups
 	some member in rg.members
-	some r in input.entity.children.reviews
+	some r in _reviews
 	r.fields.author.value.id == member.id
 	r.fields.vote.value != null
 	r.fields.vote.value != "open"
@@ -296,6 +306,7 @@ _voted_group_ids := {rg.id |
 
 error_messages contains msg if {
 	input.action == "save"
+	_can_view
 	input.changed_fields["proposal-id"]
 	not is_superuser_sudo
 	print("[block:proposal-id] user=", input.user.username, "attempted to change proposal-id")
@@ -308,6 +319,7 @@ error_messages contains msg if {
 
 error_messages contains msg if {
 	input.action == "save"
+	_can_view
 	input.changed_fields.owner
 	not is_superuser_sudo
 	print("[block:owner] user=", input.user.username, "attempted to change owner")
@@ -321,6 +333,7 @@ error_messages contains msg if {
 _reviewer_save_permitted if {
 	is_reviewer
 	current_status == "submitted"
+	print("[role] _reviewer_save_permitted user=", input.user.username)
 }
 
 error_messages contains msg if {
@@ -344,10 +357,11 @@ error_messages contains msg if {
 # delete operations where the review no longer exists in input.entity.
 error_messages contains msg if {
 	input.action == "save"
+	_can_view
 	not is_superuser_sudo
 	some op in input.changed_fields.reviews.value
 	op.op in {"update", "delete"}
-	some existing in input.old_entity.children.reviews
+	some existing in object.get(input.old_entity.children, "reviews", [])
 	existing.id == op.id
 	existing.fields.author.value.id != input.user.id
 	print("[block:review-modify] user=", input.user.username,
@@ -362,6 +376,7 @@ error_messages contains msg if {
 # Block changing the author field on an existing review.
 error_messages contains msg if {
 	input.action == "save"
+	_can_view
 	not is_superuser_sudo
 	some op in input.changed_fields.reviews.value
 	op.op == "update"
@@ -378,6 +393,7 @@ error_messages contains msg if {
 # Block creating a review attributed to someone other than the current user.
 error_messages contains msg if {
 	input.action == "save"
+	_can_view
 	not is_superuser_sudo
 	some op in input.changed_fields.reviews.value
 	op.op == "create"
@@ -395,6 +411,7 @@ error_messages contains msg if {
 # Block non-reviewers (including moderators not in the reviewer lists) from creating reviews.
 error_messages contains msg if {
 	input.action == "save"
+	_can_view
 	not is_superuser_sudo
 	not is_reviewer
 	some op in input.changed_fields.reviews.value
@@ -413,6 +430,7 @@ _changing_reviewer_assignments if { input.changed_fields["requested-reviewer-use
 
 error_messages contains msg if {
 	input.action == "save"
+	_can_view
 	not is_moderator
 	not is_superuser_sudo
 	_changing_reviewer_assignments
@@ -430,6 +448,7 @@ error_messages contains msg if {
 	input.field == "status"
 	input.transition == "accept"
 	is_moderator
+	_can_view
 	not all_reviews_accepted
 	print("[block:accept] not all reviews accepted, user=", input.user.username,
 	      "accepting_user_ids=", _accepting_user_ids,
@@ -437,6 +456,86 @@ error_messages contains msg if {
 	msg := {
 		"level": "error",
 		"text": "Acceptance requires all requested reviewers to have voted accept.",
+		"field_slug": null,
+	}
+}
+
+# ─── save/transition denial for non-viewers ────────────────────────────────────
+# Produces a single generic critical message when the user cannot view the entity
+# and attempts a save or transition.  This replaces the Python-level "Save denied
+# by policy." fallback and prevents any other detailed error_messages from leaking
+# state information to someone who has no view access.
+
+error_messages contains msg if {
+	input.action in {"save", "transition"}
+	not _can_view
+	print("[deny:save/transition] no view access user=", input.user.username,
+	      "action=", input.action, "status=", current_status)
+	msg := {
+		"level": "critical",
+		"text": "Access denied.",
+		"field_slug": null,
+	}
+}
+
+# ─── view-denial messages ──────────────────────────────────────────────────────
+# _can_view mirrors the view allow rules without referencing allow/no_critical_errors,
+# so there is no cyclic dependency.  All denial messages are gated on not _can_view,
+# which ensures they only fire when the user truly has no path to view access —
+# regardless of how many roles they hold simultaneously.
+
+_can_view if {
+	is_owner_or_editor
+	print("[can_view] owner/editor user=", input.user.username)
+}
+_can_view if {
+	is_superuser_sudo
+	print("[can_view] sudo user=", input.user.username)
+}
+_can_view if {
+	is_moderator
+	current_status != "draft"
+	print("[can_view] moderator user=", input.user.username, "status=", current_status)
+}
+_can_view if {
+	is_reviewer
+	current_status != "draft"
+	print("[can_view] reviewer user=", input.user.username, "status=", current_status)
+}
+
+# True when the user holds a role that would grant view access post-draft.
+_has_limited_role if {
+	is_moderator
+	print("[role] _has_limited_role (moderator) user=", input.user.username)
+}
+_has_limited_role if {
+	is_reviewer
+	print("[role] _has_limited_role (reviewer) user=", input.user.username)
+}
+
+error_messages contains msg if {
+	input.action == "view"
+	not _can_view
+	_has_limited_role
+	not is_owner_or_editor
+	print("[deny:view] draft-blocked limited-role user=", input.user.username, "status=", current_status)
+	msg := {
+		"level": "error",
+		"text": "This proposal is in draft and not yet visible to moderators or reviewers.",
+		"field_slug": null,
+	}
+}
+
+error_messages contains msg if {
+	input.action == "view"
+	not _can_view
+	not _has_limited_role
+	not is_owner_or_editor
+	not is_superuser_sudo
+	print("[deny:view] no-role user=", input.user.username, "status=", current_status)
+	msg := {
+		"level": "error",
+		"text": "You do not have permission to view this proposal.",
 		"field_slug": null,
 	}
 }
@@ -450,7 +549,7 @@ error_messages contains msg if {
 # Guard used by proposal-level context messages: true for view/save and for
 # transitions on the proposal status field. Suppresses proposal-level noise when
 # the action is a review vote transition on a subfield.
-_proposal_ctx if { input.action in {"view", "save"} }
+_proposal_ctx if { input.action == "save" }
 _proposal_ctx if { input.action == "transition"; input.field == "status" }
 
 # ── View/Save/Transition: overall status label ──
@@ -535,69 +634,13 @@ success_messages contains msg if {
 	}
 }
 
-# ── View: what the owner/editor can do next ──
-success_messages contains msg if {
-	input.action == "view"
-	is_owner_or_editor
-	current_status == "draft"
-	msg := {
-		"level": "info",
-		"text": "This proposal is a draft. Fill in the required fields and submit it when ready.",
-		"field_slug": null,
-	}
-}
-
-success_messages contains msg if {
-	input.action == "view"
-	is_owner_or_editor
-	current_status == "submitted"
-	msg := {
-		"level": "info",
-		"text": "This proposal is under review. You cannot edit it until a revision is requested.",
-		"field_slug": null,
-	}
-}
-
-success_messages contains msg if {
-	input.action == "view"
-	is_owner_or_editor
-	current_status == "revise"
-	msg := {
-		"level": "warning",
-		"text": "Revision has been requested. Update the proposal and resubmit.",
-		"field_slug": null,
-	}
-}
-
-success_messages contains msg if {
-	input.action == "view"
-	is_owner_or_editor
-	current_status == "accepted"
-	msg := {
-		"level": "info",
-		"text": "This proposal has been accepted.",
-		"field_slug": null,
-	}
-}
-
-success_messages contains msg if {
-	input.action == "view"
-	is_owner_or_editor
-	current_status == "rejected"
-	msg := {
-		"level": "warning",
-		"text": "This proposal has been rejected.",
-		"field_slug": null,
-	}
-}
-
 # ── View/Save/Transition: pending reviews summary for moderator ──
 success_messages contains msg if {
 	_proposal_ctx
 	is_moderator
 	current_status == "submitted"
 	pending_count := count([r |
-		some r in input.entity.children.reviews
+		some r in _reviews
 		r.fields.vote.value != "accept"
 	])
 	pending_count > 0
@@ -953,9 +996,12 @@ _editable_set contains "reviews" if {
 # ─── Utilities ─────────────────────────────────────────────────────────────────
 no_critical_errors if { not any_critical_error }
 
+default any_critical_error := false
+
 any_critical_error if {
 	some m in error_messages
 	m.level == "critical"
+	print(m)
 }
 
 # True when the engine is doing a dry-run (validate_only=true from the API).
@@ -987,8 +1033,8 @@ error_messages contains msg if {
 # abstract: 50–250 characters
 _abstract_complete if {
 	v := input.entity.fields.abstract.value
-	print("[check:abstract] value_len=", count(v) if v != null else 0)
 	v != null
+	print("[check:abstract] value_len=", count(v))
 	count(v) >= 50
 	count(v) <= 250
 	print("[check:abstract] PASS len=", count(v))
@@ -996,15 +1042,16 @@ _abstract_complete if {
 error_messages contains msg if {
 	_checklist_ctx
 	not _abstract_complete
-	print("[checklist:abstract] FAIL len=", count(input.entity.fields.abstract.value) if input.entity.fields.abstract.value != null else 0)
+	v := input.entity.fields.abstract.value
+	print("[checklist:abstract] FAIL v=", v)
 	msg := {"level": "warning", "text": "Abstract must be 50–250 characters.", "field_slug": "abstract"}
 }
 
 # description: 50–1000 characters
 _description_complete if {
 	v := input.entity.fields.description.value
-	print("[check:description] value_len=", count(v) if v != null else 0)
 	v != null
+	print("[check:description] value_len=", count(v))
 	count(v) >= 50
 	count(v) <= 1000
 	print("[check:description] PASS len=", count(v))
@@ -1012,11 +1059,12 @@ _description_complete if {
 error_messages contains msg if {
 	_checklist_ctx
 	not _description_complete
-	print("[checklist:description] FAIL len=", count(input.entity.fields.description.value) if input.entity.fields.description.value != null else 0)
+	v := input.entity.fields.description.value
+	print("[checklist:description] FAIL v=", v)
 	msg := {"level": "warning", "text": "Description must be 50–1000 characters.", "field_slug": "description"}
 }
 
-# duration: duration-days >= 1 and duration-time-per-day parses to > 0 minutes
+# duration: duration-days >= 1 and duration-time-per-day is a non-zero HH:MM value
 _duration_complete if {
 	days := input.entity.fields["duration-days"].value
 	t := input.entity.fields["duration-time-per-day"].value
@@ -1026,9 +1074,8 @@ _duration_complete if {
 	t != null
 	parts := split(t, ":")
 	count(parts) == 2
-	total_min := (to_number(parts[0]) * 60) + to_number(parts[1])
-	total_min > 0
-	print("[check:duration] PASS total_min=", total_min)
+	t != "00:00"
+	print("[check:duration] PASS time=", t)
 }
 error_messages contains msg if {
 	_checklist_ctx
@@ -1177,23 +1224,25 @@ error_messages contains msg if {
 	msg := {"level": "warning", "text": "The submission deadline has passed.", "field_slug": null}
 }
 
+_speakers := object.get(input.entity.children, "speakers", [])
+
 # speakers: at least one speaker submodel must exist
 _at_least_one_speaker if {
-	print("[check:speakers] count=", count(input.entity.children.speakers))
-	count(input.entity.children.speakers) >= 1
+	print("[check:speakers] count=", count(_speakers))
+	count(_speakers) >= 1
 	print("[check:speakers] PASS")
 }
 error_messages contains msg if {
 	_checklist_ctx
 	not _at_least_one_speaker
-	print("[checklist:speakers] FAIL no speakers, count=", count(input.entity.children.speakers))
+	print("[checklist:speakers] FAIL no speakers, count=", count(_speakers))
 	msg := {"level": "warning", "text": "At least one speaker must be added.", "field_slug": "speakers"}
 }
 
 # speakersHaveBio: every speaker must have a non-empty biography
 _all_speakers_have_bio if {
-	print("[check:speakers-bio] checking", count(input.entity.children.speakers), "speakers")
-	every s in input.entity.children.speakers {
+	print("[check:speakers-bio] checking", count(_speakers), "speakers")
+	every s in _speakers {
 		v := s.fields.biography.value
 		v != null
 		count(trim_space(v)) > 0
@@ -1202,7 +1251,7 @@ _all_speakers_have_bio if {
 }
 error_messages contains msg if {
 	_checklist_ctx
-	count(input.entity.children.speakers) > 0
+	count(_speakers) > 0
 	not _all_speakers_have_bio
 	print("[checklist:speakers-bio] FAIL some speakers missing biography")
 	msg := {"level": "warning", "text": "All speakers must have a biography.", "field_slug": "speakers"}
