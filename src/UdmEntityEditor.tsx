@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Tooltip } from 'primereact/tooltip'
@@ -6,6 +6,7 @@ import {
   udmGetEntity,
   udmGetConfigVersion,
   udmValidateEntity,
+  udmValidateTransition,
   udmPatchEntity,
   udmTransitionEntity,
   udmEntityHistory,
@@ -20,6 +21,7 @@ import {
   type WorkflowDefinitionOut,
   type EditHistoryOut,
   type PolicyMessage,
+  type ValidationResult,
   type UDMTypeOut,
   type EntityAutocompleteItem,
 } from './apiUdm'
@@ -63,6 +65,23 @@ const SEVERITY_CLASS: Record<string, string> = {
   success:  styles.severityIconSuccess,
 }
 
+function formatPolicyMessages(msgs: PolicyMessage[], fieldLabelMap?: Record<string, string>): React.ReactNode {
+  return (
+    <ul style={{ margin: 0, padding: '0 0 0 1rem', fontSize: '0.8rem', maxWidth: '280px' }}>
+      {msgs.map((m, i) => {
+        const topSlugs = [...new Set((m.highlight_fields ?? []).map(p => p.split('.')[0]))]
+        const fieldLabels = topSlugs.map(s => fieldLabelMap?.[s] ?? s)
+        return (
+          <li key={i}>
+            {fieldLabels.length > 0 && <strong>{fieldLabels.join(', ')}: </strong>}
+            {m.text}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 interface SeverityIndicatorProps {
   severity: string
   messages: PolicyMessage[]
@@ -96,9 +115,10 @@ interface WorkflowFieldWidgetProps {
   messages?: PolicyMessage[]
   severity?: string
   compact?: boolean
+  fieldLabelMap?: Record<string, string>
 }
 
-function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact }: WorkflowFieldWidgetProps) {
+function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap }: WorkflowFieldWidgetProps) {
   const wfDef = (fd as FieldDefinitionOut & { workflow_definition?: WorkflowDefinitionOut | null }).workflow_definition
   const fv = entity.field_values.find(v => v.field_slug === fd.slug)
   const currentStateName = (fv?.value as string | null) ?? null
@@ -117,6 +137,28 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
     if (t.from_state !== null) return t.from_state === currentStateName
     return true // from_state null, not from_undefined_only → always available
   })
+
+  const [transitionValidations, setTransitionValidations] = useState<Record<string, ValidationResult>>({})
+
+  useEffect(() => {
+    if (availableTransitions.length === 0) { setTransitionValidations({}); return }
+    let cancelled = false
+    Promise.all(
+      availableTransitions.map(t =>
+        udmValidateTransition(entity.id, fd.slug, t.name)
+          .then(result => ({ name: t.name, result }))
+          .catch(() => ({ name: t.name, result: { valid: true, policy_messages: [], errors: {} } as ValidationResult }))
+      )
+    ).then(results => {
+      if (cancelled) return
+      const map: Record<string, ValidationResult> = {}
+      for (const { name, result } of results) map[name] = result
+      setTransitionValidations(map)
+    })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity.id, entity.updated_at, fd.slug])
+
 
   if (compact) {
     const compactHighlight = (() => {
@@ -150,11 +192,21 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
           </span>
           {availableTransitions.map(t => {
             const tLabel = getLang(t.label as Record<string, string>, uiLang) || t.name
+            const validation = transitionValidations[t.name]
+            const isBlocked = validation?.valid === false
+            const blockMsgs = isBlocked ? (validation.policy_messages ?? []) : []
+            const spanId = `wf-trans-${fd.slug.replace(/[^a-z0-9]/gi, '-')}-${t.name.replace(/[^a-z0-9]/gi, '-')}`
             return (
-              <button key={t.name} type="button" className={styles.transitionBtn} disabled={transitioning}
-                onClick={() => void onTransition(fd.slug, t.name)}>
-                {tLabel}
-              </button>
+              <span key={t.name} id={spanId} style={{ display: 'inline-block' }}>
+                {isBlocked && blockMsgs.length > 0 && (
+                  <Tooltip target={`#${spanId}`} position="top">{formatPolicyMessages(blockMsgs, fieldLabelMap)}</Tooltip>
+                )}
+                <button type="button" className={styles.transitionBtn}
+                  disabled={transitioning || isBlocked}
+                  onClick={() => void onTransition(fd.slug, t.name)}>
+                  {tLabel}
+                </button>
+              </span>
             )
           })}
           {availableTransitions.length === 0 && (
@@ -190,16 +242,21 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
         </span>
         {availableTransitions.map(t => {
           const tLabel = getLang(t.label as Record<string, string>, uiLang) || t.name
+          const validation = transitionValidations[t.name]
+          const isBlocked = validation?.valid === false
+          const blockMsgs = isBlocked ? (validation.policy_messages ?? []) : []
+          const spanId = `wf-trans-${fd.slug.replace(/[^a-z0-9]/gi, '-')}-${t.name.replace(/[^a-z0-9]/gi, '-')}`
           return (
-            <button
-              key={t.name}
-              type="button"
-              className={styles.transitionBtn}
-              disabled={transitioning}
-              onClick={() => void onTransition(fd.slug, t.name)}
-            >
-              {tLabel}
-            </button>
+            <span key={t.name} id={spanId} style={{ display: 'inline-block' }}>
+              {isBlocked && blockMsgs.length > 0 && (
+                <Tooltip target={`#${spanId}`} position="top">{formatPolicyMessages(blockMsgs, fieldLabelMap)}</Tooltip>
+              )}
+              <button type="button" className={styles.transitionBtn}
+                disabled={transitioning || isBlocked}
+                onClick={() => void onTransition(fd.slug, t.name)}>
+                {tLabel}
+              </button>
+            </span>
           )
         })}
         {availableTransitions.length === 0 && (
@@ -235,16 +292,17 @@ interface FieldRowProps {
   resetKey?: number
   onEntityRefresh?: (policyMessages?: PolicyMessage[]) => void | Promise<void>
   compact?: boolean
+  fieldLabelMap?: Record<string, string>
 }
 
-function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, uiLang, severity, messages, subFieldSeverities, subFieldMessages, onTransition, transitioning, resetKey, onEntityRefresh, compact }: FieldRowProps) {
+function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, uiLang, severity, messages, subFieldSeverities, subFieldMessages, onTransition, transitioning, resetKey, onEntityRefresh, compact, fieldLabelMap }: FieldRowProps) {
   const [activeLang, setActiveLang] = useState(languages[0] ?? '')
   const isDirty = fd.slug in dirty
   const isSubmodel = fd.data_type === 'submodel_list' || fd.data_type === 'submodel_select'
 
   // Workflow fields are fully managed by WorkflowFieldWidget — no dirty/value editing
   if (fd.data_type === 'workflow') {
-    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} />
+    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} fieldLabelMap={fieldLabelMap} />
   }
   const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
   const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
@@ -541,6 +599,7 @@ export function UdmEntityEditor() {
   const [transitionPopup, setTransitionPopup] = useState<PolicyMessage[]>([])
   const [compact, setCompact] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
+  const [validationPending, setValidationPending] = useState(false)
 
   const fieldSeverities = useMemo(() => {
     const out: Record<string, string> = {}
@@ -601,6 +660,14 @@ export function UdmEntityEditor() {
 
   const uiLang = i18n.language.split('-')[0]
 
+  const fieldLabelMap = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const fd of config?.fields ?? []) {
+      out[fd.slug] = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
+    }
+    return out
+  }, [config?.fields, uiLang])
+
   const load = useCallback(async () => {
     if (!entityId) return
     try {
@@ -645,12 +712,15 @@ export function UdmEntityEditor() {
       return
     }
     if (pendingValidation.current) clearTimeout(pendingValidation.current)
+    setValidationPending(true)
     pendingValidation.current = setTimeout(async () => {
       try {
         const result = await udmValidateEntity(entityId, dirty)
         setPolicyMessages(result.policy_messages ?? [])
       } catch {
         // Validation is best-effort — ignore lock conflicts and network errors
+      } finally {
+        setValidationPending(false)
       }
     }, 600)
     return () => {
@@ -786,6 +856,8 @@ export function UdmEntityEditor() {
   }
 
   const dirtyCount = Object.keys(dirty).length
+  const hasBlockingMessages = policyMessages.some(m => m.level === 'error' || m.level === 'critical')
+  const saveDisabled = saving || dirtyCount === 0 || !editable || validationPending || hasBlockingMessages
 
   // ── Layout parsing ──────────────────────────────────────────────────────────
   const STRUCTURAL = new Set(['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next'])
@@ -844,6 +916,7 @@ export function UdmEntityEditor() {
         subFieldMessages={subFieldMessages[fd.slug]}
         onTransition={handleTransition}
         transitioning={transitioning}
+        fieldLabelMap={fieldLabelMap}
         resetKey={discardCount}
         compact={compact}
         onEntityRefresh={onEntityRefreshCb}
@@ -851,17 +924,40 @@ export function UdmEntityEditor() {
     )
   }
 
+  function renderToolbarSaveButton() {
+    const blockingMsgs = policyMessages.filter(m => m.level === 'error' || m.level === 'critical')
+    const showTooltip = hasBlockingMessages && blockingMsgs.length > 0
+    return (
+      <span id="save-btn-toolbar" style={{ display: 'inline-block' }}>
+        {showTooltip && (
+          <Tooltip target="#save-btn-toolbar" position="top">{formatPolicyMessages(blockingMsgs, fieldLabelMap)}</Tooltip>
+        )}
+        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
+          onClick={() => void handleSave()} disabled={saveDisabled}>
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+      </span>
+    )
+  }
+
   function renderSaveButton(label?: string, variant?: string) {
     const isSuccess = variant === 'success'
+    const blockingMsgs = policyMessages.filter(m => m.level === 'error' || m.level === 'critical')
+    const showTooltip = hasBlockingMessages && blockingMsgs.length > 0
     return (
-      <button
-        type="button"
-        className={`${styles.inlineBtn} ${isSuccess ? styles.inlineBtnSuccess : styles.inlineBtnPrimary}`}
-        onClick={() => void handleSave()}
-        disabled={saving || dirtyCount === 0 || !editable}
-      >
-        {saving ? 'Saving…' : (label || 'Save')}
-      </button>
+      <span id="save-btn-inline" style={{ display: 'inline-block' }}>
+        {showTooltip && (
+          <Tooltip target="#save-btn-inline" position="top">{formatPolicyMessages(blockingMsgs, fieldLabelMap)}</Tooltip>
+        )}
+        <button
+          type="button"
+          className={`${styles.inlineBtn} ${isSuccess ? styles.inlineBtnSuccess : styles.inlineBtnPrimary}`}
+          onClick={() => void handleSave()}
+          disabled={saveDisabled}
+        >
+          {saving ? 'Saving…' : (label || 'Save')}
+        </button>
+      </span>
     )
   }
 
@@ -1136,12 +1232,7 @@ export function UdmEntityEditor() {
             onClick={() => setShowHistory(!showHistory)}>
             {showHistory ? 'Hide History' : 'View History'}
           </button>
-          {!hasSaveInConfig && (
-            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-              onClick={() => void handleSave()} disabled={saving || dirtyCount === 0 || !editable}>
-              {saving ? 'Saving…' : 'Save Changes'}
-            </button>
-          )}
+          {!hasSaveInConfig && renderToolbarSaveButton()}
         </div>
       </div>
 

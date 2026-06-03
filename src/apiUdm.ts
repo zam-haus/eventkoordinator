@@ -213,6 +213,7 @@ export async function udmValidateEntity(
 
 export async function udmValidateTransition(
   entityId: string,
+  field: string,
   transition: string,
 ): Promise<ValidationResult> {
   const token = await getCsrfToken()
@@ -222,7 +223,7 @@ export async function udmValidateTransition(
       'Content-Type': 'application/json',
       ...(token ? { 'X-CSRFToken': token } : {}),
     },
-    body: JSON.stringify({ transition }),
+    body: JSON.stringify({ field, transition }),
     credentials: 'include',
   })
   if (resp.status === 404) throw new Error('Entity not found')
