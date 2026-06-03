@@ -835,7 +835,7 @@
             },
             "type_config": {"renderer": "list"},
             "default": null,
-            "submodel_config_version_id": null,
+            "submodel_config_version_id": "7c8d9e0f-1a2b-4c4d-8e6f-7a8b9c0d1e2f",
             "workflow_definition_id": null,
             "parent_slug": null
           },

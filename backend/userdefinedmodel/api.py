@@ -2128,8 +2128,11 @@ def import_bundle_zip(
         fc_by_id = {str(fc["id"]): fc for fc in raw_bundle.get("field_configs", [])}
         ordered_config_ids = _toposort_configs(fc_by_id)
         config_id_map: dict[str, object] = {}
-        # Track (draft, cfg_id) in topo order so we can publish leaf-first after all are created
+        # Track (draft, cfg_id) in topo order so we can publish leaf-first after all are created.
+        # pending_submodel_refs collects (FieldDefinition, cfg_id) pairs where the bundle used a
+        # FieldConfig UUID as the submodel reference — resolved to a published version after publish.
         drafts_to_publish: list = []
+        pending_submodel_refs: list = []
 
         for cfg_id in ordered_config_ids:
             fc_data = fc_by_id[cfg_id]
@@ -2143,7 +2146,7 @@ def import_bundle_zip(
             if cfg_exists and _is_config_externally_used(cfg.id, parsed_scope_ids, bundle_config_ids):
                 new_cfg, new_draft = _clone_field_config(cfg, fc_data.get("languages", []))
                 config_id_map[cfg_id] = new_cfg
-                _apply_draft_fields(new_draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids)
+                _apply_draft_fields(new_draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids, pending_submodel_refs)
                 drafts_to_publish.append(new_draft)
             elif cfg_exists:
                 cfg.name = fc_data["name"]
@@ -2162,7 +2165,7 @@ def import_bundle_zip(
                 draft.notes = fc_data["draft"].get("notes", "")
                 draft.save(update_fields=["notes"])
                 draft.field_definitions.all().delete()
-                _apply_draft_fields(draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids)
+                _apply_draft_fields(draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids, pending_submodel_refs)
                 config_id_map[cfg_id] = cfg
                 drafts_to_publish.append(draft)
             else:
@@ -2171,12 +2174,27 @@ def import_bundle_zip(
                     fc_data.get("languages", []),
                 )
                 config_id_map[cfg_id] = new_cfg
-                _apply_draft_fields(new_draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids)
+                _apply_draft_fields(new_draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids, pending_submodel_refs)
                 drafts_to_publish.append(new_draft)
 
-        # Publish drafts leaf-first (topo order matches: submodels before parents)
+        # Publish drafts leaf-first (topo order: submodels before their parents)
         for draft in drafts_to_publish:
             draft.publish()
+
+        # Resolve submodel_config references that were deferred because the submodel
+        # config's published version didn't exist when the field definitions were created.
+        for fd, cfg_id in pending_submodel_refs:
+            sub_cfg = config_id_map.get(cfg_id)
+            if not sub_cfg:
+                continue
+            try:
+                published_version = ConfigVersion.objects.get(
+                    config=sub_cfg, status=ConfigVersion.Status.PUBLISHED
+                )
+                fd.submodel_config = published_version
+                fd.save(update_fields=["submodel_config"])
+            except ConfigVersion.DoesNotExist:
+                pass
 
         # ── Step 3: Policies from ZIP files ───────────────────────────────────
         policy_slug_map: dict[str, object] = {}
@@ -2437,19 +2455,12 @@ def _toposort_configs(fc_by_id: dict) -> list[str]:
         if fc_data:
             for fd in fc_data.get("draft", {}).get("fields", []):
                 sub_id = fd.get("submodel_config_version_id")
-                if sub_id:
-                    # Find which config owns that version
-                    for other_id, other_data in fc_by_id.items():
-                        # We can't know exactly which config version without querying,
-                        # but we approximate: if the submodel_config_version_id matches
-                        # a config id in our bundle, that's the dependency.
-                        # The bundle stores config IDs, but fields store version IDs.
-                        # We need to resolve: find the config whose draft or published
-                        # version matches sub_id.
-                        pass
+                if sub_id and str(sub_id) in fc_by_id:
+                    # submodel_config_version_id is a FieldConfig UUID in this bundle
+                    # — visit the dependency first so it ends up earlier in the list.
+                    visit(str(sub_id))
         result.append(cfg_id)
 
-    # Simple approach: just process all configs; DB resolution handles version→config mapping
     for cfg_id in fc_by_id:
         visit(cfg_id)
     return result
@@ -2461,11 +2472,17 @@ def _apply_draft_fields(
     workflow_id_map: dict,
     config_id_map: dict,
     bundle_config_ids: set,
+    pending_submodel_refs: list | None = None,
 ):
     """Populate a ConfigVersion's field_definitions from bundle draft data.
 
     Remaps workflow_definition_id and submodel_config_version_id through
     the id maps built during import so cloned/new objects are referenced correctly.
+
+    When submodel_config_version_id in the bundle is a FieldConfig UUID (i.e. it
+    exists as a key in config_id_map), the field is created with submodel_config=None
+    and a (FieldDefinition, cfg_id) tuple is appended to pending_submodel_refs for
+    the caller to resolve after all drafts have been published.
     """
     from userdefinedmodel.models import (
         ConfigVersion, FieldDefinition, FieldDefinitionTranslation,
@@ -2482,12 +2499,20 @@ def _apply_draft_fields(
         else:
             resolved_wf_id = None
 
-        # Remap submodel config version: find the new draft version for the (possibly cloned) config
+        # Remap submodel config version.
+        # The bundle may store either a real ConfigVersion UUID or a FieldConfig UUID
+        # (the latter when the submodel config is also part of this bundle and its
+        # published version doesn't exist yet at draft-creation time).
         sub_ver_id = fd_data.get("submodel_config_version_id")
         resolved_sub_ver = None
+        deferred_cfg_id = None
         if sub_ver_id:
-            # Try to find which config in our map owns this version
-            resolved_sub_ver = _resolve_submodel_version(str(sub_ver_id), config_id_map, bundle_config_ids)
+            sub_ver_id_str = str(sub_ver_id)
+            if sub_ver_id_str in config_id_map:
+                # FieldConfig UUID — defer to post-publish fixup
+                deferred_cfg_id = sub_ver_id_str
+            else:
+                resolved_sub_ver = _resolve_submodel_version(sub_ver_id_str, config_id_map, bundle_config_ids)
 
         wf_def = None
         if resolved_wf_id:
@@ -2512,6 +2537,9 @@ def _apply_draft_fields(
         for lang, label in (fd_data.get("labels") or {}).items():
             help_text = (fd_data.get("help_texts") or {}).get(lang, "")
             FieldDefinitionTranslation.objects.create(field=fd, language=lang, label=label, help_text=help_text)
+
+        if deferred_cfg_id is not None and pending_submodel_refs is not None:
+            pending_submodel_refs.append((fd, deferred_cfg_id))
 
         default = fd_data.get("default")
         if default is not None:
