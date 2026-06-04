@@ -298,7 +298,7 @@ class FieldDefinition(MetaBase):
     is_preview = models.BooleanField(default=False)
     submodel_config = models.ForeignKey(
         ConfigVersion,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="used_as_submodel",
