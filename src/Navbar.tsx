@@ -172,6 +172,11 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     })
   }
   navItems.push(navLinkItem(
+    'UDM Dashboard',
+    '/udm-dashboard',
+    location.pathname.startsWith('/udm-dashboard'),
+  ))
+  navItems.push(navLinkItem(
     'UDM Entities',
     '/udm-entity',
     location.pathname.startsWith('/udm-entity'),

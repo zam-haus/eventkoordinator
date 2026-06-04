@@ -1251,6 +1251,37 @@ def remove_policy(request, type_id: uuid.UUID, slug: str):
 
 # ─── Entities ─────────────────────────────────────────────────────────────────
 
+@api.get("/entities/", response=list[EntityOut], auth=django_auth)
+def list_entities(request, type_id: uuid.UUID, page_size: int = 200):
+    """List entities for a single UDM type, filtered to those the user may view.
+    Field values are reduced to the viewable set per entity (policy-enforced).
+    """
+    from userdefinedmodel.models import UserDefinedModelEntity
+    from userdefinedmodel.engine import evaluate_policy
+    _prefetch = [
+        "field_values__field",
+        "config_version__field_definitions",
+        "config_version__config__languages",
+        "user_defined_model_type__type_policies__policy",
+    ]
+    qs = (
+        UserDefinedModelEntity.objects
+        .select_related("config_version__config", "user_defined_model_type")
+        .prefetch_related(*_prefetch)
+        .filter(user_defined_model_type_id=type_id)
+    )
+    results = []
+    cap = min(max(1, page_size), 200)
+    for entity in qs.iterator(chunk_size=200):
+        policy = evaluate_policy(entity, request.user, "view")
+        if not policy.get("allow", False):
+            continue
+        results.append(_entity_out_for_user(entity, request.user, view_policy=policy))
+        if len(results) >= cap:
+            break
+    return results
+
+
 @api.post("/entities/", response={201: EntityOut}, auth=django_auth)
 def create_entity(request, payload: EntityCreateIn, validate: bool = False):
     from userdefinedmodel.models import UserDefinedModelType, UserDefinedModelEntity, ConfigVersion
