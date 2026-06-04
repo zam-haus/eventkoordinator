@@ -67,42 +67,47 @@ dashboard_columns contains col if {
 }
 
 # ── Review completeness meter ──────────────────────────────────────────────────
-# Groups reviews by their requested-reviewer-groups / requested-reviewer-users
-# slot key, takes the worst vote per slot, and plots the distribution.
+# One slot per requested user/group; best vote wins for groups.
+# Mirrors the accept-gate logic in proposals.rego so the meter is consistent
+# with what is required for acceptance.
+
+# Module-level null-safe accessors (if/else only valid at rule scope, not in a query body).
+_dash_reviewer_users  := v if { v := input.entity.fields["requested-reviewer-users"].value;  v != null } else := []
+_dash_reviewer_groups := v if { v := input.entity.fields["requested-reviewer-groups"].value; v != null } else := []
 
 dashboard_columns contains col if {
 	input.action == "view"
-	reviews := object.get(input.entity.children, "reviews", [])
-	count(reviews) > 0
+	reviews         := object.get(input.entity.children, "reviews", [])
+	reviewer_users  := _dash_reviewer_users
+	reviewer_groups := _dash_reviewer_groups
 
-	# Higher severity = worse outcome
-	sev := {"accept": 0, "revise": 1, "open": 2, "reject": 3}
+	total_slots := count(reviewer_users) + count(reviewer_groups)
+	total_slots > 0
 
-	# Stable string key per requested-reviewer slot
-	slots := {k |
-		some r in reviews
-		g := object.get(object.get(r.fields, "requested-reviewer-groups", {}), "value", null)
-		u := object.get(object.get(r.fields, "requested-reviewer-users",  {}), "value", null)
-		k := sprintf("g:%v|u:%v", [g, u])
-	}
+	# Sets of reviewer IDs that have cast each vote
+	accepting_ids := {r.fields.author.value.id | some r in reviews; r.fields.vote.value == "accept"}
+	revising_ids  := {r.fields.author.value.id | some r in reviews; r.fields.vote.value == "revise"}
+	rejecting_ids := {r.fields.author.value.id | some r in reviews; r.fields.vote.value == "reject"}
 
-	# Per slot: worst (max) severity across all votes cast for that slot
-	slot_worst := {k: ws |
-		some k in slots
-		ws := max({s |
-			some r in reviews
-			g := object.get(object.get(r.fields, "requested-reviewer-groups", {}), "value", null)
-			u := object.get(object.get(r.fields, "requested-reviewer-users",  {}), "value", null)
-			sprintf("g:%v|u:%v", [g, u]) == k
-			v := object.get(object.get(r.fields, "vote", {}), "value", null)
-			s := object.get(sev, v, 2)
-		})
-	}
+	# User slots: direct match by ID
+	u_accepted := count({u.id | some u in reviewer_users; u.id in accepting_ids})
+	u_revised  := count({u.id | some u in reviewer_users; u.id in revising_ids})
+	u_rejected := count({u.id | some u in reviewer_users; u.id in rejecting_ids})
+	u_pending  := count(reviewer_users) - u_accepted - u_revised - u_rejected
 
-	accepted := count({k | some k in slots; slot_worst[k] == 0})
-	revised  := count({k | some k in slots; slot_worst[k] == 1})
-	pending  := count({k | some k in slots; slot_worst[k] == 2})
-	rejected := count({k | some k in slots; slot_worst[k] == 3})
+	# Group slots: best-vote-wins using set differences to avoid negation in comprehensions
+	all_group_ids   := {g.id | some g in reviewer_groups}
+	g_accept_ids    := {g.id | some g in reviewer_groups; some m in g.members; m.id in accepting_ids}
+	g_no_accept_ids := all_group_ids - g_accept_ids
+	g_revise_ids    := {g.id | some g in reviewer_groups; g.id in g_no_accept_ids; some m in g.members; m.id in revising_ids}
+	g_no_acrev_ids  := g_no_accept_ids - g_revise_ids
+	g_reject_ids    := {g.id | some g in reviewer_groups; g.id in g_no_acrev_ids; some m in g.members; m.id in rejecting_ids}
+	g_pending_cnt   := count(g_no_acrev_ids) - count(g_reject_ids)
+
+	accepted := u_accepted + count(g_accept_ids)
+	revised  := u_revised  + count(g_revise_ids)
+	rejected := u_rejected + count(g_reject_ids)
+	pending  := u_pending  + g_pending_cnt
 
 	col := {
 		"key":      "completeness",
