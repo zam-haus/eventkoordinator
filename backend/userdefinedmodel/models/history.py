@@ -38,6 +38,8 @@ class FieldEdit(MetaBase):
         NODE_REMOVED = "node_removed"
         NODE_REORDERED = "node_reordered"
         NODE_TRANSITION = "node_transition"
+        POLICY_PRE_ACTION = "policy_pre_action"
+        POLICY_POST_ACTION = "policy_post_action"
 
     group = models.ForeignKey(EditGroup, on_delete=models.CASCADE, related_name="field_edits")
     change_kind = models.CharField(

@@ -508,6 +508,66 @@ function TransitionMessagePopup({ messages, onClose }: { messages: PolicyMessage
   )
 }
 
+// ── History panel helpers ─────────────────────────────────────────────────────
+
+type PolicyActionValue = Record<string, unknown>
+
+function renderPolicyAction(kind: string, newValue: unknown): React.ReactNode {
+  const phase = kind === 'policy_pre_action' ? 'pre' : 'post'
+  const act = newValue as PolicyActionValue | null
+
+  const phaseBadge = (
+    <span style={{
+      fontFamily: 'monospace', fontSize: '0.72rem',
+      background: '#e8f0fe', borderRadius: '3px',
+      padding: '0.05rem 0.3rem', marginRight: '0.35rem', color: '#1a56db',
+    }}>
+      {phase}
+    </span>
+  )
+
+  if (!act) {
+    return <span style={{ color: '#777' }}>{phaseBadge}⚙ system action</span>
+  }
+
+  const error = act._error as string | undefined
+  const type = act.type as string
+  let detail: React.ReactNode
+
+  switch (type) {
+    case 'send_notification': {
+      const dest = act.template_name || act.subject || '—'
+      const to = act.recipient_field
+        ? ` → ${act.recipient_field}`
+        : (act.extra_recipients as string[] | undefined)?.length
+          ? ` → ${(act.extra_recipients as string[]).join(', ')}`
+          : ''
+      detail = <>send notification · <em>{dest as string}</em>{to}</>
+      break
+    }
+    case 'set_field_value':
+      detail = <>set <strong>{act.field_path as string}</strong> = {JSON.stringify(act.value)}</>
+      break
+    case 'trigger_transition': {
+      const scope = act.target_scope !== 'self' ? ` (${act.target_scope})` : ''
+      detail = <>trigger <strong>{act.field_slug as string}</strong> / <em>{act.transition_name as string}</em>{scope}</>
+      break
+    }
+    case 'create_submodel_item':
+      detail = <>create item in <strong>{act.field_slug as string}</strong></>
+      break
+    default:
+      detail = <>{type}</>
+  }
+
+  return (
+    <span style={{ color: error ? '#c0392b' : 'inherit' }}>
+      {phaseBadge}⚙ {detail}
+      {error ? <span style={{ marginLeft: '0.5rem' }}>✗ {error}</span> : null}
+    </span>
+  )
+}
+
 // ── History panel ─────────────────────────────────────────────────────────────
 
 function HistoryPanel({ entityId }: { entityId: string }) {
@@ -568,6 +628,8 @@ function HistoryPanel({ entityId }: { entityId: string }) {
                   {' → '}
                   {(edit.new_value as Record<string, unknown> | null)?.sort_order as number}
                 </span>
+              ) : (edit.change_kind === 'policy_pre_action' || edit.change_kind === 'policy_post_action') ? (
+                renderPolicyAction(edit.change_kind, edit.new_value)
               ) : (
                 <span>{edit.change_kind}</span>
               )}

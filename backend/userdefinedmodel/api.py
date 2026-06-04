@@ -1571,13 +1571,18 @@ def entity_history(request, entity_id: uuid.UUID, page: int = 1, page_size: int 
             if fe.field:
                 trans = fe.field.translations.first()
                 label = trans.label if trans else slug
+            from userdefinedmodel.models.history import FieldEdit
+            is_policy_action = fe.change_kind in (
+                FieldEdit.ChangeKind.POLICY_PRE_ACTION,
+                FieldEdit.ChangeKind.POLICY_POST_ACTION,
+            )
             edits.append(FieldEditOut(
                 change_kind=fe.change_kind,
                 field_slug=slug,
                 field_label=label,
                 language=fe.language,
                 old_value=fe.old_value,
-                new_value=fe.new_value,
+                new_value=fe.new_value if (not is_policy_action or request.user.is_superuser) else None,
                 old_file_name=fe.old_attachment.original_name if fe.old_attachment else None,
                 new_file_name=fe.new_attachment.original_name if fe.new_attachment else None,
                 affected_node_id=fe.affected_node_id,

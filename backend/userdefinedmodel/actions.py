@@ -229,6 +229,64 @@ def policy_action(type_name: str, *, schema: type[BaseModel]) -> Callable:
 
 # ─── Dispatcher ───────────────────────────────────────────────────────────────
 
+def _action_history_value(raw: dict, error: Exception | None = None) -> dict:
+    """Build the new_value dict written to FieldEdit for a policy action.
+
+    Large inline body fields are stripped; everything else is kept so the
+    history record is useful for auditing without consuming excessive space.
+    """
+    STRIP_KEYS = {"body_text", "body_html"}
+    value = {k: v for k, v in raw.items() if k not in STRIP_KEYS}
+    if error is not None:
+        value["_error"] = str(error)
+    return value
+
+
+def _ensure_edit_group(ctx: ActionContext):
+    """Return the edit_group on *ctx*, creating one lazily if absent.
+
+    Returns the (possibly new) EditGroup.  The returned group is **not**
+    written back to *ctx* — callers use the return value directly.
+    """
+    if ctx.edit_group is not None:
+        return ctx.edit_group
+
+    from userdefinedmodel.models.history import EditGroup
+
+    try:
+        root_entity = ctx.node.userdefinedmodelentity
+    except Exception:
+        root_entity = ctx.node.get_root()
+
+    return EditGroup.objects.create(
+        node=ctx.node,
+        root_entity=root_entity,
+        saved_by=ctx.user,
+    )
+
+
+def _log_action(
+    edit_group,
+    ctx: ActionContext,
+    raw: dict,
+    error: Exception | None = None,
+) -> None:
+    """Write a POLICY_PRE_ACTION or POLICY_POST_ACTION FieldEdit row."""
+    from userdefinedmodel.models.history import FieldEdit
+
+    kind = (
+        FieldEdit.ChangeKind.POLICY_PRE_ACTION
+        if ctx.phase == "pre"
+        else FieldEdit.ChangeKind.POLICY_POST_ACTION
+    )
+    FieldEdit.objects.create(
+        group=edit_group,
+        change_kind=kind,
+        affected_node=ctx.node,
+        new_value=_action_history_value(raw, error=error),
+    )
+
+
 def dispatch_actions(actions: list[dict], ctx: ActionContext) -> None:
     """Dispatch all actions whose phase matches ``ctx.phase``.
 
@@ -239,8 +297,12 @@ def dispatch_actions(actions: list[dict], ctx: ActionContext) -> None:
     fully supported — the static ``PolicyActionOutput`` union is for
     documentation purposes only.
 
-    Unknown type names are logged and skipped — they could come from a newer
-    policy deployed before the handler app is updated.
+    Each successfully dispatched action — and each action that fails with
+    ``on_error="log"`` — is written to the edit history as a
+    ``POLICY_PRE_ACTION`` or ``POLICY_POST_ACTION`` FieldEdit row on the
+    same EditGroup as the triggering event.  Failed actions record the error
+    message in ``new_value._error``.  Unknown action types are logged and
+    skipped without a history entry.
 
     Per-action ``on_error`` (if present in the dict, default ``"log"``)
     controls failure handling: ``"log"`` logs and continues; ``"raise"``
@@ -263,9 +325,24 @@ def dispatch_actions(actions: list[dict], ctx: ActionContext) -> None:
         schema_cls, handler = entry
         on_error = raw.get("on_error", "log")
         try:
+            edit_group = _ensure_edit_group(ctx)
+        except Exception as eg_exc:
+            logger.debug(
+                "PolicyAction %r on node %s: skipping history logging — %s",
+                type_name,
+                ctx.node.id,
+                eg_exc,
+            )
+            edit_group = None
+
+        try:
             action = schema_cls.model_validate(raw)
             handler(action, ctx)
+            if edit_group is not None:
+                _log_action(edit_group, ctx, raw)
         except Exception as exc:
+            if edit_group is not None:
+                _log_action(edit_group, ctx, raw, error=exc)
             if on_error == "raise":
                 raise
             elif on_error == "log":
