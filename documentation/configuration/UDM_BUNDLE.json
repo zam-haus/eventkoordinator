@@ -1365,8 +1365,8 @@
         {
           "name": "draft",
           "label": {
-            "en": "Draft2",
-            "de": "Foo"
+            "en": "Draft",
+            "de": "Entwurf"
           },
           "is_initial": true,
           "position_x": 60.0,
@@ -1377,7 +1377,8 @@
         {
           "name": "submitted",
           "label": {
-            "en": "Submitted"
+            "en": "Submitted",
+            "de": "Eingereicht"
           },
           "is_initial": false,
           "position_x": 380.0,
@@ -1388,7 +1389,8 @@
         {
           "name": "revise",
           "label": {
-            "en": "Revise"
+            "en": "Revise",
+            "de": "Überarbeitung"
           },
           "is_initial": false,
           "position_x": 380.0,
@@ -1399,7 +1401,8 @@
         {
           "name": "accepted",
           "label": {
-            "en": "Accepted"
+            "en": "Accepted",
+            "de": "Akzeptiert"
           },
           "is_initial": false,
           "position_x": 700.0,
@@ -1410,7 +1413,8 @@
         {
           "name": "rejected",
           "label": {
-            "en": "Rejected"
+            "en": "Rejected",
+            "de": "Abgelehnt"
           },
           "is_initial": false,
           "position_x": 694.5086780555433,
@@ -1423,7 +1427,8 @@
         {
           "name": "submit",
           "label": {
-            "en": "Submit"
+            "en": "Submit",
+            "de": "Einreichen"
           },
           "from_state": "draft",
           "from_undefined_only": false,
@@ -1434,7 +1439,8 @@
         {
           "name": "allow-revision",
           "label": {
-            "en": "Allow Revision"
+            "en": "Allow Revision",
+            "de": "Überarbeitung erlauben"
           },
           "from_state": "rejected",
           "from_undefined_only": false,
@@ -1445,7 +1451,8 @@
         {
           "name": "accept",
           "label": {
-            "en": "Accept"
+            "en": "Accept",
+            "de": "Akzeptieren"
           },
           "from_state": "submitted",
           "from_undefined_only": false,
@@ -1456,7 +1463,8 @@
         {
           "name": "reject",
           "label": {
-            "en": "Reject"
+            "en": "Reject",
+            "de": "Ablehnen"
           },
           "from_state": "submitted",
           "from_undefined_only": false,
@@ -1467,7 +1475,8 @@
         {
           "name": "request-revision",
           "label": {
-            "en": "Request Revision"
+            "en": "Request Revision",
+            "de": "Überarbeitung anfordern"
           },
           "from_state": "submitted",
           "from_undefined_only": false,
@@ -1478,7 +1487,8 @@
         {
           "name": "resubmit",
           "label": {
-            "en": "Resubmit"
+            "en": "Resubmit",
+            "de": "Erneut einreichen"
           },
           "from_state": "revise",
           "from_undefined_only": false,
