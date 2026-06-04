@@ -2,7 +2,7 @@ from django.db import models, transaction
 from django.db.models import Q, UniqueConstraint
 from django.utils.timezone import now
 
-from userdefinedmodel.basemodels import MetaBase, PolymorphicMetaBase
+from userdefinedmodel.basemodels import MetaBase
 
 
 class WorkflowDefinition(MetaBase):
@@ -179,53 +179,3 @@ class WorkflowTransitionTranslation(MetaBase):
         return f"{self.transition} [{self.language}]"
 
 
-class TransitionAction(PolymorphicMetaBase):
-    class Phase(models.TextChoices):
-        PRE = "pre"
-        POST = "post"
-
-    transition = models.ForeignKey(
-        WorkflowTransition, on_delete=models.CASCADE, related_name="actions"
-    )
-    phase = models.CharField(max_length=4, choices=Phase)
-    sort_order = models.PositiveSmallIntegerField(default=0)
-
-    class Meta:
-        ordering = ["sort_order", "id"]
-
-    def execute(self, node, triggered_by) -> None:
-        raise NotImplementedError
-
-
-class SendNotificationAction(TransitionAction):
-    # Recipients stored as JSON list of config dicts
-    recipients_config = models.JSONField(default=list)
-    subject_template = models.TextField(blank=True)
-    body_template = models.TextField(blank=True)
-
-    def execute(self, node, triggered_by) -> None:
-        pass  # Email sending via mailqueue or similar
-
-
-class SetFieldValueAction(TransitionAction):
-    field_slug = models.CharField(max_length=80)
-    value_json = models.JSONField(null=True, blank=True)
-
-    def execute(self, node, triggered_by) -> None:
-        field_def = node.config_version.field_definitions.filter(slug=self.field_slug).first()
-        if field_def:
-            fv, _ = node.field_values.get_or_create(field=field_def, language="")
-            fv.set_value(self.value_json, field=field_def)
-            fv.save()
-
-
-class TriggerChildTransitionAction(TransitionAction):
-    child_transition_name = models.CharField(max_length=100)
-
-    def execute(self, node, triggered_by) -> None:
-        from userdefinedmodel.engine import execute_transition
-        for child in node.children.all():
-            try:
-                execute_transition(child, self.child_transition_name, triggered_by)
-            except Exception:
-                pass  # Post-action failures are logged but don't roll back

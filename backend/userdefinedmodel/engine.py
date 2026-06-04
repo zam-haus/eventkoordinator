@@ -180,23 +180,27 @@ def get_udm_type_for_node(node: "UserDefinedModelEntityNode"):
         return root.user_defined_model_type if root else None
 
 
-def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", action: str, **kwargs) -> dict:
-    """Evaluate all policies for node's UDMType; return PolicyOutput dict.
+def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", action: str, **kwargs) -> "PolicyEvaluationOutput":
+    """Evaluate all policies for node's UDMType; return a validated PolicyEvaluationOutput.
 
     Default-deny: if the node has no UDMType, or its type has no policies attached,
     nothing is permitted and no fields are exposed. Access must be granted by an
     explicit policy clause.
     """
+    from userdefinedmodel.actions import PolicyEvaluationOutput
+
+    _deny = PolicyEvaluationOutput(allow=False, messages=[], viewable_fields=[], editable_fields=[])
+
     udm_type = get_udm_type_for_node(node)
     if udm_type is None:
-        return {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
+        return _deny
 
     from userdefinedmodel.models import UserDefinedModelTypePolicy
     type_policies = list(
         udm_type.type_policies.select_related("policy").order_by("sort_order")
     )
     if not type_policies:
-        return {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
+        return _deny
 
     try:
         import regorus
@@ -243,6 +247,7 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
         editable_fields = _eval_list("data.udm.editable_fields", default=[])
         dashboard_columns_raw = _eval_list("data.udm.dashboard_columns", default=[])
         dashboard_columns = [c for c in (dashboard_columns_raw or []) if isinstance(c, dict)]
+        raw_actions = _eval_list("data.udm.actions", default=[])
 
         if logger.isEnabledFor(logging.DEBUG):
             try:
@@ -255,22 +260,22 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
         if prints and logger.isEnabledFor(logging.DEBUG):
             logger.debug("policy prints node=%s action=%s:\n%s", node.id, action, prints)
 
-        result = {
-            "allow": allow,
-            "messages": messages,
-            "viewable_fields": viewable_fields,
-            "editable_fields": editable_fields,
-            "dashboard_columns": dashboard_columns,
-        }
         logger.debug(
-            "policy result node=%s action=%s allow=%s messages=%d viewable=%s editable=%s",
+            "policy result node=%s action=%s allow=%s messages=%d viewable=%s editable=%s actions=%d",
             node.id, action, allow, len(messages),
-            viewable_fields, editable_fields,
+            viewable_fields, editable_fields, len(raw_actions or []),
         )
-        return result
+        return PolicyEvaluationOutput(
+            allow=allow,
+            messages=messages,
+            viewable_fields=viewable_fields,
+            editable_fields=editable_fields or [],
+            dashboard_columns=dashboard_columns,
+            actions=raw_actions or [],
+        )
     except Exception as exc:
         logger.exception("Policy evaluation failed: %s", exc)
-        return {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
+        return _deny
 
 
 def evaluate_type_public_fields(udm_type, user=None) -> tuple[dict, dict]:
@@ -345,11 +350,24 @@ class TransitionError(Exception):
         self.details = details or {}
 
 
-def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name: str, user: "OpenIDUser", edit_group=None) -> list:
+def execute_transition(
+    node: "UserDefinedModelEntityNode",
+    field_slug: str,
+    name: str,
+    user: "OpenIDUser",
+    edit_group=None,
+    _visited: frozenset = frozenset(),
+    _depth: int = 0,
+) -> list:
     """
     Execute a named workflow transition on the specified workflow field of `node`.
     Must be called inside an existing transaction.atomic() with the root lock held.
+
+    ``_visited`` and ``_depth`` are internal cycle-guard parameters threaded by
+    :class:`~userdefinedmodel.actions.TriggerTransitionOutput` handlers; callers
+    should not set them.
     """
+    from userdefinedmodel.actions import ActionContext, dispatch_actions
     from userdefinedmodel.models import WorkflowTransition, FieldDefinition, FieldValue
     from userdefinedmodel.models.history import EditGroup, FieldEdit
 
@@ -377,7 +395,6 @@ def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name
 
     # Check from_state / from_undefined_only
     if transition.from_undefined_only:
-        # Only allowed when current state is undefined (null)
         if current_state is not None:
             raise TransitionError(
                 f"Transition '{name}' only allowed from undefined state, but field '{field_slug}' is in '{current_state.name}'.",
@@ -390,13 +407,12 @@ def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name
                 f"Field '{field_slug}' is in state '{current_name}', but transition '{name}' requires '{transition.from_state.name}'.",
                 http_status=409,
             )
-    # else: from_state is None and not from_undefined_only → allowed from any state (including undefined)
 
     # Evaluate policy — pass field slug and node id so Rego can see which workflow
     # is transitioning and (for child nodes) which specific node is affected.
     output = evaluate_policy(node, user, "transition", transition=name, field=field_slug, node_id=str(node.id))
-    if not output["allow"]:
-        msgs = output.get("messages") or []
+    if not output.allow:
+        msgs = output.messages
         if msgs:
             raise TransitionError(
                 f"Policy denied transition '{name}'.",
@@ -405,11 +421,29 @@ def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name
             )
         raise TransitionError(f"Policy denied transition '{name}'.", http_status=403)
 
-    # Execute PRE-phase actions
-    from userdefinedmodel.models.workflow import TransitionAction
-    pre_actions = list(transition.actions.filter(phase=TransitionAction.Phase.PRE).order_by("sort_order"))
-    for action in pre_actions:
-        action.get_real_instance().execute(node, user)
+    # Build shared context for pre/post dispatch
+    if edit_group is None:
+        root_entity = None
+        try:
+            root_entity = node.userdefinedmodelentity
+        except Exception:
+            root_entity = node.get_root()
+        edit_group = EditGroup.objects.create(
+            node=node,
+            root_entity=root_entity,
+            saved_by=user,
+        )
+
+    pre_ctx = ActionContext(
+        node=node,
+        user=user,
+        trigger="transition",
+        phase="pre",
+        edit_group=edit_group,
+        visited_transitions=_visited,
+        depth=_depth,
+    )
+    dispatch_actions(output.actions, pre_ctx)
 
     # Subtree validation (save-rule floor)
     _validate_subtree(node)
@@ -421,19 +455,7 @@ def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name
     fv.value_workflow_state = transition.to_state
     fv.save(update_fields=["value_workflow_state"])
 
-    # Record transition in history (reuse a caller-supplied group or create one)
-    if edit_group is None:
-        root_entity = None
-        try:
-            root_entity = node.userdefinedmodelentity
-        except Exception:
-            root = node.get_root()
-            root_entity = root
-        edit_group = EditGroup.objects.create(
-            node=node,
-            root_entity=root_entity,
-            saved_by=user,
-        )
+    # Record transition in history
     FieldEdit.objects.create(
         group=edit_group,
         change_kind=FieldEdit.ChangeKind.NODE_TRANSITION,
@@ -443,15 +465,10 @@ def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name
         new_value={"state": transition.to_state.name},
     )
 
-    # Execute POST-phase actions (failures logged, don't roll back)
-    post_actions = list(transition.actions.filter(phase=TransitionAction.Phase.POST).order_by("sort_order"))
-    for action in post_actions:
-        try:
-            action.get_real_instance().execute(node, user)
-        except Exception as exc:
-            logger.warning("Post-transition action %s failed: %s", action.pk, exc)
+    post_ctx = pre_ctx.model_copy(update={"phase": "post"})
+    dispatch_actions(output.actions, post_ctx)
 
-    return output.get("messages") or []
+    return output.messages
 
 
 def _validate_subtree(node: "UserDefinedModelEntityNode") -> None:

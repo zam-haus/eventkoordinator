@@ -1263,9 +1263,9 @@ class EngineDenyByDefaultTests(BaseAPITest):
         # clause, so allow is undefined and must evaluate to False.
         entity, *_ = make_entity_with_type(policy_source=REGO_OWNER_EDIT)
         non_staff = UserFactory()
-        self.assertFalse(evaluate_policy(entity, non_staff, "delete")["allow"])
+        self.assertFalse(evaluate_policy(entity, non_staff, "delete").allow)
         # Staff passes the positive clause.
-        self.assertTrue(evaluate_policy(entity, self.staff, "delete")["allow"])
+        self.assertTrue(evaluate_policy(entity, self.staff, "delete").allow)
 
     def test_no_policy_denies_every_action(self):
         from userdefinedmodel.engine import evaluate_policy
@@ -1273,8 +1273,8 @@ class EngineDenyByDefaultTests(BaseAPITest):
         entity, *_ = make_entity_with_type(policy_source=None)
         for action in ("view", "browse", "save", "delete", "transition"):
             out = evaluate_policy(entity, self.user, action)
-            self.assertFalse(out["allow"], f"{action} should be denied")
-            self.assertEqual(out["viewable_fields"], [])
+            self.assertFalse(out.allow, f"{action} should be denied")
+            self.assertEqual(out.viewable_fields, [])
 
 
 class PermissionBasedAdminTests(BaseAPITest):

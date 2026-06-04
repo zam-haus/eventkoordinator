@@ -20,10 +20,6 @@ from userdefinedmodel.models import (
     WorkflowStateTranslation,
     WorkflowTransition,
     WorkflowTransitionTranslation,
-    TransitionAction,
-    SendNotificationAction,
-    SetFieldValueAction,
-    TriggerChildTransitionAction,
     Policy,
     UserDefinedModelTypePolicy,
     UserDefinedModelType,
@@ -315,27 +311,6 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
     inlines = [WorkflowVersionInline]
 
 
-class TransitionActionInline(StackedPolymorphicInline):
-    model = TransitionAction
-
-    class SendNotificationActionInline(StackedPolymorphicInline.Child):
-        model = SendNotificationAction
-        fields = ("phase", "sort_order", "recipients_config", "subject_template", "body_template")
-
-    class SetFieldValueActionInline(StackedPolymorphicInline.Child):
-        model = SetFieldValueAction
-        fields = ("phase", "sort_order", "field_slug", "value_json")
-
-    class TriggerChildTransitionActionInline(StackedPolymorphicInline.Child):
-        model = TriggerChildTransitionAction
-        fields = ("phase", "sort_order", "child_transition_name")
-
-    child_inlines = [
-        SendNotificationActionInline,
-        SetFieldValueActionInline,
-        TriggerChildTransitionActionInline,
-    ]
-
 
 @admin.register(WorkflowVersion)
 class WorkflowVersionAdmin(admin.ModelAdmin):
@@ -377,11 +352,11 @@ class WorkflowStateAdmin(admin.ModelAdmin):
 
 
 @admin.register(WorkflowTransition)
-class WorkflowTransitionAdmin(PolymorphicInlineSupportMixin, admin.ModelAdmin):
+class WorkflowTransitionAdmin(admin.ModelAdmin):
     list_display = ("name", "version", "from_state", "to_state")
     list_filter = ("version__workflow",)
     search_fields = ("name", "version__workflow__name")
-    inlines = [WorkflowTransitionTranslationInline, TransitionActionInline]
+    inlines = [WorkflowTransitionTranslationInline]
 
 
 # ─── Policy ──────────────────────────────────────────────────────────────────

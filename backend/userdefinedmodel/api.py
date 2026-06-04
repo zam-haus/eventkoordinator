@@ -123,17 +123,17 @@ def _policy_allows(entity, user, action: str, **kwargs) -> bool:
     not affirmatively granted by a policy clause, evaluates to False.
     """
     from userdefinedmodel.engine import evaluate_policy
-    return bool(evaluate_policy(entity, user, action, **kwargs).get("allow", False))
+    return evaluate_policy(entity, user, action, **kwargs).allow
 
 
-def _entity_out_for_user(entity, user, policy_messages: list | None = None, view_policy: dict | None = None) -> EntityOut:
+def _entity_out_for_user(entity, user, policy_messages: list | None = None, view_policy=None) -> EntityOut:
     from userdefinedmodel.models import UserDefinedModelEntity
     from userdefinedmodel.writer import serialize_node
     from userdefinedmodel.engine import evaluate_policy
     data = serialize_node(entity)
     policy = view_policy if view_policy is not None else evaluate_policy(entity, user, "view")
-    viewable = policy.get("viewable_fields")   # None = no restriction
-    editable = policy.get("editable_fields") or []
+    viewable = policy.viewable_fields   # None = no restriction
+    editable = policy.editable_fields or []
     # viewable_fields from the root-entity policy are top-level field slugs (e.g.
     # "status", "reviews"). Applying them to a child/submodel node's field_values
     # would filter everything out because the child has different slugs ("vote",
@@ -146,7 +146,7 @@ def _entity_out_for_user(entity, user, policy_messages: list | None = None, view
     data["viewable_fields"] = viewable
     data["editable_fields"] = editable
     data["policy_messages"] = policy_messages or []
-    data["dashboard_columns"] = policy.get("dashboard_columns", [])
+    data["dashboard_columns"] = policy.dashboard_columns
     return EntityOut(**data)
 
 
@@ -1299,7 +1299,7 @@ def list_entities(request, type_id: uuid.UUID, page_size: int = 200):
     cap = min(max(1, page_size), 200)
     for entity in qs.iterator(chunk_size=200):
         policy = evaluate_policy(entity, request.user, "view")
-        if not policy.get("allow", False):
+        if not policy.allow:
             continue
         results.append(_entity_out_for_user(entity, request.user, view_policy=policy))
         if len(results) >= cap:
@@ -1332,17 +1332,28 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
             result = evaluate_policy(entity, request.user, "create")
             transaction.set_rollback(True)
         return JsonResponse({
-            "valid": result.get("allow", False),
-            "policy_messages": result.get("messages", []),
+            "valid": result.allow,
+            "policy_messages": result.messages,
             "errors": {},
         })
 
     with transaction.atomic():
+        from userdefinedmodel.actions import ActionContext, dispatch_actions
         entity = UserDefinedModelEntity.objects.create(
             config_version=version, user_defined_model_type=udm_type,
         )
         entity.materialize_defaults()
         entity.materialize_user_defaults(request.user)
+        result = evaluate_policy(entity, request.user, "create")
+        if not result.allow:
+            from userdefinedmodel.engine import PolicyError
+            raise PolicyError(result.messages or [{"level": "critical", "text": "Create denied by policy."}])
+        pre_ctx = ActionContext(
+            node=entity, user=request.user, trigger="create", phase="pre",
+        )
+        dispatch_actions(result.actions, pre_ctx)
+        post_ctx = pre_ctx.model_copy(update={"phase": "post"})
+        dispatch_actions(result.actions, post_ctx)
     return 201, _entity_out_for_user(entity, request.user)
 
 
@@ -1360,8 +1371,8 @@ def get_entity(request, entity_id: uuid.UUID):
     # whether the entity is visible at all. 404 (not 403) avoids leaking existence
     # unless the policy produced messages explaining the denial.
     policy = evaluate_policy(entity, request.user, "view")
-    if not policy.get("allow", False):
-        msgs = policy.get("messages") or []
+    if not policy.allow:
+        msgs = policy.messages or []
         if msgs:
             return JsonResponse({"detail": "Access denied", "policy_messages": msgs}, status=403)
         return JsonResponse({"detail": "Not found"}, status=404)
@@ -1531,9 +1542,9 @@ def entity_history(request, entity_id: uuid.UUID, page: int = 1, page_size: int 
     # Object-level view authorization. History exposes old/new field values, so
     # gate on the "view" allow decision and redact edits for non-viewable fields.
     policy = evaluate_policy(entity, request.user, "view")
-    if not policy.get("allow", False):
+    if not policy.allow:
         return JsonResponse({"detail": "Not found"}, status=404)
-    viewable = policy.get("viewable_fields")  # None = no field-level restriction
+    viewable = policy.viewable_fields  # None = no field-level restriction
 
     qs = EditGroup.objects.filter(root_entity=entity).prefetch_related(
         "field_edits__field__translations",
@@ -1706,7 +1717,7 @@ def search_entities(request, q: str = "", type_ids: str = "", ids: str = ""):
     # still reach the cap of 50 visible entities.
     results = []
     for entity in qs.iterator(chunk_size=200):
-        if not evaluate_policy(entity, request.user, "browse").get("allow", False):
+        if not evaluate_policy(entity, request.user, "browse").allow:
             continue
         display = _entity_preview_display(entity)
         results.append(EntityAutocompleteItem(

@@ -178,30 +178,40 @@ def apply_patch(
         if isinstance(ops, list):
             _apply_submodel_ops(node, field, ops, user, edit_group, validate_only=validate_only, old_entity_doc=_old_entity_doc)
 
+    # Evaluate policy for SAVE before validation so PRE actions can normalise
+    # field values that validation will then check.
+    output, messages = _evaluate_save_policy(node, user, changed_fields, validate_only=validate_only, old_entity_doc=_old_entity_doc)
+
+    # Dispatch PRE-phase save actions (after writes, before validation).
+    from userdefinedmodel.actions import ActionContext, dispatch_actions
+    pre_ctx = ActionContext(
+        node=node,
+        user=user,
+        trigger="save",
+        phase="pre",
+        edit_group=edit_group,
+    )
+    dispatch_actions(output.actions, pre_ctx)
+
     # 7. Validate for save (runs on the new state; transaction rolls back on failure)
     node.validate_for_save()
 
-    # Evaluate policy for SAVE. At this point writes are already flushed to the
-    # transaction so input.entity.fields reflects the new state; changed_fields
-    # tells the policy which slugs were explicitly submitted in this request.
-    messages = _evaluate_save_policy(node, user, changed_fields, validate_only=validate_only, old_entity_doc=_old_entity_doc)
+    # Dispatch POST-phase save actions (after validation).
+    post_ctx = pre_ctx.model_copy(update={"phase": "post"})
+    dispatch_actions(output.actions, post_ctx)
 
     return edit_group, messages
 
 
-def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool = False, old_entity_doc: dict | None = None) -> list:
+def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool = False, old_entity_doc: dict | None = None):
     """Evaluate Rego policy for SAVE action.
 
-    Returns the full message list (including warnings).
-    Raises PolicyError if allow=False or any critical message is present.
+    Returns ``(PolicyEvaluationOutput, messages_list)``.
+    Raises PolicyError if allow=False.
     """
     import decimal
     import datetime as dt
-    from userdefinedmodel.engine import evaluate_policy, get_udm_type_for_node, PolicyError
-
-    # Default-deny: do NOT short-circuit when there is no policy. evaluate_policy
-    # returns allow=False for a node with no UDMType / no attached policies, so the
-    # allow check below raises PolicyError — a save requires an explicit grant.
+    from userdefinedmodel.engine import evaluate_policy, PolicyError
 
     def _safe(v):
         if isinstance(v, decimal.Decimal):
@@ -212,8 +222,6 @@ def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool 
             return str(v.pk)
         return v
 
-    # Wrap each changed value as {"value": ...} to match the input.entity.fields format
-    # so Rego policies can use the same path (.value) for both old and new values.
     safe_changed = {
         slug: {"value": _safe(val)}
         for slug, val in changed_fields.items()
@@ -228,15 +236,15 @@ def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool 
 
     logger.debug(
         "policy save result node=%s allow=%s messages=%s",
-        node.id, output["allow"], output["messages"],
+        node.id, output.allow, output.messages,
     )
 
-    messages = output.get("messages") or []
+    messages = output.messages
 
-    if not output["allow"]:
+    if not output.allow:
         raise PolicyError(messages or [{"level": "critical", "text": "Save denied by policy."}])
 
-    return messages
+    return output, messages
 
 
 def _apply_scalar_write(node, field, value, user, edit_group) -> None:
