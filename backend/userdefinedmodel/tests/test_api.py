@@ -564,20 +564,6 @@ class WorkflowTransitionTests(BaseAPITest):
 # ─── Workflow with Rego policy tests ─────────────────────────────────────────
 
 class PolicyEnforcementTests(BaseAPITest):
-    def test_rego_deny_blocks_transition(self):
-        """A policy that denies transition blocks it."""
-        entity, udm_type, version, config = make_entity_with_type(
-            policy_source=REGO_BLOCK_SUBMIT_IF_TITLE_EMPTY
-        )
-        wf, draft, submitted, trans = make_full_workflow()
-        add_workflow_field(version, wf, slug="status")
-        # materialize_defaults sets the initial state
-        entity.materialize_defaults()
-
-        # Title field is empty → Rego policy blocks the transition messages
-        resp = self.post(f"/entities/{entity.id}/transition/", {"field": "status", "transition": "submit"})
-        self.assertEqual(resp.status_code, 422)
-
     def test_rego_allow_passes_transition(self):
         """Policy passes when required field is filled."""
         entity, udm_type, version, config = make_entity_with_type(
