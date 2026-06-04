@@ -95,6 +95,12 @@ class TriggerTransitionOutput(BaseModel):
     before the next post-action in the current chain continues.  A cycle guard
     (``ActionContext.visited_transitions``) and depth cap (10) prevent infinite
     recursion.
+
+    When ``target_scope`` is ``"children"`` or ``"all_descendants"``, use
+    ``target_parent_field`` to restrict to children attached to a specific
+    ``submodel_list`` field (e.g. ``"reviews"``).  Without it, all children
+    of the triggering node are targeted, including those that don't have the
+    workflow field — those are silently skipped.
     """
 
     type: Literal["trigger_transition"]
@@ -107,6 +113,14 @@ class TriggerTransitionOutput(BaseModel):
             "Which nodes to trigger the transition on. "
             "'self' = ctx.node; 'children' = direct children; "
             "'all_descendants' = entire subtree excluding ctx.node"
+        ),
+    )
+    target_parent_field: str | None = Field(
+        default=None,
+        description=(
+            "When set, only children attached via this parent_field slug are targeted. "
+            "Use this to restrict 'children'/'all_descendants' to a specific submodel_list "
+            "(e.g. 'reviews') and avoid hitting unrelated submodels."
         ),
     )
 
@@ -445,9 +459,18 @@ def _handle_trigger_transition(action: TriggerTransitionOutput, ctx: ActionConte
     if scope == "self":
         candidates = [ctx.node]
     elif scope == "children":
-        candidates = list(ctx.node.children.all())
+        qs = ctx.node.children.all()
+        if action.target_parent_field:
+            qs = qs.filter(parent_field__slug=action.target_parent_field)
+        candidates = list(qs)
     else:  # all_descendants
-        candidates = _collect_subtree_nodes(ctx.node)[1:]
+        all_nodes = _collect_subtree_nodes(ctx.node)[1:]
+        if action.target_parent_field:
+            all_nodes = [
+                n for n in all_nodes
+                if getattr(getattr(n, "parent_field", None), "slug", None) == action.target_parent_field
+            ]
+        candidates = all_nodes
 
     for target_node in candidates:
         key = (str(target_node.id), action.field_slug, action.transition_name)
@@ -459,79 +482,86 @@ def _handle_trigger_transition(action: TriggerTransitionOutput, ctx: ActionConte
                 action.transition_name,
             )
             continue
-        execute_transition(
-            target_node,
-            field_slug=action.field_slug,
-            name=action.transition_name,
-            user=ctx.user,
-            edit_group=ctx.edit_group,
-            _visited=ctx.visited_transitions | {key},
-            _depth=ctx.depth + 1,
-        )
+        try:
+            execute_transition(
+                target_node,
+                field_slug=action.field_slug,
+                name=action.transition_name,
+                user=ctx.user,
+                edit_group=ctx.edit_group,
+                _visited=ctx.visited_transitions | {key},
+                _depth=ctx.depth + 1,
+                _system=True,
+            )
+        except TransitionError as exc:
+            if exc.http_status == 404:
+                # Field or transition doesn't exist on this node type — skip silently.
+                logger.debug(
+                    "trigger_transition: skipping node %s — %s",
+                    target_node.id,
+                    exc,
+                )
+            else:
+                raise
 
 
 @policy_action("send_notification", schema=SendNotificationOutput)
 def _handle_send_notification(action: SendNotificationOutput, ctx: ActionContext) -> None:
     from django.db import transaction as db_transaction
+    from django.core.mail import send_mail
+    from django.template.loader import render_to_string
 
-    def _send() -> None:
-        from django.core.mail import send_mail
-        from django.template.loader import render_to_string
+    # ── Resolve recipients (inside the transaction so errors reach history) ──
+    recipient_emails: list[str] = list(action.extra_recipients)
+    if action.recipient_field:
+        fv = ctx.node.field_values.filter(field__slug=action.recipient_field, language="").first()
+        if fv and fv.value_user_id:
+            from openid_user_management.models import OpenIDUser
+            u = OpenIDUser.objects.get(id=fv.value_user_id)
+            if u.email:
+                recipient_emails.insert(0, u.email)
 
-        # Resolve recipients
-        recipient_emails: list[str] = list(action.extra_recipients)
-        if action.recipient_field:
-            fv = ctx.node.field_values.filter(field__slug=action.recipient_field, language="").first()
-            if fv and fv.value_user_id:
-                try:
-                    from openid_user_management.models import OpenIDUser
-                    u = OpenIDUser.objects.get(id=fv.value_user_id)
-                    if u.email:
-                        recipient_emails.insert(0, u.email)
-                except Exception:
-                    pass
+    if not recipient_emails:
+        raise ValueError(
+            f"send_notification for node {ctx.node.id}: "
+            f"no recipients resolved (recipient_field={action.recipient_field!r}, "
+            f"extra_recipients={action.extra_recipients!r})"
+        )
 
-        if not recipient_emails:
-            logger.warning(
-                "send_notification for node %s: no recipients resolved — skipping",
-                ctx.node.id,
-            )
-            return
-
-        ctx_dict = {"node": ctx.node, "user": ctx.user, "trigger": ctx.trigger}
-
-        if action.template_name:
-            try:
-                body_text = render_to_string(f"{action.template_name}.txt.j2", ctx_dict)
-                body_html = render_to_string(f"{action.template_name}.html.j2", ctx_dict)
-            except Exception as exc:
-                logger.error(
-                    "send_notification template rendering failed (%s): %s",
-                    action.template_name,
-                    exc,
-                )
-                return
-        else:
-            body_text = action.body_text
-            body_html = action.body_html or None
-
-        try:
-            send_mail(
-                subject=action.subject,
-                message=body_text,
-                html_message=body_html,
-                from_email=None,  # uses settings.DEFAULT_FROM_EMAIL
-                recipient_list=recipient_emails,
-                fail_silently=False,
-            )
-        except Exception as exc:
-            logger.error("send_notification send_mail failed for node %s: %s", ctx.node.id, exc)
-            raise
-
-    if ctx.phase == "post":
-        db_transaction.on_commit(_send)
+    # ── Render templates (inside the transaction so errors reach history) ──
+    ctx_dict = {
+        "node": ctx.node,
+        "user": ctx.user,
+        "trigger": ctx.trigger,
+        # Convenience dict so templates can write {{ fields.title }} instead
+        # of calling node.get_field_value("title").get_value()
+        "fields": {
+            fv.field.slug: fv.get_value()
+            for fv in ctx.node.field_values.select_related("field").all()
+        },
+    }
+    if action.template_name:
+        body_text = render_to_string(f"{action.template_name}.txt.j2", ctx_dict)
+        body_html = render_to_string(f"{action.template_name}.html.j2", ctx_dict)
     else:
-        _send()
+        body_text = action.body_text
+        body_html = action.body_html or None
+
+    # ── Enqueue after commit so the mail is only sent if the transaction succeeds ──
+    subject = action.subject
+    from_email = None  # uses settings.DEFAULT_FROM_EMAIL
+
+    def _enqueue() -> None:
+        send_mail(
+            subject=subject,
+            message=body_text,
+            html_message=body_html,
+            from_email=from_email,
+            recipient_list=recipient_emails,
+            fail_silently=False,
+        )
+
+    db_transaction.on_commit(_enqueue)
 
 
 _USER_INTERPOLATIONS: dict[str, Any] = {}  # populated lazily to avoid import cycles

@@ -141,6 +141,7 @@ actions contains {
     "field_slug": "vote",
     "transition_name": "reset",
     "target_scope": "children",
+    "target_parent_field": "reviews",
 } if {
     input.action == "transition"
     input.field == "status"

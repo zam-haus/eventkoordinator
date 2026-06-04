@@ -358,6 +358,7 @@ def execute_transition(
     edit_group=None,
     _visited: frozenset = frozenset(),
     _depth: int = 0,
+    _system: bool = False,
 ) -> list:
     """
     Execute a named workflow transition on the specified workflow field of `node`.
@@ -366,6 +367,10 @@ def execute_transition(
     ``_visited`` and ``_depth`` are internal cycle-guard parameters threaded by
     :class:`~userdefinedmodel.actions.TriggerTransitionOutput` handlers; callers
     should not set them.
+
+    ``_system=True`` bypasses the policy authorization check.  Use this only when
+    the call originates from a policy action that was itself already authorized —
+    e.g. a ``trigger_transition`` action cascading to child nodes.
     """
     from userdefinedmodel.actions import ActionContext, dispatch_actions
     from userdefinedmodel.models import WorkflowTransition, FieldDefinition, FieldValue
@@ -410,16 +415,22 @@ def execute_transition(
 
     # Evaluate policy — pass field slug and node id so Rego can see which workflow
     # is transitioning and (for child nodes) which specific node is affected.
-    output = evaluate_policy(node, user, "transition", transition=name, field=field_slug, node_id=str(node.id))
-    if not output.allow:
-        msgs = output.messages
-        if msgs:
-            raise TransitionError(
-                f"Policy denied transition '{name}'.",
-                http_status=422,
-                details={"policy_messages": msgs},
-            )
-        raise TransitionError(f"Policy denied transition '{name}'.", http_status=403)
+    # _system=True skips this check: the call originates from an already-authorized
+    # policy action, so re-evaluating would incorrectly apply user-level rules.
+    if _system:
+        from userdefinedmodel.actions import PolicyEvaluationOutput
+        output = PolicyEvaluationOutput(allow=True)
+    else:
+        output = evaluate_policy(node, user, "transition", transition=name, field=field_slug, node_id=str(node.id))
+        if not output.allow:
+            msgs = output.messages
+            if msgs:
+                raise TransitionError(
+                    f"Policy denied transition '{name}'.",
+                    http_status=422,
+                    details={"policy_messages": msgs},
+                )
+            raise TransitionError(f"Policy denied transition '{name}'.", http_status=403)
 
     # Build shared context for pre/post dispatch
     if edit_group is None:

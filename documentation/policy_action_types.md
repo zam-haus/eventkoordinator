@@ -112,6 +112,12 @@ before the next post-action in the current chain continues.  A cycle guard
 (``ActionContext.visited_transitions``) and depth cap (10) prevent infinite
 recursion.
 
+When ``target_scope`` is ``"children"`` or ``"all_descendants"``, use
+``target_parent_field`` to restrict to children attached to a specific
+``submodel_list`` field (e.g. ``"reviews"``).  Without it, all children
+of the triggering node are targeted, including those that don't have the
+workflow field — those are silently skipped.
+
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | `'trigger_transition'` | yes |  |
@@ -119,6 +125,7 @@ recursion.
 | `field_slug` | `str` | yes | Slug of the WORKFLOW-type FieldDefinition |
 | `transition_name` | `str` | yes | Name of the WorkflowTransition to execute |
 | `target_scope` | `'self' | 'children' | 'all_descendants'` | no | Which nodes to trigger the transition on. 'self' = ctx.node; 'children' = direct children; 'all_descendants' = entire subtree excluding ctx.node |
+| `target_parent_field` | `str | None` | no | When set, only children attached via this parent_field slug are targeted. Use this to restrict 'children'/'all_descendants' to a specific submodel_list (e.g. 'reviews') and avoid hitting unrelated submodels. |
 
 **Example Rego output:**
 
@@ -128,7 +135,8 @@ recursion.
   "phase": "pre",
   "field_slug": "<field_slug>",
   "transition_name": "<transition_name>",
-  "target_scope": "self"
+  "target_scope": "self",
+  "target_parent_field": null
 }
 ```
 
