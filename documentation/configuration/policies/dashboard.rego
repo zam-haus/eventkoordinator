@@ -66,22 +66,53 @@ dashboard_columns contains col if {
 	}
 }
 
-# ── Submission checklist progress bar ─────────────────────────────────────────
-# Generic example: shows how many non-null top-level fields are filled.
-# Replace the field list with slugs relevant to the type this policy is attached to.
+# ── Review completeness meter ──────────────────────────────────────────────────
+# Groups reviews by their requested-reviewer-groups / requested-reviewer-users
+# slot key, takes the worst vote per slot, and plots the distribution.
 
 dashboard_columns contains col if {
 	input.action == "view"
-	tracked_fields := ["title", "abstract", "description"]
-	filled := count([f | some f in tracked_fields; input.entity.fields[f].value != null])
+	reviews := object.get(input.entity.children, "reviews", [])
+	count(reviews) > 0
+
+	# Higher severity = worse outcome
+	sev := {"accept": 0, "revise": 1, "open": 2, "reject": 3}
+
+	# Stable string key per requested-reviewer slot
+	slots := {k |
+		some r in reviews
+		g := object.get(object.get(r.fields, "requested-reviewer-groups", {}), "value", null)
+		u := object.get(object.get(r.fields, "requested-reviewer-users",  {}), "value", null)
+		k := sprintf("g:%v|u:%v", [g, u])
+	}
+
+	# Per slot: worst (max) severity across all votes cast for that slot
+	slot_worst := {k: ws |
+		some k in slots
+		ws := max({s |
+			some r in reviews
+			g := object.get(object.get(r.fields, "requested-reviewer-groups", {}), "value", null)
+			u := object.get(object.get(r.fields, "requested-reviewer-users",  {}), "value", null)
+			sprintf("g:%v|u:%v", [g, u]) == k
+			v := object.get(object.get(r.fields, "vote", {}), "value", null)
+			s := object.get(sev, v, 2)
+		})
+	}
+
+	accepted := count({k | some k in slots; slot_worst[k] == 0})
+	revised  := count({k | some k in slots; slot_worst[k] == 1})
+	pending  := count({k | some k in slots; slot_worst[k] == 2})
+	rejected := count({k | some k in slots; slot_worst[k] == 3})
+
 	col := {
 		"key":      "completeness",
-		"label":    "Completeness",
-		"renderer": "progress_bar",
-		"value": {
-			"current": filled,
-			"max":     count(tracked_fields),
-			"color":   "#3b82f6",
-		},
+		"label":    "Review Completeness",
+		"renderer": "meter",
+		"value": [
+			{"label": "Accept",  "value": accepted, "color": "#22c55e"},
+			{"label": "Revise",  "value": revised,  "color": "#f59e0b"},
+			{"label": "Pending", "value": pending,  "color": "#9ca3af"},
+			{"label": "Reject",  "value": rejected, "color": "#ef4444"},
+		],
 	}
 }

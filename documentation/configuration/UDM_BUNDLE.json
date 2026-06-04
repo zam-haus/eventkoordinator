@@ -10,7 +10,8 @@
       "field_config_id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
       "policy_slugs": [
         "proposals",
-        "description"
+        "description",
+        "dashboard"
       ]
     }
   ],
