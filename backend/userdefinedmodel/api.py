@@ -189,11 +189,15 @@ def _serialize_workflow(wf_def, version) -> WorkflowDefinitionOut:
     initial = next((s for s in wf_ver.states if s.is_initial), None)
     draft_version_id = None
     published_version_id = None
+    last_edited_at = None
+    last_published_at = None
     for ver in wf_def.versions.all():
         if ver.status == "draft":
             draft_version_id = ver.id
+            last_edited_at = ver.updated_at
         elif ver.status == "published":
             published_version_id = ver.id
+            last_published_at = ver.published_at
     return WorkflowDefinitionOut(
         id=wf_def.id,
         name=wf_def.name,
@@ -204,6 +208,9 @@ def _serialize_workflow(wf_def, version) -> WorkflowDefinitionOut:
         virtual_node_positions=wf_ver.virtual_node_positions,
         draft_version_id=draft_version_id,
         published_version_id=published_version_id,
+        created_at=wf_def.created_at,
+        last_edited_at=last_edited_at,
+        last_published_at=last_published_at,
     )
 
 

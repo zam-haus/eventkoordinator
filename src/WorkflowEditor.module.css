@@ -60,9 +60,7 @@
   cursor: pointer;
   font-size: 0.85rem;
   color: #333;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .sidebarItem:hover {

@@ -380,6 +380,9 @@ class WorkflowDefinitionOut(Schema):
     virtual_node_positions: dict[str, Any] = Field(default_factory=dict)
     draft_version_id: Optional[uuid.UUID] = None
     published_version_id: Optional[uuid.UUID] = None
+    created_at: Optional[datetime] = None
+    last_edited_at: Optional[datetime] = None
+    last_published_at: Optional[datetime] = None
 
 
 class WorkflowCreateIn(Schema):

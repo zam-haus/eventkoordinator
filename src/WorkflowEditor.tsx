@@ -135,6 +135,9 @@ interface WorkflowDefinitionOut {
   virtual_node_positions?: Record<string, unknown>
   draft_version_id?: string | null
   published_version_id?: string | null
+  created_at?: string | null
+  last_edited_at?: string | null
+  last_published_at?: string | null
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -355,6 +358,14 @@ function reactFlowToWf(
     transitions,
     virtual_node_positions,
   }
+}
+
+// ─── Date formatting ─────────────────────────────────────────────────────────
+
+function fmtDatetime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
 }
 
 // ─── Proposal workflow example ────────────────────────────────────────────────
@@ -1187,8 +1198,15 @@ export function WorkflowEditor() {
             onClick={() => loadWorkflow(wf)}
             title={wf.published_version_id ? 'Has published version' : 'Draft only — not yet published'}
           >
-            {wf.name}
-            {!wf.published_version_id && <span style={{ fontSize: '0.65rem', marginLeft: 4, color: '#f97316', fontWeight: 600 }}>DRAFT</span>}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {wf.name}
+              {!wf.published_version_id && <span style={{ fontSize: '0.65rem', color: '#f97316', fontWeight: 600 }}>DRAFT</span>}
+            </span>
+            <span style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 4, fontSize: '0.68rem', color: '#6c757d', marginTop: 2, textAlign: 'left' }}>
+              <span>Created</span><span>{fmtDatetime(wf.created_at)}</span>
+              <span>Edited</span><span>{fmtDatetime(wf.last_edited_at)}</span>
+              <span>Published</span><span>{fmtDatetime(wf.last_published_at)}</span>
+            </span>
           </button>
         ))}
         {activeId && (
