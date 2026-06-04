@@ -18,6 +18,29 @@
   margin: 0;
 }
 
+/* Mobile burger menu — give the popup the same dark background as the navbar */
+.menubar :global(.p-menubar-root-list) {
+  background: #2c3e50;
+}
+
+/* Inline submenus inside the mobile popup get a slightly lighter shade */
+.menubar :global(.p-menubar-mobile-active .p-submenu-list) {
+  background: #3a5068;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding-left: 1rem;
+}
+
+.menubar :global(.p-menubar-mobile-active .p-submenu-list .p-menuitem-link),
+.menubar :global(.p-menubar-mobile-active .p-submenu-list .p-menuitem-link:hover) {
+  color: white !important;
+}
+
+.menubar :global(.p-menubar-mobile-active .p-submenu-list .p-menuitem-link:hover) {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
 /* Top-level menu items — override PrimeReact theme hover/highlight */
 .menubar :global(.p-menuitem-link) {
   color: white !important;
@@ -110,7 +133,7 @@
   background-color: rgba(255, 255, 255, 0.3) !important;
 }
 
-/* Dropdown sub-link items */
+/* Dropdown sub-link items (desktop: light panel; mobile: overridden below) */
 .subLink,
 .activeSubLink {
   display: block;
@@ -132,6 +155,23 @@
   color: #2563eb;
   background-color: #eff6ff;
   font-weight: 600;
+}
+
+/* In the mobile popup the sub-links live on a dark background */
+.menubar :global(.p-menubar-mobile-active) .subLink,
+.menubar :global(.p-menubar-mobile-active) .activeSubLink {
+  color: rgba(255, 255, 255, 0.85);
+  background-color: transparent;
+}
+
+.menubar :global(.p-menubar-mobile-active) .subLink:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+.menubar :global(.p-menubar-mobile-active) .activeSubLink {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 

@@ -2401,7 +2401,6 @@ export function UdmAdminPage() {
 
   return (
     <div className={styles.page}>
-      <h1 className={styles.pageTitle}>UDM Configuration Admin</h1>
       {tab === 'configs' && <ConfigsTab />}
       {tab === 'types' && <TypesTab />}
       {tab === 'policies' && <PoliciesTab />}
