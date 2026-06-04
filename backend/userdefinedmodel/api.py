@@ -2313,6 +2313,7 @@ def import_bundle_zip(
                 new_cfg, new_draft = _clone_field_config(
                     type("FakeConfig", (), {"name": fc_data["name"], "description": fc_data.get("description", "")})(),
                     fc_data.get("languages", []),
+                    id=cfg_id,
                 )
                 config_id_map[cfg_id] = new_cfg
                 _apply_draft_fields(new_draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids, pending_submodel_refs)
@@ -2518,6 +2519,7 @@ def _create_workflow_from_data(wf_data: dict) -> "WorkflowVersion":
         WorkflowTransition, WorkflowTransitionTranslation,
     )
     new_wf_def = WorkflowDefinition.objects.create(
+        id=wf_data["id"],
         name=wf_data["name"],
         description=wf_data.get("description", ""),
     )
@@ -2609,10 +2611,13 @@ def _clone_workflow(wf_def) -> "WorkflowVersion":
     return draft.publish()
 
 
-def _clone_field_config(cfg, languages_data: list) -> tuple:
+def _clone_field_config(cfg, languages_data: list, id=None) -> tuple:
     """Deep-copy a FieldConfig (without versions). Returns (new_config, new_draft)."""
     from userdefinedmodel.models import FieldConfig, ConfigLanguage, ConfigVersion
-    new_cfg = FieldConfig.objects.create(name=cfg.name, description=cfg.description)
+    kwargs = {"name": cfg.name, "description": cfg.description}
+    if id is not None:
+        kwargs["id"] = id
+    new_cfg = FieldConfig.objects.create(**kwargs)
     for lang in languages_data:
         ConfigLanguage.objects.create(
             config=new_cfg,

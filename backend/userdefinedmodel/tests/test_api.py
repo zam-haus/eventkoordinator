@@ -1524,3 +1524,117 @@ class BundleExportTests(BaseAPITest):
             format="multipart",
         )
         self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_reimport_preserves_uuids_and_is_idempotent(self):
+        """Importing the same bundle twice must not create duplicate FieldConfigs or Workflows.
+
+        On first import (Scenario C: objects absent), FieldConfig and WorkflowDefinition must be
+        created with the bundle's own UUIDs so a subsequent import can find and update them
+        (Scenario B) rather than creating fresh duplicates.
+        """
+        import io, zipfile, json as _json, uuid
+        from userdefinedmodel.models import FieldConfig, WorkflowDefinition
+
+        config_id = str(uuid.uuid4())
+        wf_id = str(uuid.uuid4())
+        udmt_id = str(uuid.uuid4())
+
+        bundle = {
+            "version": 1,
+            "scope_type_ids": [udmt_id],
+            "udm_types": [
+                {"id": udmt_id, "name": "Idempotency Test Type",
+                 "field_config_id": config_id, "policy_slugs": []},
+            ],
+            "field_configs": [
+                {
+                    "id": config_id,
+                    "name": "Idempotency Config",
+                    "description": "",
+                    "languages": [
+                        {"code": "en", "label": "English", "is_default": True, "sort_order": 0},
+                    ],
+                    "draft": {
+                        "notes": "",
+                        "fields": [
+                            {
+                                "slug": "status",
+                                "data_type": "workflow",
+                                "sort_order": 0,
+                                "is_localized": False,
+                                "is_preview": False,
+                                "labels": {"en": "Status"},
+                                "help_texts": {},
+                                "type_config": {},
+                                "default": None,
+                                "submodel_config_version_id": None,
+                                "workflow_version_id": wf_id,
+                                "parent_slug": None,
+                            },
+                        ],
+                    },
+                },
+            ],
+            "workflows": [
+                {
+                    "id": wf_id,
+                    "name": "Idempotency Workflow",
+                    "description": "",
+                    "states": [
+                        {
+                            "name": "open",
+                            "is_initial": True,
+                            "position_x": 0.0,
+                            "position_y": 0.0,
+                            "background_color": "#ffffff",
+                            "label": {"en": "Open"},
+                        },
+                    ],
+                    "transitions": [],
+                    "virtual_node_positions": {},
+                },
+            ],
+            "policies": [],
+        }
+
+        def make_zip(data):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("UDM_BUNDLE.json", _json.dumps(data))
+            return buf.getvalue()
+
+        zip_bytes = make_zip(bundle)
+
+        # First import: nothing in DB yet — must create with the bundle UUIDs (Scenario C).
+        resp = self.client.post(
+            "/api/udm/import-bundle-zip/",
+            {"file": io.BytesIO(zip_bytes), "scope_type_ids": udmt_id},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            FieldConfig.objects.filter(id=config_id).count(), 1,
+            "FieldConfig must be created with the bundle's UUID on first import",
+        )
+        self.assertEqual(
+            WorkflowDefinition.objects.filter(id=wf_id).count(), 1,
+            "WorkflowDefinition must be created with the bundle's UUID on first import",
+        )
+        fc_count = FieldConfig.objects.count()
+        wf_count = WorkflowDefinition.objects.count()
+
+        # Second import: same ZIP — must update in place (Scenario B), not create duplicates.
+        resp = self.client.post(
+            "/api/udm/import-bundle-zip/",
+            {"file": io.BytesIO(zip_bytes), "scope_type_ids": udmt_id},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            FieldConfig.objects.count(), fc_count,
+            "Re-import must not create duplicate FieldConfigs",
+        )
+        self.assertEqual(
+            WorkflowDefinition.objects.count(), wf_count,
+            "Re-import must not create duplicate WorkflowDefinitions",
+        )
