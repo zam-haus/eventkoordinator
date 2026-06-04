@@ -369,7 +369,9 @@ const sel: React.CSSProperties = {
 const fieldLabel: React.CSSProperties = { fontSize: '0.8rem', color: '#666', display: 'block', marginBottom: '0.2rem' }
 
 function versionLabel(v: ConfigVersionListItem): string {
-  const pub = v.published_at ? new Date(v.published_at).toLocaleDateString() : '—'
+  const pub = v.published_at
+    ? new Date(v.published_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+    : '—'
   return `${v.id.slice(0, 8)}… · ${v.status} · published ${pub}`
 }
 
@@ -378,7 +380,9 @@ function sourceVersionLabel(v: ConfigVersionListItem): string {
 }
 
 function configLabel(c: FieldConfigOut): string {
-  const pub = c.last_published_at ? new Date(c.last_published_at).toLocaleDateString() : 'never'
+  const pub = c.last_published_at
+    ? new Date(c.last_published_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+    : 'never'
   return `${c.name} · ${c.stale_entity_count} stale / ${c.entity_count} total · published ${pub}`
 }
 
@@ -598,6 +602,7 @@ export function BulkMigrationTab() {
   }
 
   const section: React.CSSProperties = { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1.25rem', marginBottom: '1rem' }
+  const colHead: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#888', marginBottom: '0.6rem' }
   const sourceCandidates = versions.filter(v => v.entity_count > 0)
   const targetPublished = targetVersions.filter(v => v.status === 'published')
   const crossConfig = !!targetConfigId && targetConfigId !== configId
@@ -605,50 +610,77 @@ export function BulkMigrationTab() {
   return (
     <div>
       <div style={section}>
-        <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>Bulk migrate entities between config versions</div>
+        <div style={{ fontWeight: 600, marginBottom: '1rem' }}>Bulk migrate entities between config versions</div>
 
-        <label style={fieldLabel}>Source field config</label>
-        <select style={sel} value={configId} onChange={e => void onConfigChange(e.target.value)}>
-          <option value="">— select config —</option>
-          {configs.map(c => <option key={c.id} value={c.id}>{configLabel(c)}</option>)}
-        </select>
-
-        {configId && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '0.75rem' }}>
-            <div>
-              <label style={fieldLabel}>Source version (migrate FROM)</label>
-              <select style={sel} value={sourceId} onChange={e => setSourceId(e.target.value)}>
-                <option value="">— select source —</option>
-                {(sourceCandidates.length ? sourceCandidates : versions).map(v => (
-                  <option key={v.id} value={v.id}>{sourceVersionLabel(v)}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={fieldLabel}>Target field config (migrate TO)</label>
-              <select style={sel} value={targetConfigId} onChange={e => void onTargetConfigChange(e.target.value)}>
-                <option value="">— select config —</option>
-                {configs.map(c => <option key={c.id} value={c.id}>{configLabel(c)}</option>)}
-              </select>
-            </div>
-            {targetConfigId && (
+        {/* FROM / TO two-column grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0 1rem', alignItems: 'start' }}>
+          {/* FROM column */}
+          <div>
+            <div style={colHead}>From</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               <div>
-                <label style={fieldLabel}>Target version (migrate TO)</label>
-                <select style={sel} value={targetId} onChange={e => setTargetId(e.target.value)}>
-                  <option value="">— select target —</option>
-                  {(targetPublished.length ? targetPublished : targetVersions).map(v => (
-                    <option key={v.id} value={v.id}>{versionLabel(v)}</option>
-                  ))}
+                <label style={fieldLabel}>Field config</label>
+                <select style={{ ...sel, width: '100%' }} value={configId} onChange={e => void onConfigChange(e.target.value)}>
+                  <option value="">— select config —</option>
+                  {configs.map(c => <option key={c.id} value={c.id}>{configLabel(c)}</option>)}
                 </select>
               </div>
-            )}
-            <div>
-              <label style={fieldLabel}>Limit to UDM type{crossConfig ? ' (required for cross-config)' : ' (optional)'}</label>
-              <select style={{ ...sel, borderColor: crossConfig && !typeFilterId ? '#f59e0b' : undefined }} value={typeFilterId} onChange={e => setTypeFilterId(e.target.value)}>
-                <option value="">— all types —</option>
-                {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              {configId && (
+                <div>
+                  <label style={fieldLabel}>Version</label>
+                  <select style={{ ...sel, width: '100%' }} value={sourceId} onChange={e => setSourceId(e.target.value)}>
+                    <option value="">— select version —</option>
+                    {(sourceCandidates.length ? sourceCandidates : versions).map(v => (
+                      <option key={v.id} value={v.id}>{sourceVersionLabel(v)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Arrow separator */}
+          <div style={{ display: 'flex', alignItems: 'center', paddingTop: '1.6rem', color: '#aaa', fontSize: '1.4rem', userSelect: 'none' }}>→</div>
+
+          {/* TO column */}
+          <div>
+            <div style={colHead}>To</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div>
+                <label style={fieldLabel}>Field config</label>
+                <select style={{ ...sel, width: '100%' }} value={targetConfigId} onChange={e => void onTargetConfigChange(e.target.value)} disabled={!configId}>
+                  <option value="">— select config —</option>
+                  {configs.map(c => <option key={c.id} value={c.id}>{configLabel(c)}</option>)}
+                </select>
+              </div>
+              {targetConfigId && (
+                <div>
+                  <label style={fieldLabel}>Version</label>
+                  <select style={{ ...sel, width: '100%' }} value={targetId} onChange={e => setTargetId(e.target.value)}>
+                    <option value="">— select version —</option>
+                    {(targetPublished.length ? targetPublished : targetVersions).map(v => (
+                      <option key={v.id} value={v.id}>{versionLabel(v)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* UDM type filter — full width below the grid */}
+        {configId && (
+          <div style={{ marginTop: '0.9rem', paddingTop: '0.9rem', borderTop: '1px solid #f0f0f0' }}>
+            <label style={fieldLabel}>
+              Limit to UDM type
+              <span style={{ color: crossConfig ? '#92400e' : '#aaa', marginLeft: '0.4rem' }}>
+                {crossConfig ? '(recommended for cross-config)' : '(optional)'}
+              </span>
+            </label>
+            <select style={{ ...sel, borderColor: crossConfig && !typeFilterId ? '#f59e0b' : undefined }} value={typeFilterId} onChange={e => setTypeFilterId(e.target.value)}>
+              <option value="">— all types —</option>
+              {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
           </div>
         )}
 
@@ -657,12 +689,6 @@ export function BulkMigrationTab() {
             {loading ? 'Working…' : 'Preview mapping'}
           </button>
         </div>
-
-        {crossConfig && !typeFilterId && (
-          <div style={{ color: '#92400e', fontSize: '0.82rem', marginTop: '0.5rem' }}>
-            Cross-config migration: select a UDM type so the type's field config can be updated after migration.
-          </div>
-        )}
 
         {errors.length > 0 && (
           <div style={{ color: '#dc2626', fontSize: '0.85rem', marginTop: '0.6rem' }}>
