@@ -103,10 +103,10 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     template: (_item, options) => (
       <Link
         to={to}
-        className={`${options.className} ${isActive ? styles.activeNavItem : ''}`}
+        className={isActive ? styles.activeNavLink : styles.navLink}
         onClick={options.onClick}
       >
-        <span className={options.labelClassName}>{label}</span>
+        {label}
       </Link>
     ),
   })
