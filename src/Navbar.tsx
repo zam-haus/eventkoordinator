@@ -97,6 +97,17 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     window.location.href = `/oidc/authenticate/?next=${encodeURIComponent(next)}`
   }
 
+  const handleNavClick = (e: React.MouseEvent, to: string, onClick?: (e: React.MouseEvent) => void) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      window.open(to, '_blank')
+      return
+    }
+    e.preventDefault()
+    onClick?.(e)
+    navigate(to)
+  }
+
   // Renders a dropdown sub-item as a React Router Link with active styling
   const subLinkItem = (label: string, to: string, isActive: boolean): MenuItem => ({
     label,
@@ -104,13 +115,7 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
       <a
         href={to}
         className={isActive ? styles.activeSubLink : styles.subLink}
-        onClick={(e) => {
-          if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
-            e.preventDefault()
-            options.onClick?.(e)
-            navigate(to)
-          }
-        }}
+        onClick={(e) => handleNavClick(e, to, options.onClick)}
       >
         {label}
       </a>
@@ -124,13 +129,7 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
       <a
         href={to}
         className={isActive ? styles.activeNavLink : styles.navLink}
-        onClick={(e) => {
-          if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
-            e.preventDefault()
-            options.onClick?.(e)
-            navigate(to)
-          }
-        }}
+        onClick={(e) => handleNavClick(e, to, options.onClick)}
       >
         {label}
       </a>
