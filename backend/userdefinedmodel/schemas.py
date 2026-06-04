@@ -761,6 +761,7 @@ class FieldDefinitionDraftOut(Schema):
     default: Optional[Any] = None
     submodel_config_version_id: Optional[uuid.UUID] = None
     workflow_version_id: Optional[uuid.UUID] = None
+    workflow_definition_id: Optional[uuid.UUID] = None
     parent_slug: Optional[str] = None
 
 

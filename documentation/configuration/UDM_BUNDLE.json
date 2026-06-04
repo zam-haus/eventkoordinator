@@ -63,7 +63,8 @@
             "default": null,
             "submodel_config_version_id": null,
             "workflow_version_id": "79c54393-e89c-4389-8e70-d2c5fc4798d9",
-            "parent_slug": null
+            "parent_slug": null,
+            "workflow_definition_id": "10d4a0c3-21cc-470f-b349-73bf11ea95ad"
           },
           {
             "slug": "comment",
@@ -153,7 +154,8 @@
             "default": null,
             "submodel_config_version_id": null,
             "workflow_version_id": "4710ebd1-8b09-4066-8347-ba46c7753326",
-            "parent_slug": null
+            "parent_slug": null,
+            "workflow_definition_id": "e22b4114-a8d2-42fe-958b-fd366b2fac25"
           },
           {
             "slug": "owner",

@@ -377,13 +377,25 @@ function sourceVersionLabel(v: ConfigVersionListItem): string {
   return `${versionLabel(v)} · ${v.entity_count} entit${v.entity_count === 1 ? 'y' : 'ies'}`
 }
 
+function configLabel(c: FieldConfigOut): string {
+  const pub = c.last_published_at ? new Date(c.last_published_at).toLocaleDateString() : 'never'
+  return `${c.name} · ${c.stale_entity_count} stale / ${c.entity_count} total · published ${pub}`
+}
+
 export function BulkMigrationTab() {
   const [configs, setConfigs] = useState<FieldConfigOut[]>([])
   const [types, setTypes] = useState<UDMTypeOut[]>([])
+
+  // Source config + versions
   const [configId, setConfigId] = useState('')
   const [versions, setVersions] = useState<ConfigVersionListItem[]>([])
   const [sourceId, setSourceId] = useState('')
+
+  // Target config + versions (defaults to same as source)
+  const [targetConfigId, setTargetConfigId] = useState('')
+  const [targetVersions, setTargetVersions] = useState<ConfigVersionListItem[]>([])
   const [targetId, setTargetId] = useState('')
+
   const [typeFilterId, setTypeFilterId] = useState('')
 
   const [rows, setRows] = useState<MappingRow[]>([])
@@ -407,14 +419,34 @@ export function BulkMigrationTab() {
 
   async function onConfigChange(id: string) {
     setConfigId(id)
-    setSourceId(''); setTargetId(''); setVersions([])
+    setSourceId(''); setVersions([])
+    setTargetConfigId(id); setTargetId(''); setTargetVersions([])
     setRows([]); setMapping({}); setAffected(null); setPlan(null)
     setSubmodelMappings({}); setWorkflowMappings({})
     if (!id) return
     try {
-      setVersions(await udmListConfigVersions(id))
+      const vs = await udmListConfigVersions(id)
+      setVersions(vs)
+      setTargetVersions(vs)
     } catch (e) {
       setErrors([e instanceof Error ? e.message : 'Failed to list versions'])
+    }
+  }
+
+  async function onTargetConfigChange(id: string) {
+    setTargetConfigId(id)
+    setTargetId(''); setTargetVersions([])
+    setRows([]); setMapping({}); setAffected(null); setPlan(null)
+    setSubmodelMappings({}); setWorkflowMappings({})
+    if (!id) return
+    if (id === configId) {
+      setTargetVersions(versions)
+      return
+    }
+    try {
+      setTargetVersions(await udmListConfigVersions(id))
+    } catch (e) {
+      setErrors([e instanceof Error ? e.message : 'Failed to list target versions'])
     }
   }
 
@@ -566,20 +598,19 @@ export function BulkMigrationTab() {
   }
 
   const section: React.CSSProperties = { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1.25rem', marginBottom: '1rem' }
-  // Versions that actually have entities pinned to them are the meaningful
-  // migration sources; fall back to all versions if the counts are unavailable.
   const sourceCandidates = versions.filter(v => v.entity_count > 0)
-  const publishedVersions = versions.filter(v => v.status === 'published')
+  const targetPublished = targetVersions.filter(v => v.status === 'published')
+  const crossConfig = !!targetConfigId && targetConfigId !== configId
 
   return (
     <div>
       <div style={section}>
         <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>Bulk migrate entities between config versions</div>
 
-        <label style={fieldLabel}>Field config</label>
+        <label style={fieldLabel}>Source field config</label>
         <select style={sel} value={configId} onChange={e => void onConfigChange(e.target.value)}>
           <option value="">— select config —</option>
-          {configs.map(c => <option key={c.id} value={c.id}>{c.name} ({c.stale_entity_count} stale)</option>)}
+          {configs.map(c => <option key={c.id} value={c.id}>{configLabel(c)}</option>)}
         </select>
 
         {configId && (
@@ -594,17 +625,26 @@ export function BulkMigrationTab() {
               </select>
             </div>
             <div>
-              <label style={fieldLabel}>Target version (migrate TO)</label>
-              <select style={sel} value={targetId} onChange={e => setTargetId(e.target.value)}>
-                <option value="">— select target —</option>
-                {(publishedVersions.length ? publishedVersions : versions).map(v => (
-                  <option key={v.id} value={v.id}>{versionLabel(v)}</option>
-                ))}
+              <label style={fieldLabel}>Target field config (migrate TO)</label>
+              <select style={sel} value={targetConfigId} onChange={e => void onTargetConfigChange(e.target.value)}>
+                <option value="">— select config —</option>
+                {configs.map(c => <option key={c.id} value={c.id}>{configLabel(c)}</option>)}
               </select>
             </div>
+            {targetConfigId && (
+              <div>
+                <label style={fieldLabel}>Target version (migrate TO)</label>
+                <select style={sel} value={targetId} onChange={e => setTargetId(e.target.value)}>
+                  <option value="">— select target —</option>
+                  {(targetPublished.length ? targetPublished : targetVersions).map(v => (
+                    <option key={v.id} value={v.id}>{versionLabel(v)}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
-              <label style={fieldLabel}>Limit to UDM type (optional)</label>
-              <select style={sel} value={typeFilterId} onChange={e => setTypeFilterId(e.target.value)}>
+              <label style={fieldLabel}>Limit to UDM type{crossConfig ? ' (required for cross-config)' : ' (optional)'}</label>
+              <select style={{ ...sel, borderColor: crossConfig && !typeFilterId ? '#f59e0b' : undefined }} value={typeFilterId} onChange={e => setTypeFilterId(e.target.value)}>
                 <option value="">— all types —</option>
                 {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
@@ -617,6 +657,12 @@ export function BulkMigrationTab() {
             {loading ? 'Working…' : 'Preview mapping'}
           </button>
         </div>
+
+        {crossConfig && !typeFilterId && (
+          <div style={{ color: '#92400e', fontSize: '0.82rem', marginTop: '0.5rem' }}>
+            Cross-config migration: select a UDM type so the type's field config can be updated after migration.
+          </div>
+        )}
 
         {errors.length > 0 && (
           <div style={{ color: '#dc2626', fontSize: '0.85rem', marginTop: '0.6rem' }}>

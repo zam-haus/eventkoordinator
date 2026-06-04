@@ -455,7 +455,7 @@ def _serialize_version_as_draft_in(version) -> ConfigDraftExportOut:
     nested objects, so the result can be fed directly back into replace_draft().
     """
     fields_out = []
-    for fd in version.field_definitions.prefetch_related("translations", "defaults").all():
+    for fd in version.field_definitions.select_related("workflow_version__workflow").prefetch_related("translations", "defaults").all():
         label_dict = {t.language: t.label for t in fd.translations.all()}
         help_dict = {t.language: t.help_text for t in fd.translations.all() if t.help_text}
 
@@ -467,6 +467,7 @@ def _serialize_version_as_draft_in(version) -> ConfigDraftExportOut:
             else:
                 default_val = defaults_qs[0].get_value(field=fd)
 
+        wf_def_id = fd.workflow_version.workflow_id if fd.workflow_version_id else None
         fields_out.append(FieldDefinitionDraftOut(
             slug=fd.slug,
             data_type=fd.data_type,
@@ -479,6 +480,7 @@ def _serialize_version_as_draft_in(version) -> ConfigDraftExportOut:
             default=default_val,
             submodel_config_version_id=fd.submodel_config_id,
             workflow_version_id=fd.workflow_version_id,
+            workflow_definition_id=wf_def_id,
             parent_slug=fd.parent_slug or None,
         ))
 
