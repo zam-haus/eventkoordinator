@@ -323,10 +323,14 @@ export async function udmUpdateConfig(configId: string, payload: FieldConfigUpda
 }
 
 export async function udmDeleteConfig(configId: string): Promise<void> {
-  const { error, response } = await udmClient.DELETE('/api/udm/configs/{config_id}/', {
+  const { response } = await udmClient.DELETE('/api/udm/configs/{config_id}/', {
     params: { path: { config_id: configId } },
   })
-  if (error || !response.ok) throw new Error('Failed to delete config')
+  if (!response.ok) {
+    let msg = 'Failed to delete config'
+    try { msg = ((await response.json()) as { detail?: string }).detail ?? msg } catch { /* ignore */ }
+    throw new Error(msg)
+  }
 }
 
 // ── Config Versions ───────────────────────────────────────────────────────────

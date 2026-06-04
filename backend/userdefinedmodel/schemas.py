@@ -4,6 +4,7 @@ Pydantic/Django-Ninja schemas for the userdefinedmodel API (/api/udm/).
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Literal, Optional
 
@@ -284,7 +285,12 @@ class FieldConfigUpdateIn(Schema):
 
 class FieldConfigOut(Schema):
     id: uuid.UUID; name: str; description: str
+    created_at: datetime
+    last_published_at: Optional[datetime]
+    version_count: int
     stale_entity_count: int
+    entity_count: int
+    published_submodel_usage_count: int
     type_ids: list[uuid.UUID]
     languages: list[ConfigLanguageOut]
 

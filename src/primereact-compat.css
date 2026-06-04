@@ -7,12 +7,12 @@
 button.p-link,
 button.p-button,
 button.p-datatable-sort-icon,
-.p-datatable button,
-.p-multiselect button,
-.p-dropdown button,
-.p-paginator button,
-.p-inputnumber button,
-.p-colorpicker button {
+.p-datatable button:not([class*="btn"]),
+.p-multiselect button:not([class*="btn"]),
+.p-dropdown button:not([class*="btn"]),
+.p-paginator button:not([class*="btn"]),
+.p-inputnumber button:not([class*="btn"]),
+.p-colorpicker button:not([class*="btn"]) {
   padding: 0;
   background-color: transparent;
   border: none;

@@ -259,21 +259,34 @@ def _serialize_config_version(version) -> ConfigVersionOut:
 
 
 def _field_config_out(cfg) -> FieldConfigOut:
-    from userdefinedmodel.models import UserDefinedModelEntity, ConfigVersion
-    # "Stale" = entity pinned to a config version of this config that is not the
-    # current published one (i.e. on an archived/draft version awaiting migration).
-    # Mirrors the staleness definition used in ConfigVersion.publish().
-    published_id = (
+    from userdefinedmodel.models import UserDefinedModelEntityNode, ConfigVersion, FieldDefinition
+    published = (
         ConfigVersion.objects.filter(config=cfg, status=ConfigVersion.Status.PUBLISHED)
-        .values_list("id", flat=True).first()
+        .order_by("-published_at")
+        .first()
     )
-    stale_qs = UserDefinedModelEntity.objects.filter(config_version__config=cfg)
-    if published_id is not None:
-        stale_qs = stale_qs.exclude(config_version_id=published_id)
-    stale_count = stale_qs.count()
+    published_id = published.id if published else None
+    base_qs = UserDefinedModelEntityNode.objects.filter(config_version__config=cfg)
+    entity_count = base_qs.count()
+    stale_count = base_qs.exclude(config_version_id=published_id).count() if published_id is not None else entity_count
+    published_submodel_usage_count = (
+        FieldDefinition.objects.filter(
+            version__status=ConfigVersion.Status.PUBLISHED,
+            submodel_config__config=cfg,
+        )
+        .values("version__config_id")
+        .distinct()
+        .count()
+    )
+    version_count = cfg.versions.count()
     return FieldConfigOut(
         id=cfg.id, name=cfg.name, description=cfg.description,
+        created_at=cfg.created_at,
+        last_published_at=published.published_at if published else None,
+        version_count=version_count,
         stale_entity_count=stale_count,
+        entity_count=entity_count,
+        published_submodel_usage_count=published_submodel_usage_count,
         type_ids=[t.id for t in cfg.user_defined_model_types.all()],
         languages=[
             ConfigLanguageOut(code=l.code, label=l.label, is_default=l.is_default, sort_order=l.sort_order)
@@ -306,7 +319,11 @@ def create_config(request, payload: FieldConfigCreateIn):
         ConfigVersion.objects.create(config=cfg, status=ConfigVersion.Status.DRAFT)
     return 201, FieldConfigOut(
         id=cfg.id, name=cfg.name, description=cfg.description,
-        stale_entity_count=0, type_ids=[],
+        created_at=cfg.created_at,
+        last_published_at=None,
+        version_count=1,
+        stale_entity_count=0, entity_count=0, published_submodel_usage_count=0,
+        type_ids=[],
         languages=[
             ConfigLanguageOut(code=l.code, label=l.label, is_default=l.is_default, sort_order=l.sort_order)
             for l in cfg.languages.all()
@@ -343,6 +360,7 @@ def update_config(request, config_id: uuid.UUID, payload: FieldConfigUpdateIn):
 
 @api.delete("/configs/{config_id}/", auth=django_auth)
 def delete_config(request, config_id: uuid.UUID):
+    from django.db.models.deletion import ProtectedError
     from userdefinedmodel.models import FieldConfig
     if denied := _require_perms(request, "userdefinedmodel.delete_fieldconfig"):
         return denied
@@ -354,7 +372,13 @@ def delete_config(request, config_id: uuid.UUID):
         return JsonResponse({"detail": "Config is still in use by UDMTypes"}, status=400)
     if cfg.versions.filter(nodes__isnull=False).exists():
         return JsonResponse({"detail": "Config has entities referencing it"}, status=400)
-    cfg.delete()
+    try:
+        cfg.delete()
+    except ProtectedError:
+        return JsonResponse(
+            {"detail": "Config cannot be deleted because it is still referenced by migration history or other configs. Remove those references first."},
+            status=400,
+        )
     return JsonResponse({}, status=204)
 
 

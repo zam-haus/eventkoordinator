@@ -843,8 +843,15 @@ export interface components {
         };
         /** FieldConfigOut */
         FieldConfigOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Description */
             description: string;
+            /** Entity Count */
+            entity_count: number;
             /**
              * Id
              * Format: uuid
@@ -852,12 +859,21 @@ export interface components {
             id: string;
             /** Languages */
             languages: components["schemas"]["ConfigLanguageOut"][];
+            /**
+             * Last Published At
+             * Format: date-time
+             */
+            last_published_at: string | null;
             /** Name */
             name: string;
+            /** Published Submodel Usage Count */
+            published_submodel_usage_count: number;
             /** Stale Entity Count */
             stale_entity_count: number;
             /** Type Ids */
             type_ids: string[];
+            /** Version Count */
+            version_count: number;
         };
         /** FieldConfigUpdateIn */
         FieldConfigUpdateIn: {

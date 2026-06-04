@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { Tree } from 'primereact/tree'
 import type { TreeNode } from 'primereact/treenode'
 import type { TreeDragDropEvent } from 'primereact/tree'
+import { DataTable } from 'primereact/datatable'
+import { Column } from 'primereact/column'
+import { MultiSelect, type MultiSelectChangeEvent } from 'primereact/multiselect'
 import { UdmApiError } from './apiUdm'
 import {
   udmListConfigs,
@@ -1334,6 +1337,27 @@ function ConfigDetail({ configId, onBack }: ConfigDetailProps) {
 
 // ── Configs Tab ───────────────────────────────────────────────────────────────
 
+type ConfigColKey = 'description' | 'languages' | 'entity_count' | 'stale_entity_count' | 'published_submodel_usage_count' | 'type_count' | 'version_count' | 'created_at' | 'last_published_at'
+const CONFIG_COL_OPTIONS: { label: string; value: ConfigColKey }[] = [
+  { label: 'Description', value: 'description' },
+  { label: 'Languages', value: 'languages' },
+  { label: 'Entities', value: 'entity_count' },
+  { label: 'Stale Entities', value: 'stale_entity_count' },
+  { label: 'Published Submodel Usages', value: 'published_submodel_usage_count' },
+  { label: 'Used by Types', value: 'type_count' },
+  { label: 'Versions', value: 'version_count' },
+  { label: 'Created', value: 'created_at' },
+  { label: 'Last Published', value: 'last_published_at' },
+]
+const CONFIG_COL_DEFAULT: ConfigColKey[] = [
+  'languages', 'entity_count', 'stale_entity_count', 'published_submodel_usage_count',
+  'type_count', 'version_count', 'created_at', 'last_published_at',
+]
+
+function isUnused(cfg: FieldConfigOut) {
+  return cfg.entity_count === 0 && cfg.type_ids.length === 0 && cfg.published_submodel_usage_count === 0
+}
+
 function ConfigsTab() {
   const [configs, setConfigs] = useState<FieldConfigOut[]>([])
   const [loading, setLoading] = useState(true)
@@ -1344,6 +1368,8 @@ function ConfigsTab() {
   const [newDesc, setNewDesc] = useState('')
   const [newLangs, setNewLangs] = useState('en')
   const [createError, setCreateError] = useState<string | null>(null)
+  const [visibleCols, setVisibleCols] = useState<ConfigColKey[]>(CONFIG_COL_DEFAULT)
+  const [hideUnused, setHideUnused] = useState(true)
 
   const loadConfigs = useCallback(async () => {
     setLoading(true)
@@ -1397,6 +1423,29 @@ function ConfigsTab() {
     )
   }
 
+  const vis = new Set(visibleCols)
+  const displayed = hideUnused ? configs.filter(c => !isUnused(c)) : configs
+  const hiddenCount = configs.length - displayed.length
+
+  const tableHeader = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+        <input type="checkbox" checked={hideUnused} onChange={e => setHideUnused(e.target.checked)} />
+        Hide unused
+        {hiddenCount > 0 && <span style={{ color: '#888' }}>({hiddenCount} hidden)</span>}
+      </label>
+      <MultiSelect
+        value={visibleCols}
+        options={CONFIG_COL_OPTIONS}
+        onChange={(e: MultiSelectChangeEvent) => setVisibleCols(e.value as ConfigColKey[])}
+        placeholder="Toggle columns"
+        style={{ fontSize: '0.8rem' }}
+      />
+    </div>
+  )
+
+  const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleString() : '—'
+
   return (
     <div>
       <div className={styles.row} style={{ marginBottom: '1rem', justifyContent: 'flex-end' }}>
@@ -1434,55 +1483,91 @@ function ConfigsTab() {
         </div>
       )}
 
-      {loading ? (
-        <div className={styles.emptyState}>Loading…</div>
-      ) : configs.length === 0 ? (
-        <div className={styles.emptyState}>No field configs yet.</div>
-      ) : (
-        <div className={styles.section}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Languages</th>
-                <th>Stale Entities</th>
-                <th>Used by Types</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {configs.map(cfg => (
-                <tr key={cfg.id}>
-                  <td><strong>{cfg.name}</strong></td>
-                  <td>
-                    <span className={styles.langGrid}>
-                      {cfg.languages.map(l => (
-                        <span key={l.code} className={`${styles.langTag} ${l.is_default ? styles.langTagDefault : ''}`}>
-                          {l.code}
-                        </span>
-                      ))}
+      <div className={styles.section}>
+        <DataTable
+          value={displayed}
+          loading={loading}
+          header={tableHeader}
+          size="small"
+          emptyMessage="No field configs yet."
+          sortMode="single"
+        >
+          <Column
+            field="name"
+            header="Name"
+            body={(cfg: FieldConfigOut) => <strong>{cfg.name}</strong>}
+            sortable
+          />
+          {vis.has('description') && (
+            <Column field="description" header="Description" sortable />
+          )}
+          {vis.has('languages') && (
+            <Column
+              header="Languages"
+              body={(cfg: FieldConfigOut) => (
+                <span className={styles.langGrid}>
+                  {cfg.languages.map(l => (
+                    <span key={l.code} className={`${styles.langTag} ${l.is_default ? styles.langTagDefault : ''}`}>
+                      {l.code}
                     </span>
-                  </td>
-                  <td>{cfg.stale_entity_count}</td>
-                  <td>{cfg.type_ids.length}</td>
-                  <td>
-                    <div className={styles.tableActions}>
-                      <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                        onClick={() => { setSelectedId(cfg.id); setView('detail') }}>
-                        Open
-                      </button>
-                      <button type="button" className={`${styles.btn} ${styles.btnDanger}`}
-                        onClick={() => void handleDelete(cfg.id, cfg.name)}>
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  ))}
+                </span>
+              )}
+            />
+          )}
+          {vis.has('entity_count') && (
+            <Column field="entity_count" header="Entities" sortable />
+          )}
+          {vis.has('stale_entity_count') && (
+            <Column field="stale_entity_count" header="Stale Entities" sortable />
+          )}
+          {vis.has('published_submodel_usage_count') && (
+            <Column field="published_submodel_usage_count" header="Submodel Usages" sortable />
+          )}
+          {vis.has('type_count') && (
+            <Column
+              header="Types"
+              body={(cfg: FieldConfigOut) => cfg.type_ids.length}
+              sortable
+              sortField="type_ids"
+            />
+          )}
+          {vis.has('version_count') && (
+            <Column field="version_count" header="Versions" sortable />
+          )}
+          {vis.has('created_at') && (
+            <Column
+              field="created_at"
+              header="Created"
+              body={(cfg: FieldConfigOut) => fmtDate(cfg.created_at)}
+              sortable
+            />
+          )}
+          {vis.has('last_published_at') && (
+            <Column
+              field="last_published_at"
+              header="Last Published"
+              body={(cfg: FieldConfigOut) => fmtDate(cfg.last_published_at)}
+              sortable
+            />
+          )}
+          <Column
+            header="Actions"
+            body={(cfg: FieldConfigOut) => (
+              <div className={styles.tableActions}>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                  onClick={() => { setSelectedId(cfg.id); setView('detail') }}>
+                  Open
+                </button>
+                <button type="button" className={`${styles.btn} ${styles.btnDanger}`}
+                  onClick={() => void handleDelete(cfg.id, cfg.name)}>
+                  Delete
+                </button>
+              </div>
+            )}
+          />
+        </DataTable>
+      </div>
     </div>
   )
 }
