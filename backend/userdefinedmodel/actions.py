@@ -116,20 +116,69 @@ class SendNotificationOutput(BaseModel):
 
     In ``post`` phase the send is deferred to ``transaction.on_commit`` so the
     mail is only queued if the surrounding transaction commits successfully.
+
+    **Template-based sending** (recommended to stay within Rego's 1 024-char
+    line limit): set ``template_name`` to a base path (e.g.
+    ``"proposals/submit"``) and the handler will render
+    ``{template_name}.txt.j2`` and ``{template_name}.html.j2`` via Django's
+    template loader.  Template context: ``node``, ``user``, ``trigger``.
+
+    **Inline sending**: leave ``template_name`` empty and provide
+    ``body_text`` / ``body_html`` directly.
     """
 
     type: Literal["send_notification"]
     phase: Literal["pre", "post"]
-    recipients_config: list[Any] = Field(
-        default_factory=list,
-        description="Recipient config dicts (same structure as mailqueue)",
+    subject: str = Field(default="", description="Email subject line")
+    template_name: str = Field(
+        default="",
+        description=(
+            "Base template path (without suffix).  "
+            "Renders <name>.txt.j2 and <name>.html.j2."
+        ),
     )
-    subject_template: str = Field(default="", description="Subject template string")
-    body_template: str = Field(default="", description="Body template string")
+    body_text: str = Field(default="", description="Plain-text body (used when template_name is empty)")
+    body_html: str = Field(default="", description="HTML body (used when template_name is empty)")
+    recipient_field: str | None = Field(
+        default=None,
+        description=(
+            "Slug of a user_select field on the triggering node whose user's "
+            "email address is the primary recipient.  Stacked with extra_recipients."
+        ),
+    )
+    extra_recipients: list[str] = Field(
+        default_factory=list,
+        description="Additional explicit email addresses to send to.",
+    )
+
+
+class CreateSubmodelItemOutput(BaseModel):
+    """Create a new item in a ``submodel_list`` field, optionally pre-seeded with field values.
+
+    Field values in ``fields`` may use these special interpolation markers
+    (replaced before the submodel item is written):
+
+    * ``"$$user.id"``       → ``str(ctx.user.id)``
+    * ``"$$user.email"``    → ``ctx.user.email``
+    * ``"$$user.username"`` → ``ctx.user.username``
+    """
+
+    type: Literal["create_submodel_item"]
+    phase: Literal["pre", "post"]
+    field_slug: str = Field(description="Slug of the submodel_list FieldDefinition to append to")
+    fields: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Initial field values for the new submodel item (supports $$ markers)",
+    )
 
 
 PolicyActionOutput = Annotated[
-    Union[SetFieldValueOutput, TriggerTransitionOutput, SendNotificationOutput],
+    Union[
+        SetFieldValueOutput,
+        TriggerTransitionOutput,
+        SendNotificationOutput,
+        CreateSubmodelItemOutput,
+    ],
     Field(discriminator="type"),
 ]
 
@@ -349,14 +398,113 @@ def _handle_send_notification(action: SendNotificationOutput, ctx: ActionContext
     from django.db import transaction as db_transaction
 
     def _send() -> None:
-        logger.info(
-            "send_notification action for node %s (trigger=%s): subject=%r",
-            ctx.node.id,
-            ctx.trigger,
-            action.subject_template,
-        )
+        from django.core.mail import send_mail
+        from django.template.loader import render_to_string
+
+        # Resolve recipients
+        recipient_emails: list[str] = list(action.extra_recipients)
+        if action.recipient_field:
+            fv = ctx.node.field_values.filter(field__slug=action.recipient_field, language="").first()
+            if fv and fv.value_user_id:
+                try:
+                    from openid_user_management.models import OpenIDUser
+                    u = OpenIDUser.objects.get(id=fv.value_user_id)
+                    if u.email:
+                        recipient_emails.insert(0, u.email)
+                except Exception:
+                    pass
+
+        if not recipient_emails:
+            logger.warning(
+                "send_notification for node %s: no recipients resolved — skipping",
+                ctx.node.id,
+            )
+            return
+
+        ctx_dict = {"node": ctx.node, "user": ctx.user, "trigger": ctx.trigger}
+
+        if action.template_name:
+            try:
+                body_text = render_to_string(f"{action.template_name}.txt.j2", ctx_dict)
+                body_html = render_to_string(f"{action.template_name}.html.j2", ctx_dict)
+            except Exception as exc:
+                logger.error(
+                    "send_notification template rendering failed (%s): %s",
+                    action.template_name,
+                    exc,
+                )
+                return
+        else:
+            body_text = action.body_text
+            body_html = action.body_html or None
+
+        try:
+            send_mail(
+                subject=action.subject,
+                message=body_text,
+                html_message=body_html,
+                from_email=None,  # uses settings.DEFAULT_FROM_EMAIL
+                recipient_list=recipient_emails,
+                fail_silently=False,
+            )
+        except Exception as exc:
+            logger.error("send_notification send_mail failed for node %s: %s", ctx.node.id, exc)
+            raise
 
     if ctx.phase == "post":
         db_transaction.on_commit(_send)
     else:
         _send()
+
+
+_USER_INTERPOLATIONS: dict[str, Any] = {}  # populated lazily to avoid import cycles
+
+def _interpolate_fields(fields: dict[str, Any], user) -> dict[str, Any]:
+    """Replace $$user.* markers in field values with live user data."""
+    markers = {
+        "$$user.id": str(user.id),
+        "$$user.email": user.email or "",
+        "$$user.username": user.username or "",
+    }
+    result = {}
+    for k, v in fields.items():
+        result[k] = markers.get(v, v) if isinstance(v, str) else v
+    return result
+
+
+@policy_action("create_submodel_item", schema=CreateSubmodelItemOutput)
+def _handle_create_submodel_item(action: CreateSubmodelItemOutput, ctx: ActionContext) -> None:
+    from userdefinedmodel.models import FieldDefinition
+    from userdefinedmodel.models.node import SubmodelInstance
+    from userdefinedmodel.writer import apply_patch
+
+    field_def = ctx.node.config_version.field_definitions.filter(
+        slug=action.field_slug,
+        data_type=FieldDefinition.DataType.SUBMODEL_LIST,
+    ).first()
+    if field_def is None:
+        raise ValueError(
+            f"create_submodel_item: field {action.field_slug!r} is not a "
+            f"submodel_list field on node {ctx.node.id}"
+        )
+    if field_def.submodel_config_id is None:
+        raise ValueError(
+            f"create_submodel_item: field {action.field_slug!r} has no submodel config"
+        )
+
+    max_order = ctx.node.children.filter(parent_field=field_def).aggregate(
+        m=__import__("django.db.models", fromlist=["Max"]).Max("submodelinstance__sort_order")
+    )["m"] or 0
+
+    child = SubmodelInstance.objects.create(
+        config_version=field_def.submodel_config,
+        parent_node=ctx.node,
+        parent_field=field_def,
+        sort_order=max_order + 1,
+    )
+    child.materialize_defaults()
+    child.materialize_user_defaults(ctx.user)
+
+    seeded = _interpolate_fields(action.fields, ctx.user)
+    if seeded:
+        apply_patch(child, seeded, ctx.user, edit_group=ctx.edit_group)

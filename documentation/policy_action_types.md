@@ -4,6 +4,35 @@ Actions are declared by Rego policies as structured JSON objects in the `data.ud
 
 ---
 
+## `create_submodel_item`
+
+Create a new item in a ``submodel_list`` field, optionally pre-seeded with field values.
+
+Field values in ``fields`` may use these special interpolation markers
+(replaced before the submodel item is written):
+
+* ``"$$user.id"``       → ``str(ctx.user.id)``
+* ``"$$user.email"``    → ``ctx.user.email``
+* ``"$$user.username"`` → ``ctx.user.username``
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | `'create_submodel_item'` | yes |  |
+| `phase` | `'pre' | 'post'` | yes |  |
+| `field_slug` | `str` | yes | Slug of the submodel_list FieldDefinition to append to |
+| `fields` | `dict[str, Any]` | no | Initial field values for the new submodel item (supports $$ markers) |
+
+**Example Rego output:**
+
+```json
+{
+  "type": "create_submodel_item",
+  "phase": "pre",
+  "field_slug": "<field_slug>",
+  "fields": {}
+}
+```
+
 ## `send_notification`
 
 Enqueue an email notification.
@@ -11,13 +40,25 @@ Enqueue an email notification.
 In ``post`` phase the send is deferred to ``transaction.on_commit`` so the
 mail is only queued if the surrounding transaction commits successfully.
 
+**Template-based sending** (recommended to stay within Rego's 1 024-char
+line limit): set ``template_name`` to a base path (e.g.
+``"proposals/submit"``) and the handler will render
+``{template_name}.txt.j2`` and ``{template_name}.html.j2`` via Django's
+template loader.  Template context: ``node``, ``user``, ``trigger``.
+
+**Inline sending**: leave ``template_name`` empty and provide
+``body_text`` / ``body_html`` directly.
+
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | `'send_notification'` | yes |  |
 | `phase` | `'pre' | 'post'` | yes |  |
-| `recipients_config` | `list[Any]` | no | Recipient config dicts (same structure as mailqueue) |
-| `subject_template` | `str` | no | Subject template string |
-| `body_template` | `str` | no | Body template string |
+| `subject` | `str` | no | Email subject line |
+| `template_name` | `str` | no | Base template path (without suffix).  Renders <name>.txt.j2 and <name>.html.j2. |
+| `body_text` | `str` | no | Plain-text body (used when template_name is empty) |
+| `body_html` | `str` | no | HTML body (used when template_name is empty) |
+| `recipient_field` | `str | None` | no | Slug of a user_select field on the triggering node whose user's email address is the primary recipient.  Stacked with extra_recipients. |
+| `extra_recipients` | `list[str]` | no | Additional explicit email addresses to send to. |
 
 **Example Rego output:**
 
@@ -25,9 +66,12 @@ mail is only queued if the surrounding transaction commits successfully.
 {
   "type": "send_notification",
   "phase": "pre",
-  "recipients_config": [],
-  "subject_template": "",
-  "body_template": ""
+  "subject": "",
+  "template_name": "",
+  "body_text": "",
+  "body_html": "",
+  "recipient_field": null,
+  "extra_recipients": []
 }
 ```
 

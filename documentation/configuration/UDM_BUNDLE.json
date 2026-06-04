@@ -11,7 +11,8 @@
       "policy_slugs": [
         "proposals",
         "description",
-        "dashboard"
+        "dashboard",
+        "proposals-actions"
       ]
     }
   ],
@@ -1509,6 +1510,9 @@
     },
     {
       "slug": "dashboard"
+    },
+    {
+      "slug": "proposals-actions"
     }
   ]
 }
