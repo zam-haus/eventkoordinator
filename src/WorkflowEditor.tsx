@@ -133,6 +133,8 @@ interface WorkflowDefinitionOut {
   states: WorkflowStateOut[]
   transitions: WorkflowTransitionOut[]
   virtual_node_positions?: Record<string, unknown>
+  draft_version_id?: string | null
+  published_version_id?: string | null
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -178,6 +180,15 @@ async function updateWorkflow(id: string, payload: unknown): Promise<WorkflowDef
 async function deleteWorkflow(id: string): Promise<void> {
   const res = await apiFetch(`/api/udm/workflows/${id}/`, 'DELETE')
   if (!res.ok && res.status !== 204) throw new Error('Failed to delete workflow')
+}
+
+async function publishWorkflowDraft(id: string): Promise<WorkflowDefinitionOut> {
+  const res = await apiFetch(`/api/udm/workflows/${id}/versions/draft/publish/`, 'POST')
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(JSON.stringify(err))
+  }
+  return res.json()
 }
 
 async function fetchStateCounts(workflowId: string): Promise<Record<string, number>> {
@@ -268,18 +279,12 @@ function reactFlowToWf(
   primaryLang: string = 'en',
 ) {
   const stateNodes = nodes.filter((n) => n.type === 'workflowState')
-  const validStateIds = new Set(stateNodes.map((n) => n.id))
 
   // Map stable node.id → current data.name (to resolve renamed states in edge references)
   const idToName = new Map(stateNodes.map((n) => [n.id, nodeStateData(n).name ?? n.id]))
 
-  // Migration edges are ephemeral editor instructions — not saved as transitions.
-  const migrations = edges
-    .filter((e) => e.data?.isMigration && validStateIds.has(e.source) && validStateIds.has(e.target))
-    .map((e) => ({ from_state: idToName.get(e.source) ?? e.source, to_state: idToName.get(e.target) ?? e.target }))
-
   const transitions = edges
-    .filter((e) => e.source && e.target && !e.data?.isMigration)
+    .filter((e) => e.source && e.target)
     .map((e) => {
       const srcType = nodes.find((n) => n.id === e.source)?.type
       const tgtType = nodes.find((n) => n.id === e.target)?.type
@@ -348,7 +353,6 @@ function reactFlowToWf(
       }
     }),
     transitions,
-    migrations,
     virtual_node_positions,
   }
 }
@@ -514,9 +518,8 @@ function PropertiesPanel({ nodes, edges, selectedNodeIds, selectedEdgeIds, onNod
   const [addingLang, setAddingLang] = useState(false)
   const [newLang, setNewLang] = useState('')
   const selNodes = nodes.filter((n) => selectedNodeIds.includes(n.id))
-  const selEdges = edges.filter((e) => selectedEdgeIds.includes(e.id) && !e.data?.isMigration)
-  const selMigrationEdges = edges.filter((e) => selectedEdgeIds.includes(e.id) && e.data?.isMigration)
-  const total = selNodes.length + selEdges.length + selMigrationEdges.length
+  const selEdges = edges.filter((e) => selectedEdgeIds.includes(e.id))
+  const total = selNodes.length + selEdges.length
 
   const orphanedSection = orphanedStates.length > 0 && (
     <div className={styles.orphanedSection}>
@@ -691,21 +694,12 @@ function PropertiesPanel({ nodes, edges, selectedNodeIds, selectedEdgeIds, onNod
         )
       })}
 
-      {selMigrationEdges.map((e) => (
-        <div key={e.id} className={styles.propsSection}>
-          <div className={styles.propsSectionTitle}>Migration: {e.source} → {e.target}</div>
-          <p className={styles.specialDesc}>
-            On save, all entities in state <strong>{e.source}</strong> will be moved to <strong>{e.target}</strong>, then <strong>{e.source}</strong> will be deleted.
-          </p>
-        </div>
-      ))}
-
       {selEdges.map((e) => {
         const eData = e.data as WfEdgeData
         const eLabels = eData.labels ?? {}
         const currentTransName = eData.name ?? e.id
         const otherTransNames = new Set(
-          edges.filter(x => !x.data?.isMigration && x.id !== e.id)
+          edges.filter(x => x.id !== e.id)
                .map(x => (x.data as WfEdgeData).name ?? x.id)
         )
         const transNameErr = currentTransName === ''
@@ -758,9 +752,10 @@ interface EditorInnerProps {
   initialStateCounts: Record<string, number>
   savedStates: WorkflowStateOut[]
   reloadGen: number
+  hasPublishedVersion: boolean
 }
 
-function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: initName, workflowDescription: initDesc, onSaved, initialStateCounts, savedStates, reloadGen }: EditorInnerProps) {
+function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: initName, workflowDescription: initDesc, onSaved, initialStateCounts, savedStates, reloadGen, hasPublishedVersion }: EditorInnerProps) {
   const [nodes, setNodes] = useNodesState<AnyWfNode>(initialNodes)
   const [edges, setEdges] = useEdgesState<WfEdge>(initialEdges)
   const [name, setName] = useState(initName)
@@ -768,7 +763,9 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
-  const [migrationMode, setMigrationMode] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
+  const [publishSuccess, setPublishSuccess] = useState(false)
   const [languages, setLanguages] = useState(() => deriveLanguages(initialNodes, initialEdges))
   const { fitView } = useReactFlow()
 
@@ -793,33 +790,6 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialStateCounts])
 
-  // Track which state nodes are sources of migration edges (retiring).
-  // String key ensures the effect only fires when the actual set changes.
-  const migrationSourcesKey = edges
-    .filter((e) => e.data?.isMigration)
-    .map((e) => e.source)
-    .sort()
-    .join(',')
-
-  useEffect(() => {
-    const retiringSrc = new Set(migrationSourcesKey.split(',').filter(Boolean))
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.type === 'workflowState'
-          ? { ...n, data: { ...n.data, isRetiring: retiringSrc.has(n.id) } }
-          : n,
-      ),
-    )
-    setEdges((eds) =>
-      eds.map((e) => {
-        if (e.data?.isMigration) return e
-        const dimmed = retiringSrc.has(e.target)
-        return { ...e, style: { ...e.style, opacity: dimmed ? 0.35 : 1 } }
-      }),
-    )
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [migrationSourcesKey])
-
   const selectedNodeIds = nodes.filter((n) => n.selected).map((n) => n.id)
   const selectedEdgeIds = edges.filter((e) => e.selected).map((e) => e.id)
 
@@ -828,43 +798,17 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
       const src = nodes.find((n) => n.id === connection.source)
       const tgt = nodes.find((n) => n.id === connection.target)
       if (!src || !tgt) return false
-      if (migrationMode) {
-        // Migration edges only valid between regular state nodes
-        return src.type === 'workflowState' && tgt.type === 'workflowState'
-      }
       // fromAny / fromUndefined are source-only; reject any incoming edge
       if (tgt.type === 'fromAny' || tgt.type === 'fromUndefined') return false
       // keepState is target-only; reject any outgoing edge
       if (src.type === 'keepState') return false
       return true
     },
-    [nodes, migrationMode],
+    [nodes],
   )
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (migrationMode) {
-        // Create a migration edge; replace any existing migration edge from this source.
-        const src = connection.source ?? ''
-        setEdges((eds) => {
-          const without = eds.filter((e) => !(e.data?.isMigration && e.source === src))
-          const migEdge: WfEdge = {
-            id: `migrate_${src}`,
-            source: src,
-            target: connection.target ?? '',
-            sourceHandle: connection.sourceHandle ?? null,
-            targetHandle: connection.targetHandle ?? null,
-            type: 'smoothstep',
-            data: { isMigration: true, label: '↦ migrate' },
-            label: '↦ migrate',
-            style: { stroke: '#f97316', strokeWidth: 3, strokeDasharray: '6 4' },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#f97316' },
-            reconnectable: true,
-          }
-          return [...without, migEdge]
-        })
-        return
-      }
       const existingNames = new Set(edges.map((e) => e.id))
       const srcNode = nodes.find((n) => n.id === connection.source)
       // Special nodes don't have a meaningful label; fall back to a generic prefix
@@ -879,7 +823,7 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
         addEdge({ ...connection, id: slug, data: { label: '', labels: {}, name: slug }, label: '', markerEnd: { type: MarkerType.ArrowClosed }, type: 'smoothstep', reconnectable: true }, eds),
       )
     },
-    [edges, nodes, setEdges, migrationMode],
+    [edges, nodes, setEdges],
   )
 
   const onNodesChange = useCallback(
@@ -976,7 +920,6 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
       return { ...n, data: { ...n.data, labels: newLabels, label: pickDisplayLabel(newLabels, primary, String(d.name)) } as Record<string, unknown> }
     }))
     setEdges(eds => eds.map(e => {
-      if (e.data?.isMigration) return e
       const eData = e.data as WfEdgeData
       const newLabels = Object.fromEntries(Object.entries(eData.labels ?? {}).filter(([k]) => k !== lang))
       const displayLabel = pickDisplayLabel(newLabels, primary, e.id)
@@ -989,7 +932,7 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
     setEdges((eds) => eds.filter((e) => !e.selected))
   }
 
-  // Orphaned = saved states not currently on canvas but with live entity data
+  // Orphaned = published states not on the draft canvas that still have live entities
   const currentNodeIds = new Set(nodes.map((n) => n.id))
   const orphanedStates = savedStates.filter(
     (s) => !currentNodeIds.has(s.name) && (initialStateCounts[s.name] ?? 0) > 0,
@@ -1019,34 +962,6 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
   }
 
   async function handleSave() {
-    // Pre-flight: states being deleted with live entities must have a migration edge.
-    if (workflowId) {
-      const migrationTargetMap = new Map(
-        edges.filter((e) => e.data?.isMigration).map((e) => [e.source, e.target]),
-      )
-      const currentStateIds = new Set(
-        nodes.filter((n) => n.type === 'workflowState').map((n) => n.id),
-      )
-      for (const s of savedStates) {
-        if (currentStateIds.has(s.name)) continue
-        const count = initialStateCounts[s.name] ?? 0
-        if (count === 0) continue
-        const migrateTarget = migrationTargetMap.get(s.name)
-        if (!migrateTarget) {
-          const label = s.label['en'] ?? Object.values(s.label)[0] ?? s.name
-          setSaveError(
-            `"${label}" has ${count} ${count === 1 ? 'entity' : 'entities'}. Draw a migration edge to move them, or re-add the state.`,
-          )
-          return
-        }
-        if (!currentStateIds.has(migrateTarget)) {
-          const label = s.label['en'] ?? Object.values(s.label)[0] ?? s.name
-          setSaveError(`Migration target for "${label}" is not on the canvas.`)
-          return
-        }
-      }
-    }
-
     setSaving(true)
     setSaveError(null)
     setSaveSuccess(false)
@@ -1065,6 +980,23 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
     }
   }
 
+  async function handlePublish() {
+    if (!workflowId) return
+    setPublishing(true)
+    setPublishError(null)
+    setPublishSuccess(false)
+    try {
+      const result = await publishWorkflowDraft(workflowId)
+      setPublishSuccess(true)
+      onSaved(result)
+      setTimeout(() => setPublishSuccess(false), 3000)
+    } catch (e) {
+      setPublishError(e instanceof Error ? e.message : 'Publish failed')
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   const hasFromAny       = nodes.some((n) => n.id === ID_FROM_ANY)
   const hasFromUndefined = nodes.some((n) => n.id === ID_FROM_UNDEFINED)
   const hasKeepState     = nodes.some((n) => n.id === ID_KEEP_STATE)
@@ -1079,19 +1011,25 @@ function EditorInner({ initialNodes, initialEdges, workflowId, workflowName: ini
         <button className={`${styles.toolbarBtn} ${styles.fromAnyBtn}`}  onClick={() => addSpecialNode('fromAny')}  disabled={hasFromAny}  title="Add a 'From Any' virtual source node">+ From Any</button>
         <button className={`${styles.toolbarBtn} ${styles.fromUndefBtn}`} onClick={() => addSpecialNode('fromUndefined')} disabled={hasFromUndefined} title="Add a 'From Undefined' virtual source node">+ From Undefined</button>
         <button className={`${styles.toolbarBtn} ${styles.keepStateBtn}`} onClick={() => addSpecialNode('keepState')} disabled={hasKeepState} title="Add a 'Keep State' virtual target node">+ Keep State</button>
-        <button
-          className={`${styles.toolbarBtn} ${styles.migrateBtn} ${migrationMode ? styles.migrateBtnActive : ''}`}
-          onClick={() => setMigrationMode((m) => !m)}
-          title="Draw a migration edge to move entities from a retiring state to another on save"
-        >
-          ↦ Migrate{migrationMode ? ' (on)' : ''}
-        </button>
         <span className={styles.toolbarSep} />
         <button className={`${styles.toolbarBtn} ${styles.saveBtn}`} onClick={handleSave} disabled={saving || !name.trim()}>
-          {saving ? 'Saving…' : workflowId ? 'Save' : 'Save (create)'}
+          {saving ? 'Saving…' : workflowId ? 'Save Draft' : 'Create Draft'}
         </button>
+        {workflowId && (
+          <button
+            className={`${styles.toolbarBtn} ${styles.saveBtn}`}
+            style={{ background: '#198754', borderColor: '#198754', color: '#fff' }}
+            onClick={handlePublish}
+            disabled={publishing || !workflowId}
+            title="Publish the current draft, making it the active version for entities"
+          >
+            {publishing ? 'Publishing…' : hasPublishedVersion ? 'Publish Draft' : 'Publish (first)'}
+          </button>
+        )}
         {saveSuccess && <span className={styles.saveOk}>✓ Saved</span>}
         {saveError   && <span className={styles.saveErr}>{saveError}</span>}
+        {publishSuccess && <span className={styles.saveOk}>✓ Published</span>}
+        {publishError   && <span className={styles.saveErr}>{publishError}</span>}
       </div>
 
       <div className={styles.canvasAndPanel}>
@@ -1150,6 +1088,7 @@ export function WorkflowEditor() {
   const [activeEdges, setActiveEdges] = useState<WfEdge[]>([])
   const [activeStateCounts, setActiveStateCounts] = useState<Record<string, number>>({})
   const [activeSavedStates, setActiveSavedStates] = useState<WorkflowStateOut[]>([])
+  const [activeHasPublished, setActiveHasPublished] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [reloadGen, setReloadGen] = useState(0)
@@ -1173,6 +1112,7 @@ export function WorkflowEditor() {
     setActiveEdges([])
     setActiveStateCounts({})
     setActiveSavedStates([])
+    setActiveHasPublished(false)
   }
 
   function loadWorkflow(wf: WorkflowDefinitionOut) {
@@ -1184,6 +1124,7 @@ export function WorkflowEditor() {
     setActiveEdges(edges)
     setActiveSavedStates(wf.states)
     setActiveStateCounts({})
+    setActiveHasPublished(!!wf.published_version_id)
     refreshCounts(wf.id)
   }
 
@@ -1220,6 +1161,7 @@ export function WorkflowEditor() {
     setActiveNodes(nodes)
     setActiveEdges(edges)
     setActiveSavedStates(wf.states)
+    setActiveHasPublished(!!wf.published_version_id)
     setWorkflows((wfs) => {
       const idx = wfs.findIndex((w) => w.id === wf.id)
       return idx >= 0 ? wfs.map((w) => (w.id === wf.id ? wf : w)) : [...wfs, wf]
@@ -1243,8 +1185,10 @@ export function WorkflowEditor() {
             key={wf.id}
             className={`${styles.sidebarItem} ${wf.id === activeId ? styles.sidebarItemActive : ''}`}
             onClick={() => loadWorkflow(wf)}
+            title={wf.published_version_id ? 'Has published version' : 'Draft only — not yet published'}
           >
             {wf.name}
+            {!wf.published_version_id && <span style={{ fontSize: '0.65rem', marginLeft: 4, color: '#f97316', fontWeight: 600 }}>DRAFT</span>}
           </button>
         ))}
         {activeId && (
@@ -1267,6 +1211,7 @@ export function WorkflowEditor() {
             initialStateCounts={activeStateCounts}
             savedStates={activeSavedStates}
             reloadGen={reloadGen}
+            hasPublishedVersion={activeHasPublished}
           />
         </ReactFlowProvider>
       </div>

@@ -210,14 +210,14 @@ def _resolve_migration_value(src_fv, tgt_field, *, state_overrides=None):
     if val is None:
         return None
     if tgt_field.data_type == FieldDefinition.DataType.WORKFLOW:
-        if not tgt_field.workflow_definition_id or not isinstance(val, str):
+        if not tgt_field.workflow_version_id or not isinstance(val, str):
             return None
         target_state_name = val
         if state_overrides:
             target_state_name = state_overrides.get(val, val)
         from userdefinedmodel.models import WorkflowState
         state = WorkflowState.objects.filter(
-            workflow_id=tgt_field.workflow_definition_id, name=target_state_name
+            version_id=tgt_field.workflow_version_id, name=target_state_name
         ).first()
         return state
     return val

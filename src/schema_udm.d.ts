@@ -902,8 +902,8 @@ export interface components {
             type_config?: {
                 [key: string]: unknown;
             };
-            /** Workflow Definition Id */
-            workflow_definition_id?: string | null;
+            /** Workflow Version Id */
+            workflow_version_id?: string | null;
             /** Parent Slug (for fields inside tabs, or tabs inside tab_container) */
             parent_slug?: string | null;
         };
@@ -939,7 +939,7 @@ export interface components {
             type_config: {
                 [key: string]: unknown;
             };
-            workflow_definition?: components["schemas"]["WorkflowDefinitionOut"] | null;
+            workflow_version?: components["schemas"]["WorkflowVersionOut"] | null;
             /** Parent Slug (for fields inside tabs, or tabs inside tab_container) */
             parent_slug?: string | null;
         };
@@ -1216,14 +1216,30 @@ export interface components {
              * @default
              */
             description: string;
-            /** Migrations */
-            migrations?: components["schemas"]["StateMigrationIn"][];
             /** Name */
             name: string;
             /** States */
             states: components["schemas"]["WorkflowStateIn"][];
             /** Transitions */
             transitions?: components["schemas"]["WorkflowTransitionIn"][];
+            /** Virtual Node Positions */
+            virtual_node_positions?: {
+                [key: string]: unknown;
+            };
+        };
+        /** WorkflowVersionOut */
+        WorkflowVersionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /** States */
+            states: components["schemas"]["WorkflowStateOut"][];
+            /** Transitions */
+            transitions: components["schemas"]["WorkflowTransitionOut"][];
             /** Virtual Node Positions */
             virtual_node_positions?: {
                 [key: string]: unknown;
@@ -1250,6 +1266,10 @@ export interface components {
             virtual_node_positions?: {
                 [key: string]: unknown;
             };
+            /** Draft Version Id */
+            draft_version_id?: string | null;
+            /** Published Version Id */
+            published_version_id?: string | null;
         };
         /**
          * WorkflowFieldStateMappingIn
@@ -1368,8 +1388,6 @@ export interface components {
         WorkflowUpdateIn: {
             /** Description */
             description?: string | null;
-            /** Migrations */
-            migrations?: components["schemas"]["StateMigrationIn"][];
             /** Name */
             name?: string | null;
             /** States */

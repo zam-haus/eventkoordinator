@@ -79,6 +79,7 @@ from userdefinedmodel.schemas import (
     UserRefOut,
     WorkflowCreateIn,
     WorkflowDefinitionOut,
+    WorkflowVersionOut,
     WorkflowStateOut,
     WorkflowTransitionOut,
     WorkflowUpdateIn,
@@ -148,9 +149,10 @@ def _entity_out_for_user(entity, user, policy_messages: list | None = None, view
     return EntityOut(**data)
 
 
-def _serialize_workflow(wf) -> WorkflowDefinitionOut:
+def _serialize_workflow_version(version) -> WorkflowVersionOut:
+    """Serialize a WorkflowVersion's states/transitions."""
     states = []
-    for state in wf.states.prefetch_related("translations").all():
+    for state in version.states.prefetch_related("translations").all():
         label_dict = {t.language: t.label for t in state.translations.all()}
         bg = state.background_color or "#ffffff"
         states.append(WorkflowStateOut(
@@ -161,7 +163,7 @@ def _serialize_workflow(wf) -> WorkflowDefinitionOut:
             text_color=_wcag_text_color(bg),
         ))
     transitions = []
-    for trans in wf.transitions.prefetch_related("translations").select_related("from_state", "to_state").all():
+    for trans in version.transitions.prefetch_related("translations").select_related("from_state", "to_state").all():
         label_dict = {t.language: t.label for t in trans.translations.all()}
         transitions.append(WorkflowTransitionOut(
             name=trans.name, label=label_dict,
@@ -171,15 +173,36 @@ def _serialize_workflow(wf) -> WorkflowDefinitionOut:
             source_handle=trans.source_handle,
             target_handle=trans.target_handle,
         ))
-    initial = next((s for s in states if s.is_initial), None)
-    return WorkflowDefinitionOut(
-        id=wf.id,
-        name=wf.name,
-        description=wf.description,
-        initial_state=initial.name if initial else None,
+    return WorkflowVersionOut(
+        id=version.id,
+        status=version.status,
         states=states,
         transitions=transitions,
-        virtual_node_positions=wf.virtual_node_positions or {},
+        virtual_node_positions=version.virtual_node_positions or {},
+    )
+
+
+def _serialize_workflow(wf_def, version) -> WorkflowDefinitionOut:
+    """Serialize a WorkflowDefinition with a specific version's content."""
+    wf_ver = _serialize_workflow_version(version)
+    initial = next((s for s in wf_ver.states if s.is_initial), None)
+    draft_version_id = None
+    published_version_id = None
+    for ver in wf_def.versions.all():
+        if ver.status == "draft":
+            draft_version_id = ver.id
+        elif ver.status == "published":
+            published_version_id = ver.id
+    return WorkflowDefinitionOut(
+        id=wf_def.id,
+        name=wf_def.name,
+        description=wf_def.description,
+        initial_state=initial.name if initial else None,
+        states=wf_ver.states,
+        transitions=wf_ver.transitions,
+        virtual_node_positions=wf_ver.virtual_node_positions,
+        draft_version_id=draft_version_id,
+        published_version_id=published_version_id,
     )
 
 
@@ -187,10 +210,11 @@ def _serialize_config_version(version) -> ConfigVersionOut:
     fields_out = []
     for fd in version.field_definitions.prefetch_related(
         "translations", "defaults",
-        "workflow_definition__states__translations",
-        "workflow_definition__transitions__translations",
-        "workflow_definition__transitions__from_state",
-        "workflow_definition__transitions__to_state",
+        "workflow_version__workflow__versions",
+        "workflow_version__states__translations",
+        "workflow_version__transitions__translations",
+        "workflow_version__transitions__from_state",
+        "workflow_version__transitions__to_state",
     ).all():
         label_dict = {t.language: t.label for t in fd.translations.all()}
         help_dict = {t.language: t.help_text for t in fd.translations.all()}
@@ -203,7 +227,7 @@ def _serialize_config_version(version) -> ConfigVersionOut:
             else:
                 default_val = defaults_qs[0].get_value(field=fd)
 
-        workflow_def_out = _serialize_workflow(fd.workflow_definition) if fd.workflow_definition else None
+        workflow_ver_out = _serialize_workflow_version(fd.workflow_version) if fd.workflow_version else None
 
         fields_out.append(FieldDefinitionOut(
             id=fd.id,
@@ -217,7 +241,7 @@ def _serialize_config_version(version) -> ConfigVersionOut:
             type_config=fd.type_config or {},
             default=default_val,
             submodel_config=_serialize_config_version(fd.submodel_config) if fd.submodel_config else None,
-            workflow_definition=workflow_def_out,
+            workflow_version=workflow_ver_out,
             parent_slug=fd.parent_slug or None,
         ))
 
@@ -429,7 +453,7 @@ def _serialize_version_as_draft_in(version) -> ConfigDraftExportOut:
             type_config=fd.type_config or {},
             default=default_val,
             submodel_config_version_id=fd.submodel_config_id,
-            workflow_definition_id=fd.workflow_definition_id,
+            workflow_version_id=fd.workflow_version_id,
             parent_slug=fd.parent_slug or None,
         ))
 
@@ -453,7 +477,7 @@ def get_draft_as_input(request, config_id: uuid.UUID):
 def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
     from userdefinedmodel.models import (
         ConfigVersion, FieldConfig, FieldDefinition, FieldDefinitionTranslation,
-        WorkflowDefinition,
+        WorkflowVersion,
     )
     if denied := _require_perms(request, "userdefinedmodel.change_fieldconfig"):
         return denied
@@ -495,12 +519,12 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
                 except ConfigVersion.DoesNotExist:
                     return JsonResponse({"detail": f"ConfigVersion {fd_in.submodel_config_version_id} not found"}, status=400)
 
-            workflow_definition = None
-            if fd_in.workflow_definition_id:
+            workflow_version = None
+            if fd_in.workflow_version_id:
                 try:
-                    workflow_definition = WorkflowDefinition.objects.get(id=fd_in.workflow_definition_id)
-                except WorkflowDefinition.DoesNotExist:
-                    return JsonResponse({"detail": f"WorkflowDefinition {fd_in.workflow_definition_id} not found"}, status=400)
+                    workflow_version = WorkflowVersion.objects.get(id=fd_in.workflow_version_id)
+                except WorkflowVersion.DoesNotExist:
+                    return JsonResponse({"detail": f"WorkflowVersion {fd_in.workflow_version_id} not found"}, status=400)
 
             fd = FieldDefinition.objects.create(
                 version=draft,
@@ -511,7 +535,7 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
                 is_preview=fd_in.is_preview,
                 parent_slug=fd_in.parent_slug or "",
                 submodel_config=submodel_config,
-                workflow_definition=workflow_definition,
+                workflow_version=workflow_version,
                 type_config=fd_in.type_config,
             )
             field_map[fd_in.slug] = fd
@@ -846,35 +870,55 @@ def delete_udm_type(request, type_id: uuid.UUID):
 
 # ─── Workflow CRUD ────────────────────────────────────────────────────────────
 
+def _get_workflow_display_version(wf_def):
+    """Return the draft version if it exists, otherwise the published version."""
+    return (
+        wf_def.versions.filter(status="draft").first()
+        or wf_def.versions.filter(status="published").first()
+    )
+
+
 @api.get("/workflows/", response=list[WorkflowDefinitionOut], auth=django_auth)
 def list_workflows(request):
     from userdefinedmodel.models import WorkflowDefinition
     if denied := _require_perms(request, "userdefinedmodel.view_fielddefinition"):
         return denied
     workflows = WorkflowDefinition.objects.prefetch_related(
-        "states__translations", "transitions__translations",
-        "transitions__from_state", "transitions__to_state",
+        "versions",
+        "versions__states__translations",
+        "versions__transitions__translations",
+        "versions__transitions__from_state",
+        "versions__transitions__to_state",
     ).all()
-    return [_serialize_workflow(wf) for wf in workflows]
+    result = []
+    for wf_def in workflows:
+        version = _get_workflow_display_version(wf_def)
+        if version:
+            result.append(_serialize_workflow(wf_def, version))
+    return result
 
 
 @api.post("/workflows/", response={201: WorkflowDefinitionOut}, auth=django_auth)
 def create_workflow(request, payload: WorkflowCreateIn):
     from userdefinedmodel.models import (
-        WorkflowDefinition, WorkflowState, WorkflowStateTranslation,
+        WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
     if denied := _require_perms(request, "userdefinedmodel.add_fielddefinition"):
         return denied
     with transaction.atomic():
-        wf = WorkflowDefinition.objects.create(
+        wf_def = WorkflowDefinition.objects.create(
             name=payload.name, description=payload.description,
+        )
+        version = WorkflowVersion.objects.create(
+            workflow=wf_def,
+            status=WorkflowVersion.Status.DRAFT,
             virtual_node_positions=payload.virtual_node_positions,
         )
         state_map = {}
         for state_in in payload.states:
             state = WorkflowState.objects.create(
-                workflow=wf, name=state_in.name,
+                version=version, name=state_in.name,
                 is_initial=state_in.is_initial,
                 position_x=state_in.position_x, position_y=state_in.position_y,
                 background_color=state_in.background_color,
@@ -884,7 +928,7 @@ def create_workflow(request, payload: WorkflowCreateIn):
                 WorkflowStateTranslation.objects.create(state=state, language=lang, label=label)
         for trans_in in payload.transitions:
             trans = WorkflowTransition.objects.create(
-                workflow=wf,
+                version=version,
                 name=trans_in.name,
                 from_state=state_map.get(trans_in.from_state) if trans_in.from_state else None,
                 to_state=state_map[trans_in.to_state],
@@ -894,7 +938,7 @@ def create_workflow(request, payload: WorkflowCreateIn):
             )
             for lang, label in trans_in.label.items():
                 WorkflowTransitionTranslation.objects.create(transition=trans, language=lang, label=label)
-    return 201, _serialize_workflow(wf)
+    return 201, _serialize_workflow(wf_def, version)
 
 
 @api.get("/workflows/{workflow_id}/", response=WorkflowDefinitionOut, auth=django_auth)
@@ -903,45 +947,63 @@ def get_workflow(request, workflow_id: uuid.UUID):
     if denied := _require_perms(request, "userdefinedmodel.view_fielddefinition"):
         return denied
     try:
-        wf = WorkflowDefinition.objects.prefetch_related(
-            "states__translations", "transitions__translations",
-            "transitions__from_state", "transitions__to_state",
+        wf_def = WorkflowDefinition.objects.prefetch_related(
+            "versions",
+            "versions__states__translations",
+            "versions__transitions__translations",
+            "versions__transitions__from_state",
+            "versions__transitions__to_state",
         ).get(id=workflow_id)
     except WorkflowDefinition.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
-    return _serialize_workflow(wf)
+    version = _get_workflow_display_version(wf_def)
+    if not version:
+        return JsonResponse({"detail": "Workflow has no versions"}, status=404)
+    return _serialize_workflow(wf_def, version)
 
 
 @api.put("/workflows/{workflow_id}/", response=WorkflowDefinitionOut, auth=django_auth)
 def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
     from userdefinedmodel.models import (
-        WorkflowDefinition, WorkflowState, WorkflowStateTranslation,
+        WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
     if denied := _require_perms(request, "userdefinedmodel.change_fielddefinition"):
         return denied
     try:
-        wf = WorkflowDefinition.objects.get(id=workflow_id)
+        wf_def = WorkflowDefinition.objects.get(id=workflow_id)
     except WorkflowDefinition.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
     with transaction.atomic():
         if payload.name is not None:
-            wf.name = payload.name
+            wf_def.name = payload.name
         if payload.description is not None:
-            wf.description = payload.description
-        wf.virtual_node_positions = payload.virtual_node_positions
-        wf.save()
-        if payload.states is not None:
-            from userdefinedmodel.models.node import FieldValue
+            wf_def.description = payload.description
+        wf_def.save()
 
+        # Get or create the draft version
+        draft = WorkflowVersion.objects.filter(workflow=wf_def, status=WorkflowVersion.Status.DRAFT).first()
+        if draft is None:
+            # Create a new draft as a copy of the published version
+            published = WorkflowVersion.objects.filter(workflow=wf_def, status=WorkflowVersion.Status.PUBLISHED).first()
+            if published:
+                draft = published._create_draft_copy()
+            else:
+                draft = WorkflowVersion.objects.create(
+                    workflow=wf_def, status=WorkflowVersion.Status.DRAFT,
+                )
+
+        draft.virtual_node_positions = payload.virtual_node_positions
+        draft.save()
+
+        if payload.states is not None:
             if sum(1 for s in payload.states if s.is_initial) != 1:
                 return JsonResponse({"detail": "exactly one state must have is_initial=True"}, status=400)
 
             incoming_names = {s.name for s in payload.states}
-            existing_states = {s.name: s for s in wf.states.all()}
+            existing_states = {s.name: s for s in draft.states.all()}
 
-            # 0. Apply renames: states that supply previous_name get their DB row
-            #    renamed first, so the upsert loop can find them by new name.
+            # Apply renames first
             for state_in in payload.states:
                 prev = state_in.previous_name
                 if prev and prev != state_in.name and prev in existing_states:
@@ -957,11 +1019,8 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
 
             states_to_delete = {n: s for n, s in existing_states.items() if n not in incoming_names}
 
-            # 1. Clear is_initial on surviving states before the upsert loop to avoid
-            #    the partial-unique constraint firing if the initial state changes.
-            wf.states.filter(name__in=incoming_names).update(is_initial=False)
+            draft.states.filter(name__in=incoming_names).update(is_initial=False)
 
-            # 2. Upsert surviving and new states, building state_map by name.
             state_map = {}
             for state_in in payload.states:
                 if state_in.name in existing_states:
@@ -974,7 +1033,7 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
                     state.translations.all().delete()
                 else:
                     state = WorkflowState.objects.create(
-                        workflow=wf, name=state_in.name,
+                        version=draft, name=state_in.name,
                         is_initial=state_in.is_initial,
                         position_x=state_in.position_x, position_y=state_in.position_y,
                         background_color=state_in.background_color,
@@ -983,39 +1042,14 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
                     WorkflowStateTranslation.objects.create(state=state, language=lang, label=label)
                 state_map[state_in.name] = state
 
-            # 3. Run bulk migrations before deletion so entities land in a valid state.
-            for migration in payload.migrations:
-                from_state_obj = existing_states.get(migration.from_state)
-                to_state_obj = state_map.get(migration.to_state)
-                if from_state_obj and to_state_obj:
-                    FieldValue.objects.filter(
-                        field__workflow_definition_id=wf.id,
-                        value_workflow_state=from_state_obj,
-                    ).update(value_workflow_state=to_state_obj)
-
-            # 4. Gate: refuse to delete states that still have entities.
-            for del_name, del_state in states_to_delete.items():
-                count = FieldValue.objects.filter(
-                    field__workflow_definition_id=wf.id,
-                    value_workflow_state=del_state,
-                ).count()
-                if count > 0:
-                    raise HttpError(
-                        400,
-                        f"State '{del_name}' still has {count} "
-                        f"{'entity' if count == 1 else 'entities'}. "
-                        "Add a migration edge to move them first, or re-add the state.",
-                    )
-
-            # 5. Delete removed states (safe — entities migrated or confirmed at 0).
             for del_state in states_to_delete.values():
                 del_state.delete()
 
             if payload.transitions is not None:
-                wf.transitions.all().delete()
+                draft.transitions.all().delete()
                 for trans_in in payload.transitions:
                     trans = WorkflowTransition.objects.create(
-                        workflow=wf,
+                        version=draft,
                         name=trans_in.name,
                         from_state=state_map.get(trans_in.from_state) if trans_in.from_state else None,
                         to_state=state_map[trans_in.to_state],
@@ -1025,7 +1059,24 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
                     )
                     for lang, label in trans_in.label.items():
                         WorkflowTransitionTranslation.objects.create(transition=trans, language=lang, label=label)
-    return _serialize_workflow(wf)
+    return _serialize_workflow(wf_def, draft)
+
+
+@api.post("/workflows/{workflow_id}/versions/draft/publish/", response=WorkflowDefinitionOut, auth=django_auth)
+def publish_workflow_draft(request, workflow_id: uuid.UUID):
+    from userdefinedmodel.models import WorkflowDefinition, WorkflowVersion
+    if denied := _require_perms(request, "userdefinedmodel.change_fielddefinition"):
+        return denied
+    try:
+        wf_def = WorkflowDefinition.objects.get(id=workflow_id)
+    except WorkflowDefinition.DoesNotExist:
+        return JsonResponse({"detail": "Not found"}, status=404)
+    try:
+        draft = WorkflowVersion.objects.get(workflow=wf_def, status=WorkflowVersion.Status.DRAFT)
+    except WorkflowVersion.DoesNotExist:
+        return JsonResponse({"detail": "No draft to publish"}, status=404)
+    new_draft = draft.publish()
+    return _serialize_workflow(wf_def, new_draft)
 
 
 @api.delete("/workflows/{workflow_id}/", auth=django_auth)
@@ -1060,7 +1111,7 @@ def workflow_state_counts(request, workflow_id: uuid.UUID):
 
     rows = (
         FieldValue.objects
-        .filter(field__workflow_definition_id=workflow_id, value_workflow_state__isnull=False)
+        .filter(field__workflow_version__workflow_id=workflow_id, value_workflow_state__isnull=False)
         .values("value_workflow_state__name")
         .annotate(count=Count("id"))
     )
@@ -1723,18 +1774,18 @@ def _resolve_migration_value(src_fv, tgt_field):
 
     Workflow fields: get_value() returns the state name string, which cannot be
     assigned directly as value_workflow_state_id. Resolve by name in the target
-    workflow; return None if not found so materialize_defaults() sets the initial state.
+    workflow version; return None if not found so materialize_defaults() sets the initial state.
     """
     from userdefinedmodel.models.config import FieldDefinition
     val = src_fv.get_value()
     if val is None:
         return None
     if tgt_field.data_type == FieldDefinition.DataType.WORKFLOW:
-        if not tgt_field.workflow_definition_id or not isinstance(val, str):
+        if not tgt_field.workflow_version_id or not isinstance(val, str):
             return None
         from userdefinedmodel.models import WorkflowState
         return WorkflowState.objects.filter(
-            workflow_id=tgt_field.workflow_definition_id, name=val
+            version_id=tgt_field.workflow_version_id, name=val
         ).first()
     return val
 
@@ -1870,19 +1921,19 @@ def _collect_bundle_scope(scope_type_ids: list) -> tuple[list, list, list, list]
 
     # Walk submodel configs transitively
     visited_version_ids: set = set()
-    workflow_ids: set = set()
+    workflow_def_ids: set = set()
     configs_to_expand = list(config_ids)
     while configs_to_expand:
         cfg_id = configs_to_expand.pop()
         # Use the published version if available, else draft
         try:
             version = ConfigVersion.objects.prefetch_related(
-                "field_definitions__workflow_definition",
+                "field_definitions__workflow_version__workflow",
             ).get(config_id=cfg_id, status=ConfigVersion.Status.PUBLISHED)
         except ConfigVersion.DoesNotExist:
             try:
                 version = ConfigVersion.objects.prefetch_related(
-                    "field_definitions__workflow_definition",
+                    "field_definitions__workflow_version__workflow",
                 ).get(config_id=cfg_id, status=ConfigVersion.Status.DRAFT)
             except ConfigVersion.DoesNotExist:
                 continue
@@ -1890,8 +1941,8 @@ def _collect_bundle_scope(scope_type_ids: list) -> tuple[list, list, list, list]
             continue
         visited_version_ids.add(version.id)
         for fd in version.field_definitions.all():
-            if fd.workflow_definition_id:
-                workflow_ids.add(fd.workflow_definition_id)
+            if fd.workflow_version_id and fd.workflow_version.workflow_id:
+                workflow_def_ids.add(fd.workflow_version.workflow_id)
             if fd.submodel_config_id and fd.submodel_config.config_id not in config_ids:
                 config_ids.add(fd.submodel_config.config_id)
                 configs_to_expand.append(fd.submodel_config.config_id)
@@ -1899,9 +1950,11 @@ def _collect_bundle_scope(scope_type_ids: list) -> tuple[list, list, list, list]
     field_configs = list(FieldConfig.objects.prefetch_related("languages").filter(id__in=config_ids))
     workflows = list(
         WorkflowDefinition.objects.prefetch_related(
-            "states__translations", "transitions__translations",
-            "transitions__from_state", "transitions__to_state",
-        ).filter(id__in=workflow_ids)
+            "versions__states__translations",
+            "versions__transitions__translations",
+            "versions__transitions__from_state",
+            "versions__transitions__to_state",
+        ).filter(id__in=workflow_def_ids)
     )
 
     policy_slugs: set[str] = set()
@@ -1950,11 +2003,18 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
         ))
 
     bundle_workflows = []
-    for wf in workflows:
+    for wf_def in workflows:
+        # Export the published version, falling back to draft
+        export_version = (
+            next((v for v in wf_def.versions.all() if v.status == "published"), None)
+            or next((v for v in wf_def.versions.all() if v.status == "draft"), None)
+        )
+        if not export_version:
+            continue
         bundle_workflows.append(BundleWorkflowOut(
-            id=wf.id,
-            name=wf.name,
-            description=wf.description,
+            id=wf_def.id,
+            name=wf_def.name,
+            description=wf_def.description,
             states=[
                 WorkflowStateOut(
                     name=s.name,
@@ -1965,7 +2025,7 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
                     background_color=s.background_color or "#ffffff",
                     text_color=_wcag_text_color(s.background_color or "#ffffff"),
                 )
-                for s in wf.states.all()
+                for s in export_version.states.all()
             ],
             transitions=[
                 WorkflowTransitionOut(
@@ -1977,9 +2037,9 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
                     source_handle=tr.source_handle,
                     target_handle=tr.target_handle,
                 )
-                for tr in wf.transitions.all()
+                for tr in export_version.transitions.all()
             ],
-            virtual_node_positions=wf.virtual_node_positions or {},
+            virtual_node_positions=export_version.virtual_node_positions or {},
         ))
 
     bundle_policies = [PolicyOut(slug=p.slug, source=p.source) for p in policies]
@@ -2091,8 +2151,7 @@ def import_bundle_zip(
     """
     from userdefinedmodel.models import (
         ConfigVersion, FieldConfig, ConfigLanguage, FieldDefinition,
-        FieldDefinitionTranslation, WorkflowDefinition, WorkflowState,
-        WorkflowStateTranslation, WorkflowTransition, WorkflowTransitionTranslation,
+        FieldDefinitionTranslation, WorkflowDefinition,
         Policy, UserDefinedModelType, UserDefinedModelTypePolicy,
     )
     if denied := _require_perms(
@@ -2119,14 +2178,17 @@ def import_bundle_zip(
     bundle_config_ids = set(str(fc["id"]) for fc in raw_bundle.get("field_configs", []))
 
     with transaction.atomic():
-        # ── Step 1: Resolve workflows (same logic as import-bundle-rego) ─────
+        # ── Step 1: Resolve workflows ─────────────────────────────────────────
+        # workflow_id_map maps WorkflowDefinition.id (from bundle) → WorkflowVersion (published)
         workflow_id_map: dict[str, object] = {}
         for wf_data in raw_bundle.get("workflows", []):
             wf_id = str(wf_data["id"])
             try:
                 wf = WorkflowDefinition.objects.prefetch_related(
-                    "states__translations", "transitions__translations",
-                    "transitions__from_state", "transitions__to_state",
+                    "versions__states__translations",
+                    "versions__transitions__translations",
+                    "versions__transitions__from_state",
+                    "versions__transitions__to_state",
                 ).get(id=wf_id)
             except WorkflowDefinition.DoesNotExist:
                 wf = None
@@ -2134,8 +2196,7 @@ def import_bundle_zip(
             if wf is not None and _is_workflow_externally_used(wf.id, bundle_config_ids):
                 workflow_id_map[wf_id] = _clone_workflow(wf)
             elif wf is not None:
-                _update_workflow_from_data(wf, wf_data)
-                workflow_id_map[wf_id] = wf
+                workflow_id_map[wf_id] = _update_workflow_from_data(wf, wf_data)
             else:
                 workflow_id_map[wf_id] = _create_workflow_from_data(wf_data)
 
@@ -2294,7 +2355,7 @@ def _is_workflow_externally_used(workflow_id, scope_config_ids: set) -> bool:
     FieldConfig is NOT in scope_config_ids."""
     from userdefinedmodel.models import FieldDefinition
     return FieldDefinition.objects.filter(
-        workflow_definition_id=workflow_id
+        workflow_version__workflow_id=workflow_id
     ).exclude(
         version__config_id__in=scope_config_ids
     ).exists()
@@ -2314,17 +2375,33 @@ def _is_config_externally_used(config_id, scope_type_ids: set, scope_config_ids:
     return False
 
 
-def _update_workflow_from_data(wf, wf_data: dict) -> None:
-    """Update an existing WorkflowDefinition in place from bundle data."""
+def _update_workflow_from_data(wf_def, wf_data: dict) -> "WorkflowVersion":
+    """Update an existing WorkflowDefinition's draft version from bundle data.
+
+    Returns the updated (or newly created) published WorkflowVersion.
+    """
     from userdefinedmodel.models import (
-        WorkflowState, WorkflowStateTranslation,
+        WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
-    wf.name = wf_data["name"]
-    wf.description = wf_data.get("description", "")
-    wf.virtual_node_positions = wf_data.get("virtual_node_positions") or {}
-    wf.save()
-    existing_states = {s.name: s for s in wf.states.all()}
+    wf_def.name = wf_data["name"]
+    wf_def.description = wf_data.get("description", "")
+    wf_def.save()
+
+    draft = WorkflowVersion.objects.filter(workflow=wf_def, status=WorkflowVersion.Status.DRAFT).first()
+    if draft is None:
+        published = WorkflowVersion.objects.filter(workflow=wf_def, status=WorkflowVersion.Status.PUBLISHED).first()
+        if published:
+            draft = published._create_draft_copy()
+        else:
+            draft = WorkflowVersion.objects.create(
+                workflow=wf_def, status=WorkflowVersion.Status.DRAFT,
+            )
+
+    draft.virtual_node_positions = wf_data.get("virtual_node_positions") or {}
+    draft.save()
+
+    existing_states = {s.name: s for s in draft.states.all()}
     incoming_state_names = {s["name"] for s in wf_data.get("states", [])}
     state_map = {}
     for s_data in wf_data.get("states", []):
@@ -2338,7 +2415,7 @@ def _update_workflow_from_data(wf, wf_data: dict) -> None:
             s.translations.all().delete()
         else:
             s = WorkflowState.objects.create(
-                workflow=wf, name=s_data["name"],
+                version=draft, name=s_data["name"],
                 is_initial=s_data.get("is_initial", False),
                 position_x=s_data.get("position_x", 0.0),
                 position_y=s_data.get("position_y", 0.0),
@@ -2349,10 +2426,10 @@ def _update_workflow_from_data(wf, wf_data: dict) -> None:
         state_map[s_data["name"]] = s
     for del_name in set(existing_states) - incoming_state_names:
         existing_states[del_name].delete()
-    wf.transitions.all().delete()
+    draft.transitions.all().delete()
     for tr_data in wf_data.get("transitions", []):
         tr = WorkflowTransition.objects.create(
-            workflow=wf, name=tr_data["name"],
+            version=draft, name=tr_data["name"],
             from_state=state_map.get(tr_data["from_state"]) if tr_data.get("from_state") else None,
             from_undefined_only=tr_data.get("from_undefined_only", False),
             to_state=state_map[tr_data["to_state"]],
@@ -2362,22 +2439,32 @@ def _update_workflow_from_data(wf, wf_data: dict) -> None:
         for lang, label in (tr_data.get("label") or {}).items():
             WorkflowTransitionTranslation.objects.create(transition=tr, language=lang, label=label)
 
+    # Publish the draft so the returned version is usable by field definitions
+    return draft.publish()
 
-def _create_workflow_from_data(wf_data: dict) -> "WorkflowDefinition":
-    """Create a new WorkflowDefinition from bundle data."""
+
+def _create_workflow_from_data(wf_data: dict) -> "WorkflowVersion":
+    """Create a new WorkflowDefinition + published WorkflowVersion from bundle data.
+
+    Returns the published WorkflowVersion.
+    """
     from userdefinedmodel.models import (
-        WorkflowDefinition, WorkflowState, WorkflowStateTranslation,
+        WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
-    new_wf = WorkflowDefinition.objects.create(
+    new_wf_def = WorkflowDefinition.objects.create(
         name=wf_data["name"],
         description=wf_data.get("description", ""),
+    )
+    draft = WorkflowVersion.objects.create(
+        workflow=new_wf_def,
+        status=WorkflowVersion.Status.DRAFT,
         virtual_node_positions=wf_data.get("virtual_node_positions") or {},
     )
     state_map = {}
     for s_data in wf_data.get("states", []):
         s = WorkflowState.objects.create(
-            workflow=new_wf, name=s_data["name"],
+            version=draft, name=s_data["name"],
             is_initial=s_data.get("is_initial", False),
             position_x=s_data.get("position_x", 0.0),
             position_y=s_data.get("position_y", 0.0),
@@ -2388,7 +2475,7 @@ def _create_workflow_from_data(wf_data: dict) -> "WorkflowDefinition":
         state_map[s_data["name"]] = s
     for tr_data in wf_data.get("transitions", []):
         tr = WorkflowTransition.objects.create(
-            workflow=new_wf, name=tr_data["name"],
+            version=draft, name=tr_data["name"],
             from_state=state_map.get(tr_data["from_state"]) if tr_data.get("from_state") else None,
             from_undefined_only=tr_data.get("from_undefined_only", False),
             to_state=state_map[tr_data["to_state"]],
@@ -2397,24 +2484,42 @@ def _create_workflow_from_data(wf_data: dict) -> "WorkflowDefinition":
         )
         for lang, label in (tr_data.get("label") or {}).items():
             WorkflowTransitionTranslation.objects.create(transition=tr, language=lang, label=label)
-    return new_wf
+    # Publish draft so field definitions can reference the published version
+    return draft.publish()
 
 
-def _clone_workflow(wf) -> "WorkflowDefinition":
-    """Deep-copy a WorkflowDefinition (states + translations + transitions + translations)."""
+def _clone_workflow(wf_def) -> "WorkflowVersion":
+    """Deep-copy a WorkflowDefinition (clones the most recent version).
+
+    Returns the published WorkflowVersion of the new clone.
+    """
     from userdefinedmodel.models import (
-        WorkflowDefinition, WorkflowState, WorkflowStateTranslation,
+        WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
-    new_wf = WorkflowDefinition.objects.create(
-        name=wf.name,
-        description=wf.description,
-        virtual_node_positions=wf.virtual_node_positions or {},
+    source_version = (
+        wf_def.versions.filter(status="published").first()
+        or wf_def.versions.filter(status="draft").first()
+    )
+    new_wf_def = WorkflowDefinition.objects.create(
+        name=wf_def.name,
+        description=wf_def.description,
+    )
+    if source_version is None:
+        draft = WorkflowVersion.objects.create(
+            workflow=new_wf_def, status=WorkflowVersion.Status.DRAFT,
+        )
+        return draft.publish()
+
+    draft = WorkflowVersion.objects.create(
+        workflow=new_wf_def,
+        status=WorkflowVersion.Status.DRAFT,
+        virtual_node_positions=source_version.virtual_node_positions or {},
     )
     state_map = {}
-    for state in wf.states.prefetch_related("translations").all():
+    for state in source_version.states.prefetch_related("translations").all():
         new_state = WorkflowState.objects.create(
-            workflow=new_wf,
+            version=draft,
             name=state.name,
             is_initial=state.is_initial,
             position_x=state.position_x,
@@ -2424,9 +2529,9 @@ def _clone_workflow(wf) -> "WorkflowDefinition":
         for t in state.translations.all():
             WorkflowStateTranslation.objects.create(state=new_state, language=t.language, label=t.label)
         state_map[state.name] = new_state
-    for trans in wf.transitions.prefetch_related("translations").select_related("from_state", "to_state").all():
+    for trans in source_version.transitions.prefetch_related("translations").select_related("from_state", "to_state").all():
         new_trans = WorkflowTransition.objects.create(
-            workflow=new_wf,
+            version=draft,
             name=trans.name,
             from_state=state_map.get(trans.from_state.name) if trans.from_state else None,
             from_undefined_only=trans.from_undefined_only,
@@ -2436,7 +2541,7 @@ def _clone_workflow(wf) -> "WorkflowDefinition":
         )
         for t in trans.translations.all():
             WorkflowTransitionTranslation.objects.create(transition=new_trans, language=t.language, label=t.label)
-    return new_wf
+    return draft.publish()
 
 
 def _clone_field_config(cfg, languages_data: list) -> tuple:
@@ -2504,15 +2609,24 @@ def _apply_draft_fields(
     )
     draft.field_definitions.all().delete()
     for fd_data in draft_data.get("fields", []):
-        # Remap workflow: if the workflow was cloned, use new ID
-        wf_def_id = fd_data.get("workflow_definition_id")
-        if wf_def_id and str(wf_def_id) in workflow_id_map:
-            new_wf = workflow_id_map[str(wf_def_id)]
-            resolved_wf_id = new_wf.id
-        elif wf_def_id:
-            resolved_wf_id = wf_def_id
-        else:
-            resolved_wf_id = None
+        # Remap workflow: bundle uses workflow_definition_id (WorkflowDefinition.id);
+        # workflow_id_map maps WorkflowDefinition.id → WorkflowVersion (published).
+        wf_def_id = fd_data.get("workflow_definition_id") or fd_data.get("workflow_version_id")
+        resolved_wf_ver = None
+        if wf_def_id:
+            wf_def_id_str = str(wf_def_id)
+            if wf_def_id_str in workflow_id_map:
+                # Was created/cloned during this import; value is already a WorkflowVersion
+                resolved_wf_ver = workflow_id_map[wf_def_id_str]
+            else:
+                # Try as WorkflowDefinition.id: find its published version
+                from userdefinedmodel.models import WorkflowVersion
+                resolved_wf_ver = WorkflowVersion.objects.filter(
+                    workflow_id=wf_def_id_str, status=WorkflowVersion.Status.PUBLISHED
+                ).first()
+                if resolved_wf_ver is None:
+                    # Try as direct WorkflowVersion.id
+                    resolved_wf_ver = WorkflowVersion.objects.filter(id=wf_def_id_str).first()
 
         # Remap submodel config version.
         # The bundle may store either a real ConfigVersion UUID or a FieldConfig UUID
@@ -2529,14 +2643,6 @@ def _apply_draft_fields(
             else:
                 resolved_sub_ver = _resolve_submodel_version(sub_ver_id_str, config_id_map, bundle_config_ids)
 
-        wf_def = None
-        if resolved_wf_id:
-            from userdefinedmodel.models import WorkflowDefinition
-            try:
-                wf_def = WorkflowDefinition.objects.get(id=resolved_wf_id)
-            except WorkflowDefinition.DoesNotExist:
-                pass
-
         fd = FieldDefinition.objects.create(
             version=draft,
             slug=fd_data["slug"],
@@ -2546,7 +2652,7 @@ def _apply_draft_fields(
             is_preview=fd_data.get("is_preview", False),
             parent_slug=fd_data.get("parent_slug") or "",
             submodel_config=resolved_sub_ver,
-            workflow_definition=wf_def,
+            workflow_version=resolved_wf_ver,
             type_config=fd_data.get("type_config") or {},
         )
         for lang, label in (fd_data.get("labels") or {}).items():

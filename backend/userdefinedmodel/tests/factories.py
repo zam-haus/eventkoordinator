@@ -77,11 +77,24 @@ class WorkflowDefinitionFactory(DjangoModelFactory):
     description = ""
 
 
+class WorkflowVersionFactory(DjangoModelFactory):
+    class Meta:
+        model = "userdefinedmodel.WorkflowVersion"
+
+    workflow = factory.SubFactory(WorkflowDefinitionFactory)
+    status = "draft"
+    notes = ""
+
+
+class PublishedWorkflowVersionFactory(WorkflowVersionFactory):
+    status = "published"
+
+
 class WorkflowStateFactory(DjangoModelFactory):
     class Meta:
         model = "userdefinedmodel.WorkflowState"
 
-    workflow = factory.SubFactory(WorkflowDefinitionFactory)
+    version = factory.SubFactory(WorkflowVersionFactory)
     name = factory.Sequence(lambda n: f"state{n}")
     is_initial = False
 
@@ -90,7 +103,7 @@ class WorkflowTransitionFactory(DjangoModelFactory):
     class Meta:
         model = "userdefinedmodel.WorkflowTransition"
 
-    workflow = factory.SubFactory(WorkflowDefinitionFactory)
+    version = factory.SubFactory(WorkflowVersionFactory)
     name = factory.Sequence(lambda n: f"transition{n}")
     from_state = None
     to_state = factory.SubFactory(WorkflowStateFactory)
@@ -290,32 +303,34 @@ def make_simple_config(data_type="text_short", required=True, max_length=None):
 
 def make_full_workflow():
     """
-    Create a WorkflowDefinition with draft→submitted states and a submit transition.
+    Create a WorkflowDefinition with a published WorkflowVersion containing
+    draft→submitted states and a submit transition.
 
-    Returns: (workflow, draft_state, submitted_state, submit_transition)
+    Returns: (workflow_version, draft_state, submitted_state, submit_transition)
     """
     from userdefinedmodel.models import (
-        WorkflowDefinition, WorkflowState, WorkflowStateTranslation,
+        WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
 
-    wf = WorkflowDefinition.objects.create(name="Test Workflow")
-    draft = WorkflowState.objects.create(workflow=wf, name="draft", is_initial=True)
-    WorkflowStateTranslation.objects.create(state=draft, language="en", label="Draft")
-    submitted = WorkflowState.objects.create(workflow=wf, name="submitted", is_initial=False)
+    wf_def = WorkflowDefinition.objects.create(name="Test Workflow")
+    version = WorkflowVersion.objects.create(workflow=wf_def, status=WorkflowVersion.Status.PUBLISHED)
+    draft_state = WorkflowState.objects.create(version=version, name="draft", is_initial=True)
+    WorkflowStateTranslation.objects.create(state=draft_state, language="en", label="Draft")
+    submitted = WorkflowState.objects.create(version=version, name="submitted", is_initial=False)
     WorkflowStateTranslation.objects.create(state=submitted, language="en", label="Submitted")
 
     trans = WorkflowTransition.objects.create(
-        workflow=wf, name="submit", from_state=draft, to_state=submitted
+        version=version, name="submit", from_state=draft_state, to_state=submitted
     )
     WorkflowTransitionTranslation.objects.create(transition=trans, language="en", label="Submit")
 
-    return wf, draft, submitted, trans
+    return version, draft_state, submitted, trans
 
 
-def add_workflow_field(version, workflow, slug="status"):
+def add_workflow_field(version, workflow_version, slug="status"):
     """
-    Add a WORKFLOW field definition to a config version, linked to the given workflow.
+    Add a WORKFLOW field definition to a config version, linked to the given workflow version.
 
     Returns the FieldDefinition.
     """
@@ -326,7 +341,7 @@ def add_workflow_field(version, workflow, slug="status"):
         slug=slug,
         data_type="workflow",
         sort_order=999,
-        workflow_definition=workflow,
+        workflow_version=workflow_version,
     )
     FieldDefinitionTranslation.objects.create(field=field, language="en", label="Status")
     return field

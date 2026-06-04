@@ -178,7 +178,7 @@ class ConfigVersion(MetaBase):
                 is_preview=old_field.is_preview,
                 parent_slug=old_field.parent_slug,
                 submodel_config=old_field.submodel_config,
-                workflow_definition=old_field.workflow_definition,
+                workflow_version=old_field.workflow_version,
                 type_config=old_field.type_config,
             )
             field_map[old_field.pk] = new_field
@@ -303,8 +303,8 @@ class FieldDefinition(MetaBase):
         blank=True,
         related_name="used_as_submodel",
     )
-    workflow_definition = models.ForeignKey(
-        "userdefinedmodel.WorkflowDefinition",
+    workflow_version = models.ForeignKey(
+        "userdefinedmodel.WorkflowVersion",
         on_delete=models.PROTECT,
         null=True,
         blank=True,

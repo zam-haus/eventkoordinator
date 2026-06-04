@@ -18,7 +18,7 @@ import {
   type ConfigVersionOut,
   type FieldDefinitionOut,
   type WorkflowTransitionOut,
-  type WorkflowDefinitionOut,
+  type WorkflowVersionOut,
   type EditHistoryOut,
   type PolicyMessage,
   type ValidationResult,
@@ -119,7 +119,7 @@ interface WorkflowFieldWidgetProps {
 }
 
 function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap }: WorkflowFieldWidgetProps) {
-  const wfDef = (fd as FieldDefinitionOut & { workflow_definition?: WorkflowDefinitionOut | null }).workflow_definition
+  const wfDef = (fd as FieldDefinitionOut & { workflow_version?: WorkflowVersionOut | null }).workflow_version
   const fv = entity.field_values.find(v => v.field_slug === fd.slug)
   const currentStateName = (fv?.value as string | null) ?? null
 
@@ -183,10 +183,10 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
             borderRadius: '4px',
             fontSize: '0.82rem',
             fontWeight: 600,
-            background: currentStateName ? '#dbeafe' : '#f1f5f9',
-            color: currentStateName ? '#1d4ed8' : '#64748b',
+            background: currentState?.background_color && currentState.background_color !== '#ffffff' ? currentState.background_color : (currentStateName ? '#dbeafe' : '#f1f5f9'),
+            color: currentState?.background_color && currentState.background_color !== '#ffffff' ? currentState.text_color : (currentStateName ? '#1d4ed8' : '#64748b'),
             border: '1px solid',
-            borderColor: currentStateName ? '#93c5fd' : '#cbd5e1',
+            borderColor: currentState?.background_color && currentState.background_color !== '#ffffff' ? currentState.background_color : (currentStateName ? '#93c5fd' : '#cbd5e1'),
           }}>
             {stateLabel ?? '(no state)'}
           </span>
@@ -201,10 +201,10 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
                 {isBlocked && blockMsgs.length > 0 && (
                   <Tooltip target={`#${spanId}`} position="top">{formatPolicyMessages(blockMsgs, fieldLabelMap)}</Tooltip>
                 )}
-                <button type="button" className={styles.transitionBtn}
+                <button type="button" className={styles.tabNavButton}
                   disabled={transitioning || isBlocked}
                   onClick={() => void onTransition(fd.slug, t.name)}>
-                  {tLabel}
+                  → {tLabel}
                 </button>
               </span>
             )
@@ -233,10 +233,10 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
           borderRadius: '4px',
           fontSize: '0.85rem',
           fontWeight: 600,
-          background: currentStateName ? '#dbeafe' : '#f1f5f9',
-          color: currentStateName ? '#1d4ed8' : '#64748b',
+          background: currentState?.background_color && currentState.background_color !== '#ffffff' ? currentState.background_color : (currentStateName ? '#dbeafe' : '#f1f5f9'),
+          color: currentState?.background_color && currentState.background_color !== '#ffffff' ? currentState.text_color : (currentStateName ? '#1d4ed8' : '#64748b'),
           border: '1px solid',
-          borderColor: currentStateName ? '#93c5fd' : '#cbd5e1',
+          borderColor: currentState?.background_color && currentState.background_color !== '#ffffff' ? currentState.background_color : (currentStateName ? '#93c5fd' : '#cbd5e1'),
         }}>
           {stateLabel ?? '(no state)'}
         </span>
@@ -251,10 +251,10 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
               {isBlocked && blockMsgs.length > 0 && (
                 <Tooltip target={`#${spanId}`} position="top">{formatPolicyMessages(blockMsgs, fieldLabelMap)}</Tooltip>
               )}
-              <button type="button" className={styles.transitionBtn}
+              <button type="button" className={styles.tabNavButton}
                 disabled={transitioning || isBlocked}
                 onClick={() => void onTransition(fd.slug, t.name)}>
-                {tLabel}
+                → {tLabel}
               </button>
             </span>
           )

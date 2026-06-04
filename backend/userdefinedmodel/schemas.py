@@ -206,7 +206,7 @@ class FieldDefinitionIn(Schema):
     type_config: dict[str, Any] = Field(default_factory=dict)
     default: Optional[Any] = None
     submodel_config_version_id: Optional[uuid.UUID] = None
-    workflow_definition_id: Optional[uuid.UUID] = None
+    workflow_version_id: Optional[uuid.UUID] = None
     parent_slug: Optional[Annotated[str, Field(max_length=_MAX_SLUG_LEN, pattern=r"^[a-z][a-z0-9_-]*$")]] = None
     model_config = {"extra": "forbid"}
 
@@ -226,10 +226,10 @@ class FieldDefinitionIn(Schema):
             raise ValueError("submodel_config_version_id required for submodel types")
         if self.data_type not in submodel_types and self.submodel_config_version_id is not None:
             raise ValueError("submodel_config_version_id must be null for non-submodel types")
-        if self.data_type == DataType.WORKFLOW and self.workflow_definition_id is None:
-            raise ValueError("workflow_definition_id required for workflow type")
-        if self.data_type != DataType.WORKFLOW and self.workflow_definition_id is not None:
-            raise ValueError("workflow_definition_id must be null for non-workflow types")
+        if self.data_type == DataType.WORKFLOW and self.workflow_version_id is None:
+            raise ValueError("workflow_version_id required for workflow type")
+        if self.data_type != DataType.WORKFLOW and self.workflow_version_id is not None:
+            raise ValueError("workflow_version_id must be null for non-workflow types")
         return self
 
 
@@ -244,7 +244,7 @@ class FieldDefinitionOut(Schema):
     help_text: dict[str, str]
     type_config: dict[str, Any]
     submodel_config: Optional["ConfigVersionOut"] = None
-    workflow_definition: Optional["WorkflowDefinitionOut"] = None
+    workflow_version: Optional["WorkflowVersionOut"] = None
     default: Optional[Any] = None
     parent_slug: Optional[str] = None
 
@@ -355,6 +355,15 @@ class WorkflowOut(Schema):
     transitions: list[WorkflowTransitionOut]
 
 
+class WorkflowVersionOut(Schema):
+    """Workflow version content (states, transitions) with its own id."""
+    id: uuid.UUID
+    status: str
+    states: list[WorkflowStateOut]
+    transitions: list[WorkflowTransitionOut]
+    virtual_node_positions: dict[str, Any] = Field(default_factory=dict)
+
+
 class WorkflowDefinitionOut(Schema):
     id: uuid.UUID
     name: str
@@ -363,6 +372,8 @@ class WorkflowDefinitionOut(Schema):
     states: list[WorkflowStateOut]
     transitions: list[WorkflowTransitionOut]
     virtual_node_positions: dict[str, Any] = Field(default_factory=dict)
+    draft_version_id: Optional[uuid.UUID] = None
+    published_version_id: Optional[uuid.UUID] = None
 
 
 class WorkflowCreateIn(Schema):
@@ -370,7 +381,6 @@ class WorkflowCreateIn(Schema):
     description: Annotated[str, Field(max_length=_MAX_DESCRIPTION_LEN)] = ""
     states: list[WorkflowStateIn] = Field(..., min_length=1, max_length=_MAX_STATES)
     transitions: list[WorkflowTransitionIn] = Field(default_factory=list, max_length=_MAX_TRANSITIONS)
-    migrations: list[StateMigrationIn] = Field(default_factory=list)
     virtual_node_positions: dict[str, Any] = Field(default_factory=dict)
     model_config = {"extra": "forbid"}
 
@@ -393,7 +403,6 @@ class WorkflowUpdateIn(Schema):
     description: Optional[Annotated[str, Field(max_length=_MAX_DESCRIPTION_LEN)]] = None
     states: Optional[list[WorkflowStateIn]] = Field(None, max_length=_MAX_STATES)
     transitions: Optional[list[WorkflowTransitionIn]] = Field(None, max_length=_MAX_TRANSITIONS)
-    migrations: list[StateMigrationIn] = Field(default_factory=list)
     virtual_node_positions: dict[str, Any] = Field(default_factory=dict)
     model_config = {"extra": "forbid"}
 
@@ -426,6 +435,7 @@ class ConfigVersionOut(Schema):
 
 FieldDefinitionOut.model_rebuild()
 WorkflowDefinitionOut.model_rebuild()
+WorkflowVersionOut.model_rebuild()
 
 # ─── Entity schemas ───────────────────────────────────────────────────────────
 
@@ -736,7 +746,7 @@ class FieldDefinitionDraftOut(Schema):
     type_config: dict[str, Any]
     default: Optional[Any] = None
     submodel_config_version_id: Optional[uuid.UUID] = None
-    workflow_definition_id: Optional[uuid.UUID] = None
+    workflow_version_id: Optional[uuid.UUID] = None
     parent_slug: Optional[str] = None
 
 

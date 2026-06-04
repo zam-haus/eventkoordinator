@@ -475,9 +475,9 @@ export function BulkMigrationTab() {
         const tf = tgtBySlug.get(sf.slug)
         if (!tf) continue
         if (sf.data_type === 'workflow' && tf.data_type === 'workflow' &&
-            sf.workflow_definition && tf.workflow_definition) {
-          const sourceStates = sf.workflow_definition.states.map(s => s.name)
-          const targetStates = tf.workflow_definition.states.map(s => s.name)
+            (sf as Record<string, unknown>)['workflow_version'] && (tf as Record<string, unknown>)['workflow_version']) {
+          const sourceStates = ((sf as Record<string, unknown>)['workflow_version'] as { states: Array<{ name: string }> }).states.map(s => s.name)
+          const targetStates = ((tf as Record<string, unknown>)['workflow_version'] as { states: Array<{ name: string }> }).states.map(s => s.name)
           const targetStateSet = new Set(targetStates)
           const stateMapping: Record<string, string> = {}
           for (const s of sourceStates) {

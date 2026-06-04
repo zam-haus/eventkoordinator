@@ -155,24 +155,26 @@ function WorkflowDefinitionPicker({ value, onChange }: { value: string | null; o
     udmListWorkflows().then(setWorkflows).catch(() => setWorkflows([])).finally(() => setLoading(false))
   }, [])
 
+  const publishedWorkflows = workflows.filter(wf => wf.published_version_id)
+
   return (
     <div className={styles.formGroup} style={{ gridColumn: '1 / -1' }}>
-      <label className={styles.label}>Workflow Definition * {loading && '(loading…)'}</label>
+      <label className={styles.label}>Workflow Version * {loading && '(loading…)'}</label>
       <select
         className={styles.select}
         value={value ?? ''}
         onChange={e => onChange(e.target.value || null)}
       >
-        <option value="">— select a workflow —</option>
-        {workflows.map(wf => (
-          <option key={wf.id} value={wf.id}>
+        <option value="">— select a published workflow —</option>
+        {publishedWorkflows.map(wf => (
+          <option key={wf.published_version_id} value={wf.published_version_id!}>
             {wf.name} ({wf.states.length} states, {wf.transitions.length} transitions)
           </option>
         ))}
       </select>
-      {workflows.length === 0 && !loading && (
+      {publishedWorkflows.length === 0 && !loading && (
         <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
-          No workflows found. Create one in the Workflow Editor first.
+          No published workflows found. Create and publish one in the Workflow Editor first.
         </div>
       )}
     </div>
@@ -381,7 +383,7 @@ function FieldEditor({ field, onChange, onRemove, languages, allConfigs, noHeade
                   setF({
                     data_type: dt,
                     submodel_config_version_id: isSubmodel ? field.submodel_config_version_id : null,
-                    workflow_definition_id: dt === 'workflow' ? (field.workflow_definition_id ?? null) : null,
+                    workflow_version_id: dt === 'workflow' ? (field.workflow_version_id ?? null) : null,
                   })
                 }}>
                 {DATA_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -511,8 +513,8 @@ function FieldEditor({ field, onChange, onRemove, languages, allConfigs, noHeade
             {/* Workflow definition — required for workflow type */}
             {field.data_type === 'workflow' && (
               <WorkflowDefinitionPicker
-                value={field.workflow_definition_id ?? null}
-                onChange={id => setF({ workflow_definition_id: id })}
+                value={field.workflow_version_id ?? null}
+                onChange={id => setF({ workflow_version_id: id })}
               />
             )}
           </div>
@@ -810,7 +812,7 @@ function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorPr
       type_config: fd.type_config as Record<string, unknown>,
       default: fd.default ?? null,
       submodel_config_version_id: fd.submodel_config?.version_id ?? null,
-      workflow_definition_id: (fd as FieldDefinitionOut & { workflow_definition?: { id?: string } }).workflow_definition?.id ?? null,
+      workflow_version_id: (fd as FieldDefinitionOut & { workflow_version?: { id?: string } }).workflow_version?.id ?? null,
       parent_slug: fd.parent_slug ?? null,
     }
   }

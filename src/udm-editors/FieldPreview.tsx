@@ -25,7 +25,7 @@ export function fieldPreviewText(fd: FieldDefinitionOut, value: unknown, lang = 
     case 'entity_select_multi':
       return Array.isArray(value) ? (value as unknown[]).map(String).join(', ') : String(value)
     case 'workflow': {
-      const wfDef = (fd as Record<string, unknown>)['workflow_definition'] as { states?: Array<{ name: string; label: Record<string, string> }> } | null
+      const wfDef = (fd as Record<string, unknown>)['workflow_version'] as { states?: Array<{ name: string; label: Record<string, string> }> } | null
       const state = wfDef?.states?.find(s => s.name === value)
       return state ? (state.label[lang] ?? state.label['en'] ?? String(value)) : String(value)
     }

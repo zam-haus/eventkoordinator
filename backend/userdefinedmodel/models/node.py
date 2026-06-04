@@ -244,12 +244,12 @@ class UserDefinedModelEntityNode(MetaBase):
                 fv.set_value(default.get_value(field=field), field=field)
                 fv.save()
 
-        # WORKFLOW: set initial state from the linked WorkflowDefinition
+        # WORKFLOW: set initial state from the linked WorkflowVersion
         for field in self.config_version.field_definitions.filter(
             data_type=FieldDefinition.DataType.WORKFLOW,
-            workflow_definition__isnull=False,
-        ).select_related("workflow_definition"):
-            initial = field.workflow_definition.states.filter(is_initial=True).first()
+            workflow_version__isnull=False,
+        ).select_related("workflow_version"):
+            initial = field.workflow_version.states.filter(is_initial=True).first()
             if initial:
                 fv, created = FieldValue.objects.get_or_create(node=self, field=field, language="")
                 if created:

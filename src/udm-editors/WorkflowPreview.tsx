@@ -1,4 +1,4 @@
-import type { WorkflowDefinitionOut, FieldDefinitionOut } from '../apiUdm'
+import type { WorkflowVersionOut, FieldDefinitionOut } from '../apiUdm'
 import type { PreviewProps } from './FieldPreview'
 import { getLang } from './types'
 import { fieldPreviewRegistry } from './registry-preview'
@@ -6,7 +6,7 @@ import { fieldPreviewRegistry } from './registry-preview'
 function WorkflowPreview({ fd, value, lang = 'en' }: PreviewProps) {
   if (value == null) return <span style={{ color: '#9ca3af' }}>—</span>
   const stateName = value as string
-  const wfDef = (fd as FieldDefinitionOut & { workflow_definition?: WorkflowDefinitionOut | null }).workflow_definition
+  const wfDef = (fd as FieldDefinitionOut & { workflow_version?: WorkflowVersionOut | null }).workflow_version
   const state = wfDef?.states.find(s => s.name === stateName)
   const label = state ? getLang(state.label as Record<string, string>, lang) || stateName : stateName
   const hasBg = state && state.background_color && state.background_color !== '#ffffff'

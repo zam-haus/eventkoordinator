@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { udmTransitionEntity } from '../apiUdm'
-import type { WorkflowDefinitionOut, WorkflowTransitionOut, FieldDefinitionOut, PolicyMessage } from '../apiUdm'
+import type { WorkflowVersionOut, WorkflowTransitionOut, FieldDefinitionOut, PolicyMessage } from '../apiUdm'
 import type { FieldInputProps } from './types'
 import { getLang } from './types'
 import { fieldEditorRegistry } from './registry'
 import styles from '../UdmEntityEditor.module.css'
 
 function WorkflowCellEditor({ fd, value, disabled, lang = '', nodeId, onEntityRefresh }: FieldInputProps) {
-  const wfDef = (fd as FieldDefinitionOut & { workflow_definition?: WorkflowDefinitionOut | null }).workflow_definition
+  const wfDef = (fd as FieldDefinitionOut & { workflow_version?: WorkflowVersionOut | null }).workflow_version
   const currentStateName = (value as string | null) ?? null
   const currentState = wfDef?.states.find(s => s.name === currentStateName) ?? null
   const stateLabel = currentState

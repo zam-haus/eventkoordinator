@@ -561,15 +561,6 @@
   cursor: default;
 }
 
-.migrateBtn { border-color: #f97316; color: #f97316; }
-.migrateBtn:hover { background: #fff7ed; }
-
-.migrateBtnActive {
-  background: #f97316;
-  color: #fff;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.3);
-}
-.migrateBtnActive:hover { background: #ea580c; }
 
 /* ── Properties panel special node description ───────────────────────────── */
 .specialDesc {

@@ -352,14 +352,14 @@ def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name
 
     # Locate the workflow field definition on this node's config version
     try:
-        field_def = node.config_version.field_definitions.select_related("workflow_definition").get(
+        field_def = node.config_version.field_definitions.select_related("workflow_version").get(
             slug=field_slug, data_type=FieldDefinition.DataType.WORKFLOW
         )
     except FieldDefinition.DoesNotExist:
         raise TransitionError(f"No workflow field '{field_slug}' on this node.", http_status=404)
 
-    if not field_def.workflow_definition_id:
-        raise TransitionError(f"Workflow field '{field_slug}' has no workflow definition.", http_status=404)
+    if not field_def.workflow_version_id:
+        raise TransitionError(f"Workflow field '{field_slug}' has no workflow version.", http_status=404)
 
     # Get the current state from the field value
     fv = FieldValue.objects.filter(node=node, field=field_def, language="").select_related("value_workflow_state").first()
@@ -367,7 +367,7 @@ def execute_transition(node: "UserDefinedModelEntityNode", field_slug: str, name
 
     try:
         transition = WorkflowTransition.objects.get(
-            workflow=field_def.workflow_definition, name=name
+            version=field_def.workflow_version, name=name
         )
     except WorkflowTransition.DoesNotExist:
         raise TransitionError(f"Transition '{name}' not found in workflow '{field_slug}'.", http_status=404)

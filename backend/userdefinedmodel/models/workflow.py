@@ -1,5 +1,6 @@
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q, UniqueConstraint
+from django.utils.timezone import now
 
 from userdefinedmodel.basemodels import MetaBase, PolymorphicMetaBase
 
@@ -7,14 +8,93 @@ from userdefinedmodel.basemodels import MetaBase, PolymorphicMetaBase
 class WorkflowDefinition(MetaBase):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    virtual_node_positions = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return self.name
 
 
+class WorkflowVersion(MetaBase):
+    class Status(models.TextChoices):
+        DRAFT = "draft"
+        PUBLISHED = "published"
+        ARCHIVED = "archived"
+
+    workflow = models.ForeignKey(WorkflowDefinition, on_delete=models.CASCADE, related_name="versions")
+    status = models.CharField(max_length=10, choices=Status, default=Status.DRAFT)
+    published_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    virtual_node_positions = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(
+                fields=["workflow"],
+                condition=Q(status="draft"),
+                name="unique_draft_per_workflow",
+            ),
+            UniqueConstraint(
+                fields=["workflow"],
+                condition=Q(status="published"),
+                name="unique_published_per_workflow",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.workflow} v{self.pk} ({self.status})"
+
+    def publish(self):
+        with transaction.atomic():
+            WorkflowVersion.objects.filter(
+                workflow=self.workflow, status=self.Status.PUBLISHED
+            ).update(status=self.Status.ARCHIVED)
+
+            self.status = self.Status.PUBLISHED
+            self.published_at = now()
+            self.save()
+
+            return self._create_draft_copy()
+
+    def _create_draft_copy(self):
+        new_draft = WorkflowVersion.objects.create(
+            workflow=self.workflow,
+            status=WorkflowVersion.Status.DRAFT,
+            notes="",
+            virtual_node_positions=self.virtual_node_positions,
+        )
+        state_map = {}
+        for old_state in self.states.prefetch_related("translations").all():
+            new_state = WorkflowState.objects.create(
+                version=new_draft,
+                name=old_state.name,
+                is_initial=old_state.is_initial,
+                position_x=old_state.position_x,
+                position_y=old_state.position_y,
+                background_color=old_state.background_color,
+            )
+            state_map[old_state.pk] = new_state
+            for t in old_state.translations.all():
+                WorkflowStateTranslation.objects.create(
+                    state=new_state, language=t.language, label=t.label
+                )
+        for old_trans in self.transitions.prefetch_related("translations").select_related("from_state", "to_state").all():
+            new_trans = WorkflowTransition.objects.create(
+                version=new_draft,
+                name=old_trans.name,
+                from_state=state_map.get(old_trans.from_state_id) if old_trans.from_state_id else None,
+                from_undefined_only=old_trans.from_undefined_only,
+                to_state=state_map[old_trans.to_state_id],
+                source_handle=old_trans.source_handle,
+                target_handle=old_trans.target_handle,
+            )
+            for t in old_trans.translations.all():
+                WorkflowTransitionTranslation.objects.create(
+                    transition=new_trans, language=t.language, label=t.label
+                )
+        return new_draft
+
+
 class WorkflowState(MetaBase):
-    workflow = models.ForeignKey(WorkflowDefinition, on_delete=models.CASCADE, related_name="states")
+    version = models.ForeignKey(WorkflowVersion, on_delete=models.CASCADE, related_name="states")
     name = models.CharField(max_length=100)
     is_initial = models.BooleanField(default=False)
     position_x = models.FloatField(default=0.0)
@@ -24,18 +104,18 @@ class WorkflowState(MetaBase):
     class Meta:
         constraints = [
             UniqueConstraint(
-                fields=["workflow"],
+                fields=["version"],
                 condition=Q(is_initial=True),
-                name="one_initial_state_per_workflow",
+                name="one_initial_state_per_workflow_version",
             ),
             UniqueConstraint(
-                fields=["workflow", "name"],
-                name="unique_state_name_per_workflow",
+                fields=["version", "name"],
+                name="unique_state_name_per_workflow_version",
             ),
         ]
 
     def __str__(self):
-        return f"{self.workflow} / {self.name}"
+        return f"{self.version} / {self.name}"
 
 
 class WorkflowStateTranslation(MetaBase):
@@ -56,7 +136,7 @@ class WorkflowStateTranslation(MetaBase):
 
 
 class WorkflowTransition(MetaBase):
-    workflow = models.ForeignKey(WorkflowDefinition, on_delete=models.CASCADE, related_name="transitions")
+    version = models.ForeignKey(WorkflowVersion, on_delete=models.CASCADE, related_name="transitions")
     name = models.CharField(max_length=100)
     from_state = models.ForeignKey(
         WorkflowState,
@@ -77,7 +157,7 @@ class WorkflowTransition(MetaBase):
     target_handle = models.CharField(max_length=30, blank=True, default="")
 
     def __str__(self):
-        return f"{self.workflow} / {self.name}"
+        return f"{self.version} / {self.name}"
 
 
 class WorkflowTransitionTranslation(MetaBase):

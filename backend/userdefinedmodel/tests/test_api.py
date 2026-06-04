@@ -519,9 +519,9 @@ class WorkflowTransitionTests(BaseAPITest):
         from userdefinedmodel.models import WorkflowTransition
         # Add a transition that only fires from undefined state
         from userdefinedmodel.models import WorkflowState
-        init = WorkflowState.objects.create(workflow=self.wf, name="init", is_initial=False)
+        init = WorkflowState.objects.create(version=self.wf, name="init", is_initial=False)
         WorkflowTransition.objects.create(
-            workflow=self.wf, name="initialize", from_state=None,
+            version=self.wf, name="initialize", from_state=None,
             from_undefined_only=True, to_state=init,
         )
         # Entity already has "draft" state → should be blocked
@@ -536,13 +536,14 @@ class WorkflowTransitionTests(BaseAPITest):
     def test_multiple_workflows_independent(self):
         """Two workflow fields on the same entity advance independently."""
         from userdefinedmodel.models import (
-            WorkflowDefinition, WorkflowState, WorkflowTransition,
+            WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowTransition,
             FieldDefinition, FieldDefinitionTranslation, FieldValue,
         )
-        wf2 = WorkflowDefinition.objects.create(name="Review Workflow")
-        pending = WorkflowState.objects.create(workflow=wf2, name="pending", is_initial=True)
-        approved = WorkflowState.objects.create(workflow=wf2, name="approved", is_initial=False)
-        WorkflowTransition.objects.create(workflow=wf2, name="approve", from_state=pending, to_state=approved)
+        wf2_def = WorkflowDefinition.objects.create(name="Review Workflow")
+        wf2 = WorkflowVersion.objects.create(workflow=wf2_def, status=WorkflowVersion.Status.PUBLISHED)
+        pending = WorkflowState.objects.create(version=wf2, name="pending", is_initial=True)
+        approved = WorkflowState.objects.create(version=wf2, name="approved", is_initial=False)
+        WorkflowTransition.objects.create(version=wf2, name="approve", from_state=pending, to_state=approved)
 
         review_field = add_workflow_field(self.version, wf2, slug="review")
         # Set initial state for the new field on the existing entity
@@ -619,7 +620,7 @@ messages contains msg if {
 }
 """
         from userdefinedmodel.models import (
-            WorkflowDefinition, WorkflowState, WorkflowTransition,
+            WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowTransition,
             FieldValue, Policy, UserDefinedModelTypePolicy,
         )
         entity, udm_type, version, config = make_entity_with_type(
@@ -631,10 +632,11 @@ messages contains msg if {
         add_workflow_field(version, wf_a, slug="status")
 
         # Workflow B: review (pending → approved)
-        wf_b = WorkflowDefinition.objects.create(name="Review")
-        b_pending = WorkflowState.objects.create(workflow=wf_b, name="pending", is_initial=True)
-        b_approved = WorkflowState.objects.create(workflow=wf_b, name="approved", is_initial=False)
-        WorkflowTransition.objects.create(workflow=wf_b, name="approve", from_state=b_pending, to_state=b_approved)
+        wf_b_def = WorkflowDefinition.objects.create(name="Review")
+        wf_b = WorkflowVersion.objects.create(workflow=wf_b_def, status=WorkflowVersion.Status.PUBLISHED)
+        b_pending = WorkflowState.objects.create(version=wf_b, name="pending", is_initial=True)
+        b_approved = WorkflowState.objects.create(version=wf_b, name="approved", is_initial=False)
+        WorkflowTransition.objects.create(version=wf_b, name="approve", from_state=b_pending, to_state=b_approved)
         add_workflow_field(version, wf_b, slug="review")
 
         entity.materialize_defaults()
@@ -1351,7 +1353,7 @@ class DraftAsInputTests(BaseAPITest):
         self.assertEqual(field["data_type"], "text_short")
         self.assertEqual(field["labels"], {"en": "Title"})
         self.assertIsNone(field["submodel_config_version_id"])
-        self.assertIsNone(field["workflow_definition_id"])
+        self.assertIsNone(field["workflow_version_id"])
 
         # Round-trip: PUT the output back into replace_draft
         resp2 = self.put(f"/configs/{config.id}/versions/draft/", data)
@@ -1362,21 +1364,21 @@ class DraftAsInputTests(BaseAPITest):
 
     def test_get_draft_as_input_with_workflow(self):
         """Workflow field references are exported as IDs, not nested objects."""
-        wf, _, _, _ = make_full_workflow()
+        wf_ver, _, _, _ = make_full_workflow()
         config = FieldConfigFactory()
         ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
         draft = ConfigVersionFactory(config=config, status="draft")
         from userdefinedmodel.models import FieldDefinition, FieldDefinitionTranslation
         fd = FieldDefinition.objects.create(
             version=draft, slug="status", data_type="workflow",
-            sort_order=0, workflow_definition=wf, type_config={},
+            sort_order=0, workflow_version=wf_ver, type_config={},
         )
         FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Status")
 
         resp = self.get(f"/configs/{config.id}/versions/draft/as-input/")
         self.assertEqual(resp.status_code, 200)
         field = resp.json()["fields"][0]
-        self.assertEqual(field["workflow_definition_id"], str(wf.id))
+        self.assertEqual(field["workflow_version_id"], str(wf_ver.id))
         self.assertIsNone(field["submodel_config_version_id"])
 
     def test_get_draft_as_input_404_when_no_draft(self):
@@ -1394,14 +1396,14 @@ class BundleExportTests(BaseAPITest):
             FieldConfig, ConfigLanguage, ConfigVersion, FieldDefinition,
             FieldDefinitionTranslation, UserDefinedModelType, Policy, UserDefinedModelTypePolicy,
         )
-        wf, _, _, _ = make_full_workflow()
+        wf_ver, _, _, _ = make_full_workflow()
         config = FieldConfig.objects.create(name="Bundle Config")
         ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True)
         version = ConfigVersion.objects.create(config=config, status="published")
         ConfigVersion.objects.create(config=config, status="draft")
         fd = FieldDefinition.objects.create(
             version=version, slug="status", data_type="workflow",
-            sort_order=0, workflow_definition=wf, type_config={},
+            sort_order=0, workflow_version=wf_ver, type_config={},
         )
         FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Status")
         udm_type = UserDefinedModelType.objects.create(name="Bundle Type", field_config=config)
@@ -1409,7 +1411,7 @@ class BundleExportTests(BaseAPITest):
         UserDefinedModelTypePolicy.objects.create(
             user_defined_model_type=udm_type, policy=policy, sort_order=0
         )
-        return udm_type, config, version, wf, policy
+        return udm_type, config, version, wf_ver, policy
 
     def _export_zip(self, type_ids):
         resp = self.post("/export-bundle-zip/", {"scope_type_ids": type_ids})
@@ -1473,8 +1475,8 @@ class BundleExportTests(BaseAPITest):
         self.assertEqual(resp.status_code, 200, resp.content)
         config.refresh_from_db()
         self.assertEqual(config.name, "Zip Config Updated")
-        wf.refresh_from_db()
-        self.assertEqual(wf.name, "Updated Workflow")
+        wf.workflow.refresh_from_db()
+        self.assertEqual(wf.workflow.name, "Updated Workflow")
 
     def test_import_zip_updates_policy_from_file(self):
         import io, zipfile, json as _json
