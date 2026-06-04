@@ -1638,3 +1638,186 @@ class BundleExportTests(BaseAPITest):
             WorkflowDefinition.objects.count(), wf_count,
             "Re-import must not create duplicate WorkflowDefinitions",
         )
+
+    def test_import_submodel_fields_get_config_version_assigned(self):
+        """Submodel fields using FieldConfig UUIDs as submodel_config_version_id must resolve
+        to a published ConfigVersion after import — both on first import and re-import.
+
+        Regression test: previously the export stored ConfigVersion UUIDs for in-bundle
+        submodels and the import could not resolve them on a fresh DB, leaving submodel_config=None.
+        """
+        import io, zipfile, json as _json, uuid
+        from userdefinedmodel.models import FieldConfig, FieldDefinition, ConfigVersion
+
+        parent_id = str(uuid.uuid4())
+        child_id = str(uuid.uuid4())
+        udmt_id = str(uuid.uuid4())
+
+        # Bundle: parent config has a submodel_list field that references the child config
+        # using the child's FieldConfig UUID (the fixed export format).
+        bundle = {
+            "version": 1,
+            "scope_type_ids": [udmt_id],
+            "udm_types": [
+                {"id": udmt_id, "name": "Submodel Test Type",
+                 "field_config_id": parent_id, "policy_slugs": []},
+            ],
+            "field_configs": [
+                {
+                    "id": child_id,
+                    "name": "Child Config",
+                    "description": "",
+                    "languages": [
+                        {"code": "en", "label": "English", "is_default": True, "sort_order": 0},
+                    ],
+                    "draft": {
+                        "notes": "",
+                        "fields": [
+                            {
+                                "slug": "title",
+                                "data_type": "text",
+                                "sort_order": 0,
+                                "is_localized": False,
+                                "is_preview": True,
+                                "labels": {"en": "Title"},
+                                "help_texts": {},
+                                "type_config": {},
+                                "default": None,
+                                "submodel_config_version_id": None,
+                                "workflow_version_id": None,
+                                "parent_slug": None,
+                            },
+                        ],
+                    },
+                },
+                {
+                    "id": parent_id,
+                    "name": "Parent Config",
+                    "description": "",
+                    "languages": [
+                        {"code": "en", "label": "English", "is_default": True, "sort_order": 0},
+                    ],
+                    "draft": {
+                        "notes": "",
+                        "fields": [
+                            {
+                                "slug": "items",
+                                "data_type": "submodel_list",
+                                "sort_order": 0,
+                                "is_localized": False,
+                                "is_preview": False,
+                                "labels": {"en": "Items"},
+                                "help_texts": {},
+                                "type_config": {},
+                                "default": None,
+                                # FieldConfig UUID of the child — the correct export format
+                                "submodel_config_version_id": child_id,
+                                "workflow_version_id": None,
+                                "parent_slug": None,
+                            },
+                        ],
+                    },
+                },
+            ],
+            "workflows": [],
+            "policies": [],
+        }
+
+        def make_zip(data):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("UDM_BUNDLE.json", _json.dumps(data))
+            return buf.getvalue()
+
+        zip_bytes = make_zip(bundle)
+
+        def do_import():
+            return self.client.post(
+                "/api/udm/import-bundle-zip/",
+                {"file": io.BytesIO(zip_bytes), "scope_type_ids": udmt_id},
+                format="multipart",
+            )
+
+        # First import: fresh DB — submodel field must get a published ConfigVersion.
+        resp = do_import()
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        child_cfg = FieldConfig.objects.get(id=child_id)
+        published_child = ConfigVersion.objects.get(
+            config=child_cfg, status=ConfigVersion.Status.PUBLISHED
+        )
+        parent_cfg = FieldConfig.objects.get(id=parent_id)
+        published_parent = ConfigVersion.objects.get(
+            config=parent_cfg, status=ConfigVersion.Status.PUBLISHED
+        )
+        items_fd = FieldDefinition.objects.get(version=published_parent, slug="items")
+        self.assertIsNotNone(
+            items_fd.submodel_config,
+            "submodel_config must be set after first import",
+        )
+        self.assertEqual(
+            items_fd.submodel_config, published_child,
+            "submodel_config must point to the published child version",
+        )
+
+        # Re-import: submodel link must still be set, now to the newly published child version.
+        resp = do_import()
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        new_published_child = ConfigVersion.objects.get(
+            config=child_cfg, status=ConfigVersion.Status.PUBLISHED
+        )
+        new_published_parent = ConfigVersion.objects.get(
+            config=parent_cfg, status=ConfigVersion.Status.PUBLISHED
+        )
+        items_fd_2 = FieldDefinition.objects.get(version=new_published_parent, slug="items")
+        self.assertIsNotNone(
+            items_fd_2.submodel_config,
+            "submodel_config must still be set after re-import",
+        )
+        self.assertEqual(
+            items_fd_2.submodel_config, new_published_child,
+            "submodel_config must point to the freshly published child version after re-import",
+        )
+
+    def test_export_bundle_uses_fieldconfig_uuid_for_inbundle_submodels(self):
+        """Export must emit the child FieldConfig UUID (not the ConfigVersion UUID) for
+        submodel fields whose config is part of the same bundle, so re-import can correctly
+        defer resolution until after all configs are published.
+        """
+        import io, json as _json
+        from userdefinedmodel.models import (
+            FieldConfig, ConfigLanguage, ConfigVersion, FieldDefinition,
+            FieldDefinitionTranslation, UserDefinedModelType,
+        )
+
+        child_cfg = FieldConfig.objects.create(name="Export Test Child")
+        ConfigLanguage.objects.create(config=child_cfg, code="en", label="English", is_default=True)
+        child_pub = ConfigVersion.objects.create(config=child_cfg, status="published")
+
+        parent_cfg = FieldConfig.objects.create(name="Export Test Parent")
+        ConfigLanguage.objects.create(config=parent_cfg, code="en", label="English", is_default=True)
+        parent_pub = ConfigVersion.objects.create(config=parent_cfg, status="published")
+        fd_sub = FieldDefinition.objects.create(
+            version=parent_pub, slug="items", data_type="submodel_list",
+            sort_order=0, submodel_config=child_pub, type_config={},
+        )
+        FieldDefinitionTranslation.objects.create(field=fd_sub, language="en", label="Items")
+
+        udmt = UserDefinedModelType.objects.create(name="Export Test Type", field_config=parent_cfg)
+
+        zip_bytes = self._export_zip([str(udmt.id)])
+        with __import__("zipfile").ZipFile(__import__("io").BytesIO(zip_bytes)) as zf:
+            raw_bundle = _json.loads(zf.read("UDM_BUNDLE.json").decode())
+
+        bundle_cfg_ids = {fc["id"] for fc in raw_bundle["field_configs"]}
+        self.assertIn(str(parent_cfg.id), bundle_cfg_ids)
+        self.assertIn(str(child_cfg.id), bundle_cfg_ids)
+
+        parent_fc = next(fc for fc in raw_bundle["field_configs"] if fc["id"] == str(parent_cfg.id))
+        fd_map = {fd["slug"]: fd for fd in parent_fc["draft"]["fields"]}
+
+        self.assertEqual(
+            fd_map["items"]["submodel_config_version_id"], str(child_cfg.id),
+            "In-bundle submodel field must export the child FieldConfig UUID, not its ConfigVersion UUID",
+        )

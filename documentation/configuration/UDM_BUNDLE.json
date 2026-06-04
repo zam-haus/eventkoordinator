@@ -1117,7 +1117,7 @@
               "renderer": "list"
             },
             "default": null,
-            "submodel_config_version_id": "97b45aa0-b6b4-4a13-af4c-df073cd64bf1",
+            "submodel_config_version_id": "23b0eb2c-53cf-4e13-b516-416c38937d99",
             "workflow_version_id": null,
             "parent_slug": null
           },
@@ -1136,7 +1136,7 @@
               "renderer": "list"
             },
             "default": null,
-            "submodel_config_version_id": "e7ddb1db-35fc-4551-88c0-aa795a972f5a",
+            "submodel_config_version_id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
             "workflow_version_id": null,
             "parent_slug": null
           }

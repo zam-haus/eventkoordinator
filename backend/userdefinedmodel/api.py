@@ -455,14 +455,18 @@ def get_draft_version(request, config_id: uuid.UUID):
     return _serialize_config_version(version)
 
 
-def _serialize_version_as_draft_in(version) -> ConfigDraftExportOut:
+def _serialize_version_as_draft_in(version, bundle_config_ids=None) -> ConfigDraftExportOut:
     """Serialize a ConfigVersion into the shape that ConfigDraftIn / PUT draft accepts.
 
     Uses id references (submodel_config_version_id, workflow_definition_id) rather than
     nested objects, so the result can be fed directly back into replace_draft().
+
+    bundle_config_ids: when provided, submodel fields whose config is in this set will
+    export the FieldConfig UUID instead of the ConfigVersion UUID, so the importer can
+    correctly re-link to the newly published version after import.
     """
     fields_out = []
-    for fd in version.field_definitions.select_related("workflow_version__workflow").prefetch_related("translations", "defaults").all():
+    for fd in version.field_definitions.select_related("workflow_version__workflow", "submodel_config__config").prefetch_related("translations", "defaults").all():
         label_dict = {t.language: t.label for t in fd.translations.all()}
         help_dict = {t.language: t.help_text for t in fd.translations.all() if t.help_text}
 
@@ -473,6 +477,17 @@ def _serialize_version_as_draft_in(version) -> ConfigDraftExportOut:
                 default_val = {d.language: d.get_value(field=fd) for d in defaults_qs}
             else:
                 default_val = defaults_qs[0].get_value(field=fd)
+
+        # For in-bundle submodel configs, export the FieldConfig UUID so the importer
+        # can defer resolution until after all configs are published (avoiding stale refs).
+        sub_id = fd.submodel_config_id
+        if (
+            sub_id is not None
+            and bundle_config_ids is not None
+            and fd.submodel_config is not None
+            and str(fd.submodel_config.config_id) in bundle_config_ids
+        ):
+            sub_id = fd.submodel_config.config_id
 
         wf_def_id = fd.workflow_version.workflow_id if fd.workflow_version_id else None
         fields_out.append(FieldDefinitionDraftOut(
@@ -485,7 +500,7 @@ def _serialize_version_as_draft_in(version) -> ConfigDraftExportOut:
             help_texts=help_dict,
             type_config=fd.type_config or {},
             default=default_val,
-            submodel_config_version_id=fd.submodel_config_id,
+            submodel_config_version_id=sub_id,
             workflow_version_id=fd.workflow_version_id,
             workflow_definition_id=wf_def_id,
             parent_slug=fd.parent_slug or None,
@@ -2046,6 +2061,7 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
             policy_slugs=[tp.policy.slug for tp in t.type_policies.all()],
         ))
 
+    bundle_cfg_ids = {str(cfg.id) for cfg in field_configs}
     bundle_field_configs = []
     for cfg in field_configs:
         try:
@@ -2055,7 +2071,7 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
                 version = ConfigVersion.objects.get(config=cfg, status=ConfigVersion.Status.DRAFT)
             except ConfigVersion.DoesNotExist:
                 continue
-        draft_export = _serialize_version_as_draft_in(version)
+        draft_export = _serialize_version_as_draft_in(version, bundle_config_ids=bundle_cfg_ids)
         bundle_field_configs.append(BundleFieldConfigOut(
             id=cfg.id,
             name=cfg.name,
