@@ -101,13 +101,19 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
   const subLinkItem = (label: string, to: string, isActive: boolean): MenuItem => ({
     label,
     template: (_item, options) => (
-      <Link
-        to={to}
+      <a
+        href={to}
         className={isActive ? styles.activeSubLink : styles.subLink}
-        onClick={options.onClick}
+        onClick={(e) => {
+          if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            e.preventDefault()
+            options.onClick?.(e)
+            navigate(to)
+          }
+        }}
       >
         {label}
-      </Link>
+      </a>
     ),
   })
 
@@ -115,13 +121,19 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
   const navLinkItem = (label: string, to: string, isActive: boolean): MenuItem => ({
     label,
     template: (_item, options) => (
-      <Link
-        to={to}
+      <a
+        href={to}
         className={isActive ? styles.activeNavLink : styles.navLink}
-        onClick={options.onClick}
+        onClick={(e) => {
+          if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            e.preventDefault()
+            options.onClick?.(e)
+            navigate(to)
+          }
+        }}
       >
         {label}
-      </Link>
+      </a>
     ),
   })
 
