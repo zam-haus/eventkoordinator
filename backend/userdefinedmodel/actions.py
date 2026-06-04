@@ -507,7 +507,6 @@ def _handle_trigger_transition(action: TriggerTransitionOutput, ctx: ActionConte
 
 @policy_action("send_notification", schema=SendNotificationOutput)
 def _handle_send_notification(action: SendNotificationOutput, ctx: ActionContext) -> None:
-    from django.db import transaction as db_transaction
     from django.core.mail import send_mail
     from django.template.loader import render_to_string
 
@@ -547,21 +546,18 @@ def _handle_send_notification(action: SendNotificationOutput, ctx: ActionContext
         body_text = action.body_text
         body_html = action.body_html or None
 
-    # ── Enqueue after commit so the mail is only sent if the transaction succeeds ──
-    subject = action.subject
-    from_email = None  # uses settings.DEFAULT_FROM_EMAIL
-
-    def _enqueue() -> None:
-        send_mail(
-            subject=subject,
-            message=body_text,
-            html_message=body_html,
-            from_email=from_email,
-            recipient_list=recipient_emails,
-            fail_silently=False,
-        )
-
-    db_transaction.on_commit(_enqueue)
+    # ── Enqueue inside the transaction ───────────────────────────────────────────
+    # MailQueueBackend writes a MailQueueEntry DB row — no SMTP happens here.
+    # Running inside the same atomic() guarantees that the queue entry and the
+    # transition state change are committed together or rolled back together.
+    send_mail(
+        subject=action.subject,
+        message=body_text,
+        html_message=body_html,
+        from_email=None,  # uses settings.DEFAULT_FROM_EMAIL
+        recipient_list=recipient_emails,
+        fail_silently=False,
+    )
 
 
 _USER_INTERPOLATIONS: dict[str, Any] = {}  # populated lazily to avoid import cycles
