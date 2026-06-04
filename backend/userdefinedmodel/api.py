@@ -146,6 +146,7 @@ def _entity_out_for_user(entity, user, policy_messages: list | None = None, view
     data["viewable_fields"] = viewable
     data["editable_fields"] = editable
     data["policy_messages"] = policy_messages or []
+    data["dashboard_columns"] = policy.get("dashboard_columns", [])
     return EntityOut(**data)
 
 

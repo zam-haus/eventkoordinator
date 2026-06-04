@@ -241,6 +241,8 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
         messages = _normalize_policy_messages(raw_messages)
         viewable_fields = _eval_list("data.udm.viewable_fields", default=None)
         editable_fields = _eval_list("data.udm.editable_fields", default=[])
+        dashboard_columns_raw = _eval_list("data.udm.dashboard_columns", default=[])
+        dashboard_columns = [c for c in (dashboard_columns_raw or []) if isinstance(c, dict)]
 
         if logger.isEnabledFor(logging.DEBUG):
             try:
@@ -258,6 +260,7 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
             "messages": messages,
             "viewable_fields": viewable_fields,
             "editable_fields": editable_fields,
+            "dashboard_columns": dashboard_columns,
         }
         logger.debug(
             "policy result node=%s action=%s allow=%s messages=%d viewable=%s editable=%s",

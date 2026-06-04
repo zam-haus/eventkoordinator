@@ -503,6 +503,13 @@ class FieldValueOut(Schema):
     language: str = ""
 
 
+class DashboardColumnOut(Schema):
+    key: str
+    label: str
+    renderer: str  # "text" | "progress_bar" | "meter"
+    value: Any = None
+
+
 class EntityOut(Schema):
     id: uuid.UUID
     config_version_id: uuid.UUID
@@ -514,6 +521,7 @@ class EntityOut(Schema):
     viewable_fields: Optional[list[str]] = None
     editable_fields: list[str] = []
     policy_messages: list[Any] = []
+    dashboard_columns: list[DashboardColumnOut] = []
 
 # ─── Edit history schemas ─────────────────────────────────────────────────────
 

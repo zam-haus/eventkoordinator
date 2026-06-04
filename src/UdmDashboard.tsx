@@ -12,18 +12,82 @@ import {
   type UDMTypeOut,
   type ConfigVersionOut,
   type EntityOut,
+  type DashboardColumnOut,
 } from './apiUdm'
 import { getLang, FieldPreview, fieldPreviewText } from './udm-editors'
+
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const SKIP_DATA_TYPES = new Set([
   'tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next',
 ])
 
+const DASH_PREFIX = '__dash__:'
+function dashId(key: string) { return `${DASH_PREFIX}${key}` }
+function isDashId(id: string) { return id.startsWith(DASH_PREFIX) }
+function dashKey(id: string) { return id.slice(DASH_PREFIX.length) }
+
+// ── Row types ──────────────────────────────────────────────────────────────────
+
 type TypeRow = { kind: 'type'; type: UDMTypeOut; loading: boolean }
 type EntityRow = { kind: 'entity'; entity: EntityOut; config: ConfigVersionOut | null }
 type RowData = TypeRow | EntityRow
 
-interface ColumnOption { slug: string; label: string }
+// ── Column descriptors ─────────────────────────────────────────────────────────
+
+interface FieldColOpt { kind: 'field'; id: string; label: string; slug: string }
+interface DashColOpt  { kind: 'dash';  id: string; label: string; key: string; renderer: string }
+type ColOpt = FieldColOpt | DashColOpt
+
+// ── Renderers ──────────────────────────────────────────────────────────────────
+
+interface ProgressBarValue { current: number; max: number; color?: string }
+
+function ProgressBarCell({ value }: { value: unknown }) {
+  const v = value as ProgressBarValue | null
+  if (!v || typeof v !== 'object' || !v.max) return <span style={{ color: '#9ca3af' }}>—</span>
+  const pct = Math.min((v.current / v.max) * 100, 100)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+      <div style={{ flex: 1, height: '8px', background: '#e5e7eb', borderRadius: '4px', minWidth: '60px' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: v.color ?? '#3b82f6', borderRadius: '4px' }} />
+      </div>
+      <span style={{ fontSize: '0.78rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
+        {v.current}/{v.max}
+      </span>
+    </div>
+  )
+}
+
+interface MeterSegment { label: string; value: number; color: string }
+
+function MeterCell({ value }: { value: unknown }) {
+  if (!Array.isArray(value) || value.length === 0) return <span style={{ color: '#9ca3af' }}>—</span>
+  const segs = value as MeterSegment[]
+  const total = segs.reduce((s, v) => s + (v.value ?? 0), 0)
+  if (!total) return <span style={{ color: '#9ca3af' }}>—</span>
+  return (
+    <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden', minWidth: '80px' }}>
+      {segs.filter(s => s.value > 0).map((s, i) => (
+        <div
+          key={i}
+          style={{ width: `${(s.value / total) * 100}%`, background: s.color ?? '#9ca3af' }}
+          title={`${s.label}: ${s.value}`}
+        />
+      ))}
+    </div>
+  )
+}
+
+function DashboardCell({ col, entity }: { col: DashboardColumnOut; entity: EntityOut }) {
+  switch (col.renderer) {
+    case 'progress_bar': return <ProgressBarCell value={col.value} />
+    case 'meter':        return <MeterCell value={col.value} />
+    default:             return <span style={{ fontSize: '0.85rem' }}>{String(col.value ?? '')}</span>
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function getFieldVal(entity: EntityOut, slug: string, uiLang: string): unknown {
   return (
@@ -48,6 +112,8 @@ function entityPreviewLabel(entity: EntityOut, config: ConfigVersionOut | null |
   }
   return parts.join(' · ') || entity.id.slice(0, 8)
 }
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export function UdmDashboard() {
   const { i18n } = useTranslation()
@@ -74,25 +140,43 @@ export function UdmDashboard() {
     [expandedKeys, types],
   )
 
-  // Union of all expanded types' field slugs — drives the column selector
-  const availableColumns = useMemo((): ColumnOption[] => {
+  // Field columns: union of expanded types' config fields
+  const fieldColumns = useMemo((): FieldColOpt[] => {
     const seen = new Set<string>()
-    const result: ColumnOption[] = []
+    const result: FieldColOpt[] = []
     for (const typeId of expandedTypeIds) {
       for (const fd of configByTypeId[typeId]?.fields ?? []) {
         if (!seen.has(fd.slug) && !SKIP_DATA_TYPES.has(fd.data_type)) {
           seen.add(fd.slug)
-          result.push({ slug: fd.slug, label: getLang(fd.label as Record<string, string>, uiLang) || fd.slug })
+          result.push({ kind: 'field', id: fd.slug, slug: fd.slug, label: getLang(fd.label as Record<string, string>, uiLang) || fd.slug })
         }
       }
     }
     return result
   }, [expandedTypeIds, configByTypeId, uiLang])
 
-  // Intersection of expanded types' fields — the default-selected set
-  const commonColumnSlugs = useMemo((): string[] => {
+  // Dashboard columns: union of keys from all loaded entities across expanded types
+  const dashColumns = useMemo((): DashColOpt[] => {
+    const seen = new Map<string, DashColOpt>()
+    for (const typeId of expandedTypeIds) {
+      for (const entity of entitiesByTypeId[typeId] ?? []) {
+        for (const col of entity.dashboard_columns ?? []) {
+          if (!seen.has(col.key)) {
+            seen.set(col.key, { kind: 'dash', id: dashId(col.key), key: col.key, label: col.label, renderer: col.renderer })
+          }
+        }
+      }
+    }
+    return [...seen.values()]
+  }, [expandedTypeIds, entitiesByTypeId])
+
+  const allColumns: ColOpt[] = [...fieldColumns, ...dashColumns]
+
+  // Default selection: preview field slugs + all dashboard column IDs
+  const defaultSelectedIds = useMemo((): string[] => {
     const readyTypeIds = expandedTypeIds.filter(id => configByTypeId[id])
-    if (!readyTypeIds.length) return []
+    if (!readyTypeIds.length) return dashColumns.map(c => c.id)
+
     const sets = readyTypeIds.map(id =>
       new Set(
         configByTypeId[id].fields
@@ -100,15 +184,15 @@ export function UdmDashboard() {
           .map(f => f.slug),
       ),
     )
-    const intersection = sets.reduce((a, b) => new Set([...a].filter(x => b.has(x))))
-    return [...intersection]
-  }, [expandedTypeIds, configByTypeId])
+    const fieldIntersection = sets.reduce((a, b) => new Set([...a].filter(x => b.has(x))))
+    return [...fieldIntersection, ...dashColumns.map(c => c.id)]
+  }, [expandedTypeIds, configByTypeId, dashColumns])
 
-  // Reset selection to the common set whenever the expanded types change
+  // Reset selection when expanded types or dashboard columns change
   useEffect(() => {
-    setSelectedColumns(commonColumnSlugs)
+    setSelectedColumns(defaultSelectedIds)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commonColumnSlugs.join(',')])
+  }, [defaultSelectedIds.join(',')])
 
   function handleExpand(event: { node: TreeNode }) {
     const typeId = event.node.key as string
@@ -129,7 +213,7 @@ export function UdmDashboard() {
   const treeNodes: TreeNode[] = types.map(type => ({
     key: type.id,
     data: { kind: 'type', type, loading: loadingTypeIds.has(type.id) } as RowData,
-    leaf: false,  // always expandable; entities load lazily on expand
+    leaf: false,
     children: (entitiesByTypeId[type.id] ?? []).map(entity => ({
       key: entity.id,
       data: { kind: 'entity', entity, config: configByTypeId[type.id] ?? null } as RowData,
@@ -137,7 +221,20 @@ export function UdmDashboard() {
     })),
   }))
 
-  const visibleColumns = availableColumns.filter(c => selectedColumns.includes(c.slug))
+  const visibleColumns = allColumns.filter(c => selectedColumns.includes(c.id))
+
+  // Column widths: dashboard columns are wider to fit charts
+  function colStyle(col: ColOpt) {
+    if (col.kind === 'dash') return { minWidth: '180px', width: '200px' }
+    return { width: '160px', minWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }
+  }
+
+  function tableMinWidth() {
+    const base = 220  // label column
+    return visibleColumns.reduce((sum, c) => sum + (c.kind === 'dash' ? 200 : 160), base)
+  }
+
+  // ── Cell renderers ───────────────────────────────────────────────────────────
 
   function labelBody(node: TreeNode) {
     const d = node.data as RowData
@@ -145,9 +242,7 @@ export function UdmDashboard() {
       return (
         <span style={{ fontWeight: 600 }}>
           {d.type.label || d.type.name}
-          {d.loading && (
-            <span style={{ marginLeft: '0.5rem', color: '#888', fontSize: '0.8rem' }}>Loading…</span>
-          )}
+          {d.loading && <span style={{ marginLeft: '0.5rem', color: '#888', fontSize: '0.8rem' }}>Loading…</span>}
         </span>
       )
     }
@@ -162,33 +257,36 @@ export function UdmDashboard() {
     )
   }
 
-  function makeFieldBody(slug: string) {
+  function makeColBody(col: ColOpt) {
     return (node: TreeNode) => {
       const d = node.data as RowData
       if (d.kind === 'type') return null
-      const fd = d.config?.fields.find(f => f.slug === slug)
-      if (!fd) return null
-      const val = getFieldVal(d.entity, slug, uiLang)
-      if (val == null) return null
-      return (
-        <FieldPreview
-          fd={fd}
-          value={val}
-          lang={uiLang}
-          entityChildren={d.entity.children as Record<string, unknown[]>}
-        />
-      )
+
+      if (col.kind === 'field') {
+        const fd = d.config?.fields.find(f => f.slug === col.slug)
+        if (!fd) return null
+        const val = getFieldVal(d.entity, col.slug, uiLang)
+        if (val == null) return null
+        return <FieldPreview fd={fd} value={val} lang={uiLang} entityChildren={d.entity.children as Record<string, unknown[]>} />
+      }
+
+      // Dashboard column: find matching entry from this entity's dashboard_columns
+      const dashCol = (d.entity.dashboard_columns ?? []).find(c => c.key === col.key)
+      if (!dashCol) return null
+      return <DashboardCell col={dashCol} entity={d.entity} />
     }
   }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>UDM Dashboard</h1>
-        {availableColumns.length > 0 && (
+        {allColumns.length > 0 && (
           <MultiSelect
             value={selectedColumns}
-            options={availableColumns.map(c => ({ label: c.label, value: c.slug }))}
+            options={allColumns.map(c => ({ label: c.label, value: c.id }))}
             onChange={e => setSelectedColumns(e.value as string[])}
             placeholder="Select columns"
             display="chip"
@@ -198,9 +296,7 @@ export function UdmDashboard() {
       </div>
 
       {typesLoading && <p style={{ color: '#888' }}>Loading…</p>}
-      {!typesLoading && types.length === 0 && (
-        <p style={{ color: '#888' }}>No UDM types available.</p>
-      )}
+      {!typesLoading && types.length === 0 && <p style={{ color: '#888' }}>No UDM types available.</p>}
       {!typesLoading && types.length > 0 && (
         <div style={{ overflowX: 'auto', width: '100%' }}>
           <TreeTable
@@ -208,7 +304,7 @@ export function UdmDashboard() {
             expandedKeys={expandedKeys}
             onToggle={e => setExpandedKeys(e.value)}
             onExpand={handleExpand}
-            tableStyle={{ minWidth: `${(visibleColumns.length + 1) * 160}px`, tableLayout: 'fixed' }}
+            tableStyle={{ minWidth: `${tableMinWidth()}px`, tableLayout: 'fixed' }}
             scrollable
             scrollHeight="calc(100vh - 220px)"
           >
@@ -220,10 +316,10 @@ export function UdmDashboard() {
             />
             {visibleColumns.map(col => (
               <Column
-                key={col.slug}
+                key={col.id}
                 header={col.label}
-                body={makeFieldBody(col.slug)}
-                style={{ width: '160px', minWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                body={makeColBody(col)}
+                style={colStyle(col)}
               />
             ))}
           </TreeTable>

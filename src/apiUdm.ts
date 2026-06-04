@@ -254,7 +254,16 @@ export type PolicyUpdateIn = components['schemas']['PolicyUpdateIn']
 export type PolicyAssignIn = components['schemas']['PolicyAssignIn']
 export type UDMTypeOut = components['schemas']['UDMTypeOut']
 export type UDMTypeCreateIn = components['schemas']['UDMTypeCreateIn']
-export type EntityOut = components['schemas']['EntityOut']
+export interface DashboardColumnOut {
+  key: string
+  label: string
+  renderer: 'text' | 'progress_bar' | 'meter'
+  value: unknown
+}
+
+export type EntityOut = components['schemas']['EntityOut'] & {
+  dashboard_columns?: DashboardColumnOut[]
+}
 export type EntityCreateIn = components['schemas']['EntityCreateIn']
 export type EntityPatchIn = components['schemas']['EntityPatchIn']
 export type FieldValueOut = components['schemas']['FieldValueOut']
