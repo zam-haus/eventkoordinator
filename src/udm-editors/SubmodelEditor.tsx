@@ -177,11 +177,12 @@ interface SubmodelChildCardProps {
   nameMap?: Record<string, string>
   onEntityRefresh?: (policyMessages?: PolicyMessage[]) => void | Promise<void>
   compact?: boolean
+  expanded: boolean
+  onToggleExpanded: () => void
 }
 
-function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, onChange, onDelete, subFieldSeverities, subFieldMessages, nameMap = {}, onEntityRefresh, compact }: SubmodelChildCardProps) {
+function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, onChange, onDelete, subFieldSeverities, subFieldMessages, nameMap = {}, onEntityRefresh, compact, expanded, onToggleExpanded }: SubmodelChildCardProps) {
   const hasHighlightedFields = Object.keys(subFieldSeverities ?? {}).length > 0
-  const [expanded, setExpanded] = useState(!item.id || hasHighlightedFields)
   const [activeLang, setActiveLang] = useState(subLanguages[0] ?? '')
   const fallbackLabel = item.id ? item.id.slice(0, 8) + '…' : 'New (unsaved)'
   const label = item.id
@@ -235,7 +236,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
             <>
               <button type="button"
                 style={{ fontSize: '0.78rem', padding: '0.2rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}
-                onClick={() => setExpanded(e => !e)}>
+                onClick={onToggleExpanded}>
                 {expanded ? 'Collapse' : 'Edit'}
               </button>
               {!disabled && (
@@ -381,6 +382,9 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
   const [items, setItems] = useState<LocalChild[]>(() => toItems(existingChildren))
   const nextKeyRef = useRef(0)
 
+  // Lifted expansion state — keyed by item.key (= id for saved items, "_new_N" for pending ones)
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set)
+
   // Sync when the server refreshes the entity.
   // Only relevant for submodel_list; the submodel_select branch manages its own
   // pending state below and must NOT emit a list-shaped [] op (which would be
@@ -394,9 +398,21 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
       incomingIds.size === prevServerIds.current.size &&
       [...incomingIds].every(id => prevServerIds.current.has(id))
     if (!sameIds) {
+      // Preserve expansion across the reset: carry over expanded existing items
+      // and expand any newly-added server items if a pending-new item was open.
+      const newExpandedKeys = new Set<string>()
+      for (const c of incoming) {
+        if (expandedKeys.has(c.id)) newExpandedKeys.add(c.id)
+      }
+      const hasExpandedNew = items.some(it => !it.id && expandedKeys.has(it.key))
+      if (hasExpandedNew) {
+        for (const c of incoming) {
+          if (!prevServerIds.current.has(c.id)) newExpandedKeys.add(c.id)
+        }
+      }
       prevServerIds.current = incomingIds
-      // Reset to server state — clears any pending-new items that were saved
       setItems(toItems(incoming))
+      setExpandedKeys(newExpandedKeys)
       // After a server refresh there are no pending local ops
       onChangeRef.current([])
     } else {
@@ -424,6 +440,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
   function addItem() {
     const key = `_new_${nextKeyRef.current++}`
     applyItemChange([...items, { key, id: null, dirty: {}, saved: null, deleted: false }])
+    setExpandedKeys(prev => new Set([...prev, key]))
   }
 
   function updateItem(key: string, dirty: Record<string, unknown>) {
@@ -476,6 +493,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
     prevResetKey.current = resetKey
     if (isList) {
       setItems(toItems(existingChildren as ChildNode[]))
+      setExpandedKeys(new Set())
     } else {
       setSelectDirty({})
       setPendingNew(false)
@@ -574,6 +592,13 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
             nameMap={previewNameMap}
             onEntityRefresh={onEntityRefresh}
             compact={compact}
+            expanded={expandedKeys.has(item.key)}
+            onToggleExpanded={() => setExpandedKeys(prev => {
+              const next = new Set(prev)
+              if (next.has(item.key)) next.delete(item.key)
+              else next.add(item.key)
+              return next
+            })}
           />
         ))}
         {!disabled && (
