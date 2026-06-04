@@ -319,6 +319,15 @@ function WorkflowStateMappingTable({ section, onChange, disabled }: WorkflowStat
     onChange({ ...section, mapping: { ...mapping, [fromState]: toState } })
   }
 
+  if (sourceStates.length === 0 && targetStates.length === 0) {
+    return (
+      <div style={{ color: '#92400e', fontStyle: 'italic', fontSize: '0.85rem' }}>
+        Workflow version not linked on one or both sides — state mapping unavailable.
+        Re-import the config bundle to restore workflow links.
+      </div>
+    )
+  }
+
   if (sourceStates.length === 0) {
     return <div style={{ color: '#888', fontStyle: 'italic', fontSize: '0.85rem' }}>Source workflow has no states.</div>
   }
@@ -479,14 +488,13 @@ export function BulkMigrationTab() {
       setMapping(suggested)
       setAffected(prev.affected_entity_count)
 
-      // Build submodel mapping sections: only when submodel config version changed
+      // Build submodel mapping sections whenever a submodel field maps to another submodel field.
       const newSubmodelMappings: SubmodelMappingsState = {}
       for (const sf of src.fields) {
         const tf = tgtBySlug.get(sf.slug)
         if (!tf) continue
         if ((sf.data_type === 'submodel_select' || sf.data_type === 'submodel_list') &&
-            sf.submodel_config && tf.submodel_config &&
-            sf.submodel_config.version_id !== tf.submodel_config.version_id) {
+            sf.submodel_config && tf.submodel_config) {
           const subSuggested = suggestMappings(sf.submodel_config.fields, tf.submodel_config.fields)
           const subTgtBySlug = new Map(tf.submodel_config.fields.map(f => [f.slug, f]))
           newSubmodelMappings[sf.slug] = {
@@ -505,15 +513,19 @@ export function BulkMigrationTab() {
       }
       setSubmodelMappings(newSubmodelMappings)
 
-      // Build workflow state mapping sections: always when a workflow field is mapped
+      // Build workflow state mapping sections for all mapped workflow→workflow fields.
+      // workflow_version may be null for field definitions imported before the fix that
+      // linked workflow_definition_id; fall back to an empty states list in that case.
+      type WfVer = { states: Array<{ name: string }> } | null | undefined
       const newWorkflowMappings: WorkflowMappingsState = {}
       for (const sf of src.fields) {
         const tf = tgtBySlug.get(sf.slug)
         if (!tf) continue
-        if (sf.data_type === 'workflow' && tf.data_type === 'workflow' &&
-            (sf as Record<string, unknown>)['workflow_version'] && (tf as Record<string, unknown>)['workflow_version']) {
-          const sourceStates = ((sf as Record<string, unknown>)['workflow_version'] as { states: Array<{ name: string }> }).states.map(s => s.name)
-          const targetStates = ((tf as Record<string, unknown>)['workflow_version'] as { states: Array<{ name: string }> }).states.map(s => s.name)
+        if (sf.data_type === 'workflow' && tf.data_type === 'workflow') {
+          const sfWf = (sf as Record<string, unknown>)['workflow_version'] as WfVer
+          const tfWf = (tf as Record<string, unknown>)['workflow_version'] as WfVer
+          const sourceStates = sfWf?.states?.map(s => s.name) ?? []
+          const targetStates = tfWf?.states?.map(s => s.name) ?? []
           const targetStateSet = new Set(targetStates)
           const stateMapping: Record<string, string> = {}
           for (const s of sourceStates) {
