@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useParams } from 'react-router-dom'
 import { UdfMarkdown } from './UdfMarkdown'
 import { useTranslation } from 'react-i18next'
 import { Tree } from 'primereact/tree'
@@ -2388,30 +2389,18 @@ function TypesTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+const VALID_TABS = new Set<AdminTab>(['configs', 'types', 'policies', 'migrations', 'bundle'])
+
 export function UdmAdminPage() {
   useTranslation()
-  const [tab, setTab] = useState<AdminTab>('configs')
+  const { tab: tabParam } = useParams<{ tab?: string }>()
+  const tab: AdminTab = (tabParam && VALID_TABS.has(tabParam as AdminTab))
+    ? (tabParam as AdminTab)
+    : 'configs'
 
   return (
     <div className={styles.page}>
       <h1 className={styles.pageTitle}>UDM Configuration Admin</h1>
-
-      <div className={styles.tabs}>
-        {([
-          { key: 'configs', label: 'Field Configs' },
-          { key: 'types', label: 'UDM Types' },
-          { key: 'policies', label: 'Rego Policies' },
-          { key: 'migrations', label: 'Bulk Migration' },
-          { key: 'bundle', label: 'Export / Import' },
-        ] as const).map(({ key, label }) => (
-          <button key={key} type="button"
-            className={`${styles.tab} ${tab === key ? styles.tabActive : ''}`}
-            onClick={() => setTab(key)}>
-            {label}
-          </button>
-        ))}
-      </div>
-
       {tab === 'configs' && <ConfigsTab />}
       {tab === 'types' && <TypesTab />}
       {tab === 'policies' && <PoliciesTab />}

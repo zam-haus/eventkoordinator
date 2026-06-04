@@ -94,7 +94,7 @@ export function IndexView() {
             element={<SyncDiff />}
           />
           <Route
-            path="/udm-admin"
+            path="/udm-admin/:tab?"
             element={
               permissionsLoading ? null : permissions?.is_staff ? <UdmAdminPage /> : (
                 <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
