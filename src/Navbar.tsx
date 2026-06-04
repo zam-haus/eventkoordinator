@@ -97,6 +97,20 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     window.location.href = `/oidc/authenticate/?next=${encodeURIComponent(next)}`
   }
 
+  // Renders a dropdown sub-item as a React Router Link with active styling
+  const subLinkItem = (label: string, to: string, isActive: boolean): MenuItem => ({
+    label,
+    template: (_item, options) => (
+      <Link
+        to={to}
+        className={isActive ? styles.activeSubLink : styles.subLink}
+        onClick={options.onClick}
+      >
+        {label}
+      </Link>
+    ),
+  })
+
   // Renders a top-level nav item as a React Router Link with active styling
   const navLinkItem = (label: string, to: string, isActive: boolean): MenuItem => ({
     label,
@@ -133,22 +147,29 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     ))
   }
   if (permissions?.is_staff) {
+    const udmActive = location.pathname.startsWith('/udm-admin')
     navItems.push({
       label: 'UDM Admin',
-      className: location.pathname.startsWith('/udm-admin') ? styles.activeNavItem : undefined,
+      template: (_item, options) => (
+        <a
+          className={`${options.className} ${udmActive ? styles.activeNavLink : ''}`}
+          onClick={options.onClick}
+          role="menuitem"
+          aria-haspopup="true"
+        >
+          <span className={options.labelClassName}>UDM Admin</span>
+          <span className="p-submenu-icon pi pi-angle-down" />
+        </a>
+      ),
       items: [
-        { label: 'Field Configs', command: () => navigate('/udm-admin/configs') },
-        { label: 'UDM Types', command: () => navigate('/udm-admin/types') },
-        { label: 'Rego Policies', command: () => navigate('/udm-admin/policies') },
-        { label: 'Bulk Migration', command: () => navigate('/udm-admin/migrations') },
-        { label: 'Export / Import', command: () => navigate('/udm-admin/bundle') },
+        subLinkItem('Field Configs', '/udm-admin/configs', location.pathname === '/udm-admin/configs' || location.pathname === '/udm-admin'),
+        subLinkItem('UDM Types', '/udm-admin/types', location.pathname === '/udm-admin/types'),
+        subLinkItem('Rego Policies', '/udm-admin/policies', location.pathname === '/udm-admin/policies'),
+        subLinkItem('Bulk Migration', '/udm-admin/migrations', location.pathname === '/udm-admin/migrations'),
+        subLinkItem('Export / Import', '/udm-admin/bundle', location.pathname === '/udm-admin/bundle'),
+        subLinkItem('Workflow Editor', '/udm-admin/workflow', location.pathname === '/udm-admin/workflow'),
       ],
     })
-    navItems.push(navLinkItem(
-      'Workflow Editor',
-      '/workflow-editor',
-      location.pathname.startsWith('/workflow-editor'),
-    ))
   }
   navItems.push(navLinkItem(
     'UDM Entities',

@@ -81,37 +81,59 @@
   color: inherit;
 }
 
-/* Template-rendered nav links */
+/* Template-rendered nav links (top-level items and UDM Admin parent) */
 .navLink,
 .activeNavLink {
-  display: block;
-  padding: 0.45rem 0.75rem;
-  color: white;
+  display: flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem !important;
+  color: white !important;
   text-decoration: none;
   font-size: 0.95rem;
   border-radius: 6px;
   transition: background-color 0.15s ease;
   white-space: nowrap;
+  background-color: transparent !important;
 }
 
 .navLink:hover {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.15) !important;
 }
 
 .activeNavLink {
-  background-color: rgba(255, 255, 255, 0.25);
-  font-weight: 600;
-}
-
-/* Active highlight for parent items with submenus (e.g. UDM Admin) */
-.activeNavItem :global(.p-menuitem-content) {
   background-color: rgba(255, 255, 255, 0.25) !important;
-  border-radius: 6px;
-}
-
-.activeNavItem :global(.p-menuitem-content .p-menuitem-link .p-menuitem-text) {
   font-weight: 600;
 }
+
+.activeNavLink:hover {
+  background-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Dropdown sub-link items */
+.subLink,
+.activeSubLink {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  color: #444;
+  text-decoration: none;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.subLink:hover {
+  background-color: #f0f0f0;
+  color: #111;
+}
+
+.activeSubLink {
+  color: #2563eb;
+  background-color: #eff6ff;
+  font-weight: 600;
+}
+
 
 /* ── Logo ────────────────────────────────────────────────────────────────── */
 

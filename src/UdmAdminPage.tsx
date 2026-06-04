@@ -50,9 +50,10 @@ import {
 import { usePermissions } from './usePermissions'
 import { BulkMigrationTab } from './UdmMigration'
 import { BundleTab } from './UdmBundleTab'
+import { WorkflowEditor } from './WorkflowEditor'
 import styles from './UdmAdminPage.module.css'
 
-type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle'
+type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle' | 'workflow'
 type ConfigView = 'list' | 'detail'
 
 const DATA_TYPES: DataType[] = [
@@ -2389,7 +2390,7 @@ function TypesTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const VALID_TABS = new Set<AdminTab>(['configs', 'types', 'policies', 'migrations', 'bundle'])
+const VALID_TABS = new Set<AdminTab>(['configs', 'types', 'policies', 'migrations', 'bundle', 'workflow'])
 
 export function UdmAdminPage() {
   useTranslation()
@@ -2406,6 +2407,7 @@ export function UdmAdminPage() {
       {tab === 'policies' && <PoliciesTab />}
       {tab === 'migrations' && <BulkMigrationTab />}
       {tab === 'bundle' && <BundleTab />}
+      {tab === 'workflow' && <WorkflowEditor />}
     </div>
   )
 }
