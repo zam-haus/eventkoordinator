@@ -86,17 +86,17 @@ SPEAKER_WITH_BIO := {
 # ─── Patch builders ─────────────────────────────────────────────────────────────
 # Each returns a single JSON-Patch array.  Pass a list of results to _mk.
 
-_action(a)      := [{"op": "replace", "path": "/action",                                    "value": a}]
-_transition(t)  := [{"op": "replace", "path": "/transition",                                "value": t}]
-_field_path(f)  := [{"op": "replace", "path": "/field",                                     "value": f}]
-_node_id(id)    := [{"op": "replace", "path": "/node_id",                                   "value": id}]
-_as_user(u)     := [{"op": "replace", "path": "/user",                                      "value": u}]
-_status(s)      := [{"op": "replace", "path": "/entity/fields/status/value",                "value": s}]
-_as_owner(u)    := [{"op": "replace", "path": "/entity/fields/owner/value",                 "value": u}]
-_field(slug, v) := [{"op": "replace", "path": sprintf("/entity/fields/%v/value", [slug]),   "value": v}]
-_clear(slug)    := _field(slug, null)
-_changed(f)     := [{"op": "replace", "path": "/changed_fields",                            "value": f}]
-_children(k, v) := [{"op": "replace", "path": sprintf("/entity/children/%v", [k]),          "value": v}]
+_action(a) := [{"op": "replace", "path": "/action", "value": a}]
+_transition(t) := [{"op": "replace", "path": "/transition", "value": t}]
+_field_path(f) := [{"op": "replace", "path": "/field", "value": f}]
+_node_id(id) := [{"op": "replace", "path": "/node_id", "value": id}]
+_as_user(u) := [{"op": "replace", "path": "/user", "value": u}]
+_status(s) := [{"op": "replace", "path": "/entity/fields/status/value", "value": s}]
+_as_owner(u) := [{"op": "replace", "path": "/entity/fields/owner/value", "value": u}]
+_field(slug, v) := [{"op": "replace", "path": sprintf("/entity/fields/%v/value", [slug]), "value": v}]
+_clear(slug) := _field(slug, null)
+_changed(f) := [{"op": "replace", "path": "/changed_fields", "value": f}]
+_children(k, v) := [{"op": "replace", "path": sprintf("/entity/children/%v", [k]), "value": v}]
 
 # ─── Document factory ───────────────────────────────────────────────────────────
 # Accepts a list of patch arrays (from the builders above), flattens them, and
@@ -489,13 +489,13 @@ _set_node_id(id) := [{"op": "add", "path": "/node_id", "value": id}]
 # The path is new, so "add" is required.
 _old_reviews(reviews) := [{"op": "add", "path": "/old_entity", "value": {"children": {"reviews": reviews}}}]
 
-_REVIEW_PHI_ID   := "eeeeeeee-0000-0000-0000-000000000001"
+_REVIEW_PHI_ID := "eeeeeeee-0000-0000-0000-000000000001"
 _REVIEW_PHI_2_ID := "eeeeeeee-0000-0000-0000-000000000002"
 _REVIEW_OTHER_ID := "ffffffff-0000-0000-0000-000000000001"
 
-_REVIEW_PHI   := _review(_REVIEW_PHI_ID,   USER_PHI1010, "open")
+_REVIEW_PHI := _review(_REVIEW_PHI_ID, USER_PHI1010, "open")
 _REVIEW_PHI_2 := _review(_REVIEW_PHI_2_ID, USER_PHI1010, "open")
-_REVIEW_OTHER := _review(_REVIEW_OTHER_ID, USER_OWNER,   "open")
+_REVIEW_OTHER := _review(_REVIEW_OTHER_ID, USER_OWNER, "open")
 
 # A review-update change-op (editing comment text); the id targets a specific node.
 _update_op(review_id) := {"op": "update", "id": review_id, "fields": {"comment": "updated"}}

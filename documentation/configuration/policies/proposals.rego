@@ -13,78 +13,6 @@ _is_validation := utils.is_validation
 # ─── allow ─────────────────────────────────────────────────────────────────────
 default allow := false
 
-# ─── allow: view ───────────────────────────────────────────────────────────────
-
-allow if {
-	input.action == "view"
-	roles.is_owner_or_editor
-	print("[allow:view] owner/editor user=", input.user.username, "status=", current_status)
-}
-
-allow if {
-	input.action == "view"
-	roles.is_moderator
-	current_status != "draft"
-	print("[allow:view] moderator user=", input.user.username, "status=", current_status)
-}
-
-allow if {
-	input.action == "view"
-	roles.is_reviewer
-	current_status != "draft"
-	print("[allow:view] reviewer user=", input.user.username, "status=", current_status)
-}
-
-# ─── allow: browse ─────────────────────────────────────────────────────────────
-allow if {
-	input.action == "browse"
-	roles.is_owner_or_editor
-	print("[allow:browse] owner/editor user=", input.user.username)
-}
-
-allow if {
-	input.action == "browse"
-	roles.is_moderator
-	print("[allow:browse] moderator user=", input.user.username)
-}
-
-allow if {
-	input.action == "browse"
-	roles.is_reviewer
-	print("[allow:browse] reviewer user=", input.user.username)
-}
-
-
-# ─── allow: save ───────────────────────────────────────────────────────────────
-allow if {
-	input.action == "save"
-	roles.is_owner_or_editor
-	roles.is_status_editable
-	print("[allow:save] owner/editor user=", input.user.username, "status=", current_status)
-}
-
-allow if {
-	input.action == "save"
-	roles.is_moderator
-	print("[allow:save] moderator user=", input.user.username, "status=", current_status)
-}
-
-allow if {
-	input.action == "save"
-	roles.is_reviewer
-	current_status == "submitted"
-	print("[allow:save] reviewer user=", input.user.username)
-}
-
-
-# ─── allow: delete ─────────────────────────────────────────────────────────────
-allow if {
-	input.action == "delete"
-	roles.is_owner
-	current_status == "draft"
-	print("[allow:delete] owner user=", input.user.username)
-}
-
 
 # ─── allow: create ─────────────────────────────────────────────────────────────
 # Any active logged-in user may create a new proposal before the deadline.
@@ -505,17 +433,4 @@ success_messages contains msg if {
 		"text": "Proposal returned to revision. The owner may update and resubmit.",
 		"field_slug": null,
 	}
-}
-# ─── viewable_fields ───────────────────────────────────────────────────────────
-viewable_fields contains f if {
-	input.entity.fields[f]
-	not f in data.udm.protected_fields
-}
-
-# Owner/editors can edit content fields; reviewer assignment is moderator-only.
-editable_fields contains f if {
-	roles.is_owner_or_editor
-	workflow.is_status_editable
-	input.entity.fields[f]
-	not f in data.udm.protected_fields
 }

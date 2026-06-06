@@ -12,42 +12,42 @@ default deny := false
 # ─── Imports from other policy modules ─────────────────────────────────────────────
 allow if {
 	not deny
-	m:= udmframeworkv1.modules[name]
-	print("Module ", name, " allows this action: ", m.allow)
-	m.allow
+	m:= udmframeworkv1.modules[name].allow
+	print("[udm:allow] Module ", name, " allows this action: ", m)
+	m
 }
 
 allow if {
 	sudo.allow
-	print("Allowing due to sudo.")
+	print("[udm:allow] Allowing due to sudo.")
 }
 
 deny if {
 	any_critical_error
-	print("Denying due to critical error.")
+	print("[udm:deny] Denying due to critical error.")
 }
 
 deny if {
 	any_error
 	input.action == "transition"
-	print("Denying due to error and action is transition.")
+	print("[udm:deny] Denying due to error and action is transition.")
 }
 
 debug if {
-    print("allow: ", allow)
-    print("deny: ", deny)
+    print("[udm:allow] ", allow)
+    print("[udm:deny] ", deny)
 }
 
 editable_fields contains field_slug if {
     m := udmframeworkv1.modules[name].editable_fields
     some field_slug in m
-    print("Editable field: ", field_slug, " due to module: ", name)
+    print("[udm:editable field] ", field_slug, " due to module: ", name)
 }
 
 viewable_fields contains field_slug if {
     m := udmframeworkv1.modules[name].viewable_fields
     some field_slug in m
-    print("Viewable field: ", field_slug, " due to module: ", name)
+    print("[udm:viewable field] ", field_slug, " due to module: ", name)
 }
 
 
@@ -55,29 +55,29 @@ viewable_fields contains field_slug if {
 protected_fields contains field_slug if {
     m := udmframeworkv1.modules[name].protected_fields
     some field_slug in m
-    print("Protected field: ", field_slug, " due to module: ", name)
+    print("[udm:protected field] ", field_slug, " due to module: ", name)
 }
 
 success_messages contains msg if {
-	some m in udmframeworkv1.modules
-	some msg in m.success_messages
+	some msg in udmframeworkv1.modules[name].success_messages
+	print("[udm:success message] ", msg, " from module: ", name)
 }
 
 error_messages contains msg if {
-	some m in udmframeworkv1.modules
-	some msg in m.error_messages
+	some msg in udmframeworkv1.modules[name].error_messages
+	print("[udm:error message] ", msg, " from module: ", name)
 }
 
 any_critical_error if {
 	some m in error_messages
 	m.level == "critical"
-	print(m)
+	print("[udm:critical error] ", m)
 }
 
 any_error if {
 	some m in error_messages
 	m.level in {"critical", "error"}
-	print(m)
+	print("[udm:generic error] ",m)
 }
 
 # ─── messages (engine reads this: union of error and success messages) ──────────
