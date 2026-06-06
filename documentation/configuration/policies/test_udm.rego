@@ -471,6 +471,119 @@ test_non_moderator_cannot_allow_revision if {
 	not ev.allow
 }
 
+# ─── Tests: review editing (save) and voting (transition) ───────────────────────
+#
+# Rules under test:
+#   allow (save)   — proposals.rego: is_reviewer + current_status=="submitted" + no_critical_errors
+#   error (save)   — proposals.rego: op targets another author's review  →  critical block
+#   allow (vote)   — transitions.rego: field=="vote" + node matches review + author==user
+#
+# Actor: USER_PHI1010 — direct reviewer, not moderator, not owner.
+# Base document status: "submitted" (φ1010 can view and save as reviewer).
+# The "other" review is authored by USER_OWNER (also a requested reviewer in the base document).
+
+# node_id does not exist in BASE_DOCUMENT, so "add" rather than "replace".
+_set_node_id(id) := [{"op": "add", "path": "/node_id", "value": id}]
+
+# Inserts old_entity with a reviews snapshot so the author-check block rule can fire.
+# The path is new, so "add" is required.
+_old_reviews(reviews) := [{"op": "add", "path": "/old_entity", "value": {"children": {"reviews": reviews}}}]
+
+_REVIEW_PHI_ID   := "eeeeeeee-0000-0000-0000-000000000001"
+_REVIEW_PHI_2_ID := "eeeeeeee-0000-0000-0000-000000000002"
+_REVIEW_OTHER_ID := "ffffffff-0000-0000-0000-000000000001"
+
+_REVIEW_PHI   := _review(_REVIEW_PHI_ID,   USER_PHI1010, "open")
+_REVIEW_PHI_2 := _review(_REVIEW_PHI_2_ID, USER_PHI1010, "open")
+_REVIEW_OTHER := _review(_REVIEW_OTHER_ID, USER_OWNER,   "open")
+
+# A review-update change-op (editing comment text); the id targets a specific node.
+_update_op(review_id) := {"op": "update", "id": review_id, "fields": {"comment": "updated"}}
+
+# Wraps one or more change-ops into the changed_fields structure the policy reads.
+_review_change(ops) := _changed({"reviews": {"value": ops}})
+
+# ── Save: editing own review ──────────────────────────────────────────────────────
+
+test_reviewer_can_save_own_review if {
+	ev := udm with input as _mk([
+		_action("save"),
+		_as_user(USER_PHI1010),
+		_children("reviews", [_REVIEW_PHI]),
+		_old_reviews([_REVIEW_PHI]),
+		_review_change([_update_op(_REVIEW_PHI_ID)]),
+	])
+	ev.allow
+}
+
+test_reviewer_can_save_multiple_own_reviews if {
+	ev := udm with input as _mk([
+		_action("save"),
+		_as_user(USER_PHI1010),
+		_children("reviews", [_REVIEW_PHI, _REVIEW_PHI_2]),
+		_old_reviews([_REVIEW_PHI, _REVIEW_PHI_2]),
+		_review_change([_update_op(_REVIEW_PHI_ID), _update_op(_REVIEW_PHI_2_ID)]),
+	])
+	ev.allow
+}
+
+# ── Save: editing another user's review ──────────────────────────────────────────
+
+test_reviewer_blocked_editing_only_other_users_review if {
+	ev := udm with input as _mk([
+		_action("save"),
+		_as_user(USER_PHI1010),
+		_children("reviews", [_REVIEW_OTHER]),
+		_old_reviews([_REVIEW_OTHER]),
+		_review_change([_update_op(_REVIEW_OTHER_ID)]),
+	])
+	not ev.allow
+	some m in ev.error_messages
+	m.level == "critical"
+	m.text == "You can only modify your own reviews."
+}
+
+# Mixing own + another's review in the same save is blocked by the other's update.
+test_reviewer_blocked_editing_own_and_other_review_simultaneously if {
+	ev := udm with input as _mk([
+		_action("save"),
+		_as_user(USER_PHI1010),
+		_children("reviews", [_REVIEW_PHI, _REVIEW_OTHER]),
+		_old_reviews([_REVIEW_PHI, _REVIEW_OTHER]),
+		_review_change([_update_op(_REVIEW_PHI_ID), _update_op(_REVIEW_OTHER_ID)]),
+	])
+	not ev.allow
+	some m in ev.error_messages
+	m.level == "critical"
+	m.text == "You can only modify your own reviews."
+}
+
+# ── Vote: transitioning own vs. another user's review node ───────────────────────
+
+test_reviewer_can_vote_on_own_review if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_field_path("vote"),
+		_transition("accept"),
+		_set_node_id(_REVIEW_PHI_ID),
+		_as_user(USER_PHI1010),
+		_children("reviews", [_REVIEW_PHI]),
+	])
+	ev.allow
+}
+
+test_reviewer_cannot_vote_on_other_users_review if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_field_path("vote"),
+		_transition("accept"),
+		_set_node_id(_REVIEW_OTHER_ID),
+		_as_user(USER_PHI1010),
+		_children("reviews", [_REVIEW_OTHER]),
+	])
+	not ev.allow
+}
+
 # ─── Base document ──────────────────────────────────────────────────────────────
 
 BASE_DOCUMENT := INPUT_DOCUMENT
