@@ -35,10 +35,12 @@ viewable_fields contains f if {
 	not f in udm.protected_fields
 }
 
-old_entity := input.input.old_entity if input.old_entity else := input.entity
+old_entity := input.input.old_entity if input.old_entity
+
+else := input.entity
 
 view_was_allowed if {
 	print("[view:was_allowed:ENTER]")
 	allow with input.action as "view" with input.entity as old_entity
 	print("[view:was_allowed:SUCCESS]")
-} else := false
+} else := false if print("[view:was_allowed:FAIL]")

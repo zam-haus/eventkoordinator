@@ -138,7 +138,7 @@ test_moderator_cannot_view_draft if {
 # ─── Tests: save ────────────────────────────────────────────────────────────────
 
 test_owner_can_save_draft if {
-	ev := udm with input as _mk([_action("save"), _status("draft")])
+	ev := udm with input as _mk([_action("save"), _status("draft"), _changed({"title": true})])
 	ev.allow
 }
 
