@@ -1,7 +1,7 @@
-package udm.udmframeworkv1.proposals
+package udm.udmframeworkv1.modules.proposals
 
+import data.udm.udmframeworkv1.modules.config._deadline
 import rego.v1
-import data.udm.udmframeworkv1.config._deadline
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 # Set to true to allow superusers to bypass all access restrictions.
@@ -24,16 +24,16 @@ POST_REVIEW_STATUSES := {"revise", "accepted", "rejected"}
 
 # Human-readable status labels for info messages.
 _STATUS_LABEL := {
-	"draft":     "Draft",
+	"draft": "Draft",
 	"submitted": "Submitted — awaiting review",
-	"revise":    "Revision requested",
-	"accepted":  "Accepted",
-	"rejected":  "Rejected",
+	"revise": "Revision requested",
+	"accepted": "Accepted",
+	"rejected": "Rejected",
 }
 
 # ─── Current workflow state ────────────────────────────────────────────────────
 # Workflow fields serialize as the state name string (e.g. "draft").
-current_status := input.entity.fields["status"].value
+current_status := input.entity.fields.status.value
 
 # ─── Role helpers ──────────────────────────────────────────────────────────────
 is_owner if {
@@ -97,17 +97,20 @@ allow if {
 	is_owner_or_editor
 	print("[allow:view] owner/editor user=", input.user.username, "status=", current_status)
 }
+
 allow if {
 	input.action == "view"
 	is_superuser_sudo
 	print("[allow:view] sudo user=", input.user.username)
 }
+
 allow if {
 	input.action == "view"
 	is_moderator
 	current_status != "draft"
 	print("[allow:view] moderator user=", input.user.username, "status=", current_status)
 }
+
 allow if {
 	input.action == "view"
 	is_reviewer
@@ -121,16 +124,19 @@ allow if {
 	is_owner_or_editor
 	print("[allow:browse] owner/editor user=", input.user.username)
 }
+
 allow if {
 	input.action == "browse"
 	is_moderator
 	print("[allow:browse] moderator user=", input.user.username)
 }
+
 allow if {
 	input.action == "browse"
 	is_reviewer
 	print("[allow:browse] reviewer user=", input.user.username)
 }
+
 allow if {
 	input.action == "browse"
 	is_superuser_sudo
@@ -175,6 +181,7 @@ allow if {
 	current_status == "draft"
 	print("[allow:delete] owner user=", input.user.username)
 }
+
 allow if {
 	input.action == "delete"
 	is_superuser_sudo
@@ -186,8 +193,10 @@ allow if {
 allow if {
 	input.action == "create"
 	input.user.is_active
-	print("[allow:create] checking deadline for user=", input.user.username,
-	      "now_ns=", time.now_ns(), "deadline=", _deadline)
+	print(
+		"[allow:create] checking deadline for user=", input.user.username,
+		"now_ns=", time.now_ns(), "deadline=", _deadline,
+	)
 	time.now_ns() <= time.parse_rfc3339_ns(_deadline)
 	print("[allow:create] deadline ok, user=", input.user.username)
 }
@@ -240,8 +249,10 @@ error_messages contains msg if {
 	not is_moderator
 	not _reviewer_save_permitted
 	not current_status in EDITABLE_STATUSES
-	print("[block:status-edit] user=", input.user.username,
-	      "status=", current_status, "not in editable statuses:", EDITABLE_STATUSES)
+	print(
+		"[block:status-edit] user=", input.user.username,
+		"status=", current_status, "not in editable statuses:", EDITABLE_STATUSES,
+	)
 	msg := {
 		"level": "critical",
 		"text": "Proposals can only be edited in draft or revise status.",
@@ -261,8 +272,10 @@ error_messages contains msg if {
 	some existing in object.get(input.old_entity.children, "reviews", [])
 	existing.id == op.id
 	existing.fields.author.value.id != input.user.id
-	print("[block:review-modify] user=", input.user.username,
-	      "op=", op.op, "review_author=", existing.fields.author.value.id)
+	print(
+		"[block:review-modify] user=", input.user.username,
+		"op=", op.op, "review_author=", existing.fields.author.value.id,
+	)
 	msg := {
 		"level": "critical",
 		"text": "You can only modify your own reviews.",
@@ -278,8 +291,10 @@ error_messages contains msg if {
 	some op in input.changed_fields.reviews.value
 	op.op == "update"
 	op.fields.author
-	print("[block:review-author-change] user=", input.user.username,
-	      "attempted to change author on review op=", op)
+	print(
+		"[block:review-author-change] user=", input.user.username,
+		"attempted to change author on review op=", op,
+	)
 	msg := {
 		"level": "critical",
 		"text": "The review author cannot be changed after creation.",
@@ -296,8 +311,10 @@ error_messages contains msg if {
 	op.op == "create"
 	op.fields.author != null
 	op.fields.author != input.user.id
-	print("[block:review-attribution] user=", input.user.username,
-	      "tried to create review as=", op.fields.author)
+	print(
+		"[block:review-attribution] user=", input.user.username,
+		"tried to create review as=", op.fields.author,
+	)
 	msg := {
 		"level": "critical",
 		"text": "You can only create reviews as yourself.",
@@ -313,47 +330,16 @@ error_messages contains msg if {
 	not is_reviewer
 	some op in input.changed_fields.reviews.value
 	op.op == "create"
-	print("[block:review-not-reviewer] user=", input.user.username,
-	      "is not a designated reviewer, status=", current_status)
+	print(
+		"[block:review-not-reviewer] user=", input.user.username,
+		"is not a designated reviewer, status=", current_status,
+	)
 	msg := {
 		"level": "critical",
 		"text": "Only designated reviewers may add reviews.",
 		"field_slug": "reviews",
 	}
 }
-
-_changing_reviewer_assignments if { input.changed_fields["requested-reviewer-groups"] }
-_changing_reviewer_assignments if { input.changed_fields["requested-reviewer-users"] }
-
-error_messages contains msg if {
-	input.action == "save"
-	_can_view
-	not is_moderator
-	not is_superuser_sudo
-	_changing_reviewer_assignments
-	print("[block:reviewer-assignment] user=", input.user.username,
-	      "is not a moderator, changed_fields=", input.changed_fields)
-	msg := {
-		"level": "critical",
-		"text": "Only moderators may change reviewer assignments.",
-		"field_slug": null,
-	}
-}
-
-error_messages contains msg if {
-	input.action == "transition"
-	input.transition in {"submit", "resubmit"}
-	is_owner_or_editor
-	not _checklist_complete
-	print("[block:submit] checklist incomplete, user=", input.user.username,
-	      "transition=", input.transition)
-	msg := {
-		"level": "error",
-		"text": "All required fields must be completed before submitting.",
-		"field_slug": null,
-	}
-}
-
 
 # ─── save/transition denial for non-viewers ────────────────────────────────────
 # Produces a single generic critical message when the user cannot view the entity
@@ -364,8 +350,10 @@ error_messages contains msg if {
 error_messages contains msg if {
 	input.action in {"save", "transition"}
 	not _can_view
-	print("[deny:save/transition] no view access user=", input.user.username,
-	      "action=", input.action, "status=", current_status)
+	print(
+		"[deny:save/transition] no view access user=", input.user.username,
+		"action=", input.action, "status=", current_status,
+	)
 	msg := {
 		"level": "critical",
 		"text": "Access denied.",
@@ -383,15 +371,18 @@ _can_view if {
 	is_owner_or_editor
 	print("[can_view] owner/editor user=", input.user.username)
 }
+
 _can_view if {
 	is_superuser_sudo
 	print("[can_view] sudo user=", input.user.username)
 }
+
 _can_view if {
 	is_moderator
 	current_status != "draft"
 	print("[can_view] moderator user=", input.user.username, "status=", current_status)
 }
+
 _can_view if {
 	is_reviewer
 	current_status != "draft"
@@ -403,6 +394,7 @@ _has_limited_role if {
 	is_moderator
 	print("[role] _has_limited_role (moderator) user=", input.user.username)
 }
+
 _has_limited_role if {
 	is_reviewer
 	print("[role] _has_limited_role (reviewer) user=", input.user.username)
@@ -444,8 +436,12 @@ error_messages contains msg if {
 # Guard used by proposal-level context messages: true for view/save and for
 # transitions on the proposal status field. Suppresses proposal-level noise when
 # the action is a review vote transition on a subfield.
-_proposal_ctx if { input.action == "save" }
-_proposal_ctx if { input.action == "transition"; input.field == "status" }
+_proposal_ctx if input.action == "save"
+
+_proposal_ctx if {
+	input.action == "transition"
+	input.field == "status"
+}
 
 # ── View/Save/Transition: overall status label ──
 success_messages contains msg if {
@@ -528,8 +524,6 @@ success_messages contains msg if {
 		"field_slug": "reviews",
 	}
 }
-
-
 
 # ── Save: context messages ──
 success_messages contains msg if {
@@ -654,14 +648,13 @@ success_messages contains msg if {
 	}
 }
 
-# ─── messages (engine reads this: union of error and success messages) ──────────
-messages contains msg if { some msg in error_messages }
-messages contains msg if { some msg in success_messages }
-
 # ─── viewable_fields ───────────────────────────────────────────────────────────
 viewable_fields := [f | some f in _viewable_set]
 
-_viewable_set contains f if { is_superuser_sudo; input.entity.fields[f] }
+_viewable_set contains f if {
+	is_superuser_sudo
+	input.entity.fields[f]
+}
 
 _viewable_set contains f if {
 	is_moderator
@@ -670,9 +663,20 @@ _viewable_set contains f if {
 }
 
 # Moderators always see reviewer fields, even in draft or when also owner/editor.
-_viewable_set contains "reviews" if { is_moderator; input.entity.fields["reviews"] }
-_viewable_set contains "requested-reviewer-groups" if { is_moderator; input.entity.fields["requested-reviewer-groups"] }
-_viewable_set contains "requested-reviewer-users" if { is_moderator; input.entity.fields["requested-reviewer-users"] }
+_viewable_set contains "reviews" if {
+	is_moderator
+	input.entity.fields.reviews
+}
+
+_viewable_set contains "requested-reviewer-groups" if {
+	is_moderator
+	input.entity.fields["requested-reviewer-groups"]
+}
+
+_viewable_set contains "requested-reviewer-users" if {
+	is_moderator
+	input.entity.fields["requested-reviewer-users"]
+}
 
 _viewable_set contains f if {
 	is_reviewer
@@ -695,7 +699,10 @@ _viewable_set contains "reviews" if {
 # ─── editable_fields ───────────────────────────────────────────────────────────
 editable_fields := [f | some f in _editable_set]
 
-_editable_set contains f if { is_superuser_sudo; input.entity.fields[f] }
+_editable_set contains f if {
+	is_superuser_sudo
+	input.entity.fields[f]
+}
 
 # Owner/editors can edit content fields; reviewer assignment is moderator-only.
 _editable_set contains f if {
@@ -706,8 +713,8 @@ _editable_set contains f if {
 }
 
 # Moderators can manage the reviewer assignment fields.
-_editable_set contains "requested-reviewer-groups" if { is_moderator }
-_editable_set contains "requested-reviewer-users" if { is_moderator }
+_editable_set contains "requested-reviewer-groups" if is_moderator
+_editable_set contains "requested-reviewer-users" if is_moderator
 
 # Reviewers can add/update their own review submodel while the proposal is submitted.
 # The author field within a review is set automatically and blocked from editing above.
@@ -717,7 +724,7 @@ _editable_set contains "reviews" if {
 }
 
 # ─── Utilities ─────────────────────────────────────────────────────────────────
-no_critical_errors if { not any_critical_error }
+no_critical_errors if not any_critical_error
 
 default any_critical_error := false
 
@@ -728,4 +735,4 @@ any_critical_error if {
 }
 
 # True when the engine is doing a dry-run (validate_only=true from the API).
-_is_validation if { input.validate_only == true }
+_is_validation if input.validate_only == true

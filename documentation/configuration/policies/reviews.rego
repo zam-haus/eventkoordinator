@@ -1,9 +1,13 @@
-package udm.udmframeworkv1.reviews
+package udm.udmframeworkv1.modules.reviews
 
+import data.udm.udmframeworkv1.modules.proposals._can_view
+import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
+import data.udm.udmframeworkv1.modules.proposals.current_status
+import data.udm.udmframeworkv1.modules.proposals.is_moderator
+import data.udm.udmframeworkv1.modules.proposals.is_owner_or_editor
+import data.udm.udmframeworkv1.modules.proposals.is_reviewer
+import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
 import rego.v1
-import data.udm.udmframeworkv1.proposals._proposal_ctx
-import data.udm.udmframeworkv1.proposals.is_moderator
-import data.udm.udmframeworkv1.proposals.current_status
 
 # ─── Accept gate ────────────────────────────────────────────────────────────────
 # Acceptance requires at least one requested reviewer, and every requested
@@ -11,8 +15,20 @@ import data.udm.udmframeworkv1.proposals.current_status
 # Uses set operations instead of `every` for regorus compatibility.
 
 _reviews := object.get(input.entity.children, "reviews", [])
-_reviewer_users := v if { v := input.entity.fields["requested-reviewer-users"].value; v != null } else := []
-_reviewer_groups := v if { v := input.entity.fields["requested-reviewer-groups"].value; v != null } else := []
+
+_reviewer_users := v if {
+	v := input.entity.fields["requested-reviewer-users"].value
+	v != null
+}
+
+else := []
+
+_reviewer_groups := v if {
+	v := input.entity.fields["requested-reviewer-groups"].value
+	v != null
+}
+
+else := []
 
 _accepting_user_ids := {r.fields.author.value.id |
 	some r in _reviews
@@ -33,12 +49,14 @@ all_reviews_accepted if {
 
 	count(requested_user_ids) + count(requested_group_ids) > 0
 
-	print("[accept_gate] requested_users=", count(requested_user_ids),
-	      "accepting_users=", count(_accepting_user_ids),
-	      "missing_users=", count(requested_user_ids - _accepting_user_ids),
-	      "requested_groups=", count(requested_group_ids),
-	      "accepting_groups=", count(_accepting_group_ids),
-	      "missing_groups=", count(requested_group_ids - _accepting_group_ids))
+	print(
+		"[accept_gate] requested_users=", count(requested_user_ids),
+		"accepting_users=", count(_accepting_user_ids),
+		"missing_users=", count(requested_user_ids - _accepting_user_ids),
+		"requested_groups=", count(requested_group_ids),
+		"accepting_groups=", count(_accepting_group_ids),
+		"missing_groups=", count(requested_group_ids - _accepting_group_ids),
+	)
 
 	# Every requested user must appear in the accepting set.
 	count(requested_user_ids - _accepting_user_ids) == 0
@@ -65,7 +83,6 @@ _voted_group_ids := {rg.id |
 	r.fields.vote.value != null
 	r.fields.vote.value != "open"
 }
-
 
 # ── Per-reviewer status breakdown ──
 
@@ -118,5 +135,37 @@ success_messages contains msg if {
 		"level": "info",
 		"text": sprintf("Review submitted: a member of '%v' has voted.", [g.name]),
 		"field_slug": "requested-reviewer-groups",
+	}
+}
+
+# ── tab-submission: reviewer assignment ────────────────────────────────────────
+# The source message in proposals uses field_slug: null, so it cannot be relayed
+# through _field_to_tabs.
+error_messages contains msg if {
+	input.action == "save"
+	_can_view
+	not is_moderator
+	not is_superuser_sudo
+	_changing_reviewer_assignments
+	msg := {"level": "critical", "text": "Only moderators may change reviewer assignments.", "field_slug": "tab-submission"}
+}
+
+_changing_reviewer_assignments if input.changed_fields["requested-reviewer-groups"]
+_changing_reviewer_assignments if input.changed_fields["requested-reviewer-users"]
+
+error_messages contains msg if {
+	input.action == "save"
+	_can_view
+	not is_moderator
+	not is_superuser_sudo
+	_changing_reviewer_assignments
+	print(
+		"[block:reviewer-assignment] user=", input.user.username,
+		"is not a moderator, changed_fields=", input.changed_fields,
+	)
+	msg := {
+		"level": "critical",
+		"text": "Only moderators may change reviewer assignments.",
+		"field_slug": null,
 	}
 }

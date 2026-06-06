@@ -2,21 +2,32 @@ package udm
 
 import rego.v1
 
-import data.udm.udmframeworkv1.transitions
-import data.udm.udmframeworkv1.reviews
-import data.udm.udmframeworkv1.validation_rules
-import data.udm.udmframeworkv1.proposals
+import data.udm.udmframeworkv1
 
+any_modules if {
+	udmframeworkv1.modules
+	print("Loaded modules: ", object.keys(udmframeworkv1.modules))
+}
 
 # ─── Imports from other policy modules ─────────────────────────────────────────────
-allow if transitions.allow
-allow if proposals.allow
+allow if {
+	any_modules
+	some m in udmframeworkv1.modules
+	m.allow
+}
 
-success_messages contains msg if some msg in transitions.success_messages
-error_messages contains msg if some msg in transitions.error_messages
+success_messages contains msg if {
+	any_modules
+	some m in udmframeworkv1.modules
+	some msg in m.success_messages
+}
 
-success_messages contains msg if some msg in reviews.success_messages
-error_messages contains msg if some msg in reviews.error_messages
+error_messages contains msg if {
+	any_modules
+	some m in udmframeworkv1.modules
+	some msg in m.error_messages
+}
 
-success_messages contains msg if some msg in validation_rules.success_messages
-error_messages contains msg if some msg in validation_rules.error_messages
+# ─── messages (engine reads this: union of error and success messages) ──────────
+messages contains msg if some msg in error_messages
+messages contains msg if some msg in success_messages

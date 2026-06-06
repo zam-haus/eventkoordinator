@@ -1,4 +1,4 @@
-package udm.udmframeworkv1.config
+package udm.udmframeworkv1.modules.config
 
 import rego.v1
 

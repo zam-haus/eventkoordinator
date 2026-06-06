@@ -1,20 +1,23 @@
-package udm.udmframeworkv1.validation_rules
+package udm.udmframeworkv1.modules.validation_rules
 
+import data.udm.udmframeworkv1.modules.config._deadline
+import data.udm.udmframeworkv1.modules.proposals._can_view
+import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
+import data.udm.udmframeworkv1.modules.proposals.current_status
+import data.udm.udmframeworkv1.modules.proposals.is_moderator
+import data.udm.udmframeworkv1.modules.proposals.is_owner_or_editor
+import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
 import rego.v1
-import data.udm.udmframeworkv1.config._deadline
-import data.udm.udmframeworkv1.proposals._proposal_ctx
-import data.udm.udmframeworkv1.proposals.is_owner_or_editor
-import data.udm.udmframeworkv1.proposals.is_moderator
-import data.udm.udmframeworkv1.proposals.is_superuser_sudo
-import data.udm.udmframeworkv1.proposals.current_status
-import data.udm.udmframeworkv1.proposals._can_view
 
 # ─── Submission checklist ───────────────────────────────────────────────────────
 # Warning-level messages shown to owner/editor during view/save that flag fields
 # not yet ready for submission.  Level "warning" never blocks save — only
 # "critical" entries do (see no_critical_errors above).
 
-_checklist_ctx if { _proposal_ctx; is_owner_or_editor }
+_checklist_ctx if {
+	_proposal_ctx
+	is_owner_or_editor
+}
 
 # title: 1–30 non-empty characters
 _title_complete if {
@@ -25,6 +28,7 @@ _title_complete if {
 	count(v) <= 30
 	print("[check:title] PASS len=", count(v))
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _title_complete
@@ -41,6 +45,7 @@ _abstract_complete if {
 	count(v) <= 250
 	print("[check:abstract] PASS len=", count(v))
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _abstract_complete
@@ -58,6 +63,7 @@ _description_complete if {
 	count(v) <= 1000
 	print("[check:description] PASS len=", count(v))
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _description_complete
@@ -79,11 +85,14 @@ _duration_complete if {
 	t != "00:00"
 	print("[check:duration] PASS time=", t)
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _duration_complete
-	print("[checklist:duration] FAIL days=", input.entity.fields["duration-days"].value,
-	      "time=", input.entity.fields["duration-time-per-day"].value)
+	print(
+		"[checklist:duration] FAIL days=", input.entity.fields["duration-days"].value,
+		"time=", input.entity.fields["duration-time-per-day"].value,
+	)
 	msg := {"level": "warning", "text": "Duration must be at least 1 day with a non-zero time per day (HH:MM).", "field_slug": "duration-days"}
 }
 
@@ -95,6 +104,7 @@ _max_participants_complete if {
 	v >= 1
 	print("[check:max-participants] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _max_participants_complete
@@ -110,6 +120,7 @@ _occurrence_count_complete if {
 	v >= 1
 	print("[check:occurrence-count] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _occurrence_count_complete
@@ -125,6 +136,7 @@ _preferred_dates_complete if {
 	count(trim_space(v)) >= 1
 	print("[check:preferred-dates] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _preferred_dates_complete
@@ -140,6 +152,7 @@ _language_complete if {
 	count(v) > 0
 	print("[check:language] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _language_complete
@@ -155,6 +168,7 @@ _submission_type_complete if {
 	count(v) > 0
 	print("[check:submission-type] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _submission_type_complete
@@ -170,6 +184,7 @@ _area_complete if {
 	count(v) > 0
 	print("[check:area] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _area_complete
@@ -183,6 +198,7 @@ _photo_complete if {
 	input.entity.fields.photo.value != null
 	print("[check:photo] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _photo_complete
@@ -200,8 +216,10 @@ error_messages contains msg if {
 	input.changed_fields.photo
 	input.entity.fields.photo.value != null
 	not input.entity.fields["photo-copyright-consent"].value == true
-	print("[copyright] BLOCK: photo present without consent user=", input.user.username,
-	      "consent=", input.entity.fields["photo-copyright-consent"].value)
+	print(
+		"[copyright] BLOCK: photo present without consent user=", input.user.username,
+		"consent=", input.entity.fields["photo-copyright-consent"].value,
+	)
 	msg := {
 		"level": "critical",
 		"text": "You must confirm copyright consent before uploading an image.",
@@ -211,11 +229,14 @@ error_messages contains msg if {
 
 # submission deadline: _deadline is defined in description.rego (same package)
 _within_deadline if {
-	print("[check:deadline] now_ns=", time.now_ns(), "deadline=", _deadline,
-	      "deadline_ns=", time.parse_rfc3339_ns(_deadline))
+	print(
+		"[check:deadline] now_ns=", time.now_ns(), "deadline=", _deadline,
+		"deadline_ns=", time.parse_rfc3339_ns(_deadline),
+	)
 	time.now_ns() <= time.parse_rfc3339_ns(_deadline)
 	print("[check:deadline] PASS still within deadline")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	current_status == "draft"
@@ -232,6 +253,7 @@ _at_least_one_speaker if {
 	count(_speakers) >= 1
 	print("[check:speakers] PASS")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	not _at_least_one_speaker
@@ -249,6 +271,7 @@ _all_speakers_have_bio if {
 	}
 	print("[check:speakers-bio] PASS all speakers have biography")
 }
+
 error_messages contains msg if {
 	_checklist_ctx
 	count(_speakers) > 0

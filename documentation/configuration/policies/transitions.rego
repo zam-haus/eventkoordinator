@@ -1,19 +1,19 @@
-package udm.udmframeworkv1.transitions
+package udm.udmframeworkv1.modules.transitions
 
+import data.udm.udmframeworkv1.modules.proposals._can_view
+import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
+import data.udm.udmframeworkv1.modules.proposals.current_status
+import data.udm.udmframeworkv1.modules.proposals.is_moderator
+import data.udm.udmframeworkv1.modules.proposals.is_owner_or_editor
+import data.udm.udmframeworkv1.modules.proposals.is_reviewer
+import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
+import data.udm.udmframeworkv1.modules.reviews
+import data.udm.udmframeworkv1.modules.reviews._accepting_group_ids
+import data.udm.udmframeworkv1.modules.reviews._accepting_user_ids
+import data.udm.udmframeworkv1.modules.reviews._reviews
+import data.udm.udmframeworkv1.modules.reviews.all_reviews_accepted
+import data.udm.udmframeworkv1.modules.validation_rules._checklist_complete
 import rego.v1
-import data.udm.udmframeworkv1.reviews
-import data.udm.udmframeworkv1.reviews._accepting_user_ids
-import data.udm.udmframeworkv1.reviews._accepting_group_ids
-import data.udm.udmframeworkv1.reviews._reviews
-import data.udm.udmframeworkv1.reviews.all_reviews_accepted
-import data.udm.udmframeworkv1.proposals._proposal_ctx
-import data.udm.udmframeworkv1.proposals.is_moderator
-import data.udm.udmframeworkv1.proposals.is_owner_or_editor
-import data.udm.udmframeworkv1.proposals.is_reviewer
-import data.udm.udmframeworkv1.proposals.is_superuser_sudo
-import data.udm.udmframeworkv1.proposals.current_status
-import data.udm.udmframeworkv1.proposals._can_view
-import data.udm.udmframeworkv1.validation_rules._checklist_complete
 
 default allow := false
 
@@ -23,16 +23,20 @@ allow if {
 	input.transition in {"submit", "resubmit"}
 	is_owner_or_editor
 	_checklist_complete
-	print("[allow:transition] submit/resubmit user=", input.user.username,
-	      "transition=", input.transition, "status=", current_status)
+	print(
+		"[allow:transition] submit/resubmit user=", input.user.username,
+		"transition=", input.transition, "status=", current_status,
+	)
 }
 
 allow if {
 	input.action == "transition"
 	input.transition in {"reject", "request-revision", "allow-revision"}
 	is_moderator
-	print("[allow:transition] moderator action user=", input.user.username,
-	      "transition=", input.transition, "status=", current_status)
+	print(
+		"[allow:transition] moderator action user=", input.user.username,
+		"transition=", input.transition, "status=", current_status,
+	)
 }
 
 allow if {
@@ -54,15 +58,19 @@ allow if {
 	some r in _reviews
 	r.id == input.node_id
 	r.fields.author.value.id == input.user.id
-	print("[allow:transition] vote user=", input.user.username,
-	      "transition=", input.transition, "node=", input.node_id)
+	print(
+		"[allow:transition] vote user=", input.user.username,
+		"transition=", input.transition, "node=", input.node_id,
+	)
 }
 
 allow if {
 	input.action == "transition"
 	is_superuser_sudo
-	print("[allow:transition] sudo user=", input.user.username,
-	      "transition=", input.transition)
+	print(
+		"[allow:transition] sudo user=", input.user.username,
+		"transition=", input.transition,
+	)
 }
 
 # ── View/Save/Transition: pending reviews summary for moderator ──
@@ -94,7 +102,6 @@ success_messages contains msg if {
 	}
 }
 
-
 # moderator, submitted, accept allowed
 success_messages contains msg if {
 	_proposal_ctx
@@ -108,7 +115,6 @@ success_messages contains msg if {
 	}
 }
 
-
 error_messages contains msg if {
 	input.action == "transition"
 	input.field == "status"
@@ -116,16 +122,17 @@ error_messages contains msg if {
 	is_moderator
 	_can_view
 	not reviews.all_reviews_accepted
-	print("[block:accept] not all reviews accepted, user=", input.user.username,
-	      "accepting_user_ids=", _accepting_user_ids,
-	      "accepting_group_ids=", _accepting_group_ids)
+	print(
+		"[block:accept] not all reviews accepted, user=", input.user.username,
+		"accepting_user_ids=", _accepting_user_ids,
+		"accepting_group_ids=", _accepting_group_ids,
+	)
 	msg := {
 		"level": "error",
 		"text": "Acceptance requires all requested reviewers to have voted accept.",
 		"field_slug": null,
 	}
 }
-
 
 # ── View/Save/Transition: per-transition allow/deny (shown below the transition buttons) ─
 
@@ -152,7 +159,6 @@ success_messages contains msg if {
 		"field_slug": "status",
 	}
 }
-
 
 # moderator, submitted, accept blocked — show how many are missing per type
 success_messages contains msg if {
@@ -203,5 +209,21 @@ success_messages contains msg if {
 		"level": "info",
 		"text": "No transitions available for reviewers. Submit your review and the moderator will decide.",
 		"field_slug": "status",
+	}
+}
+
+error_messages contains msg if {
+	input.action == "transition"
+	input.transition in {"submit", "resubmit"}
+	is_owner_or_editor
+	not _checklist_complete
+	print(
+		"[block:submit] checklist incomplete, user=", input.user.username,
+		"transition=", input.transition,
+	)
+	msg := {
+		"level": "error",
+		"text": "All required fields must be completed before submitting.",
+		"field_slug": null,
 	}
 }
