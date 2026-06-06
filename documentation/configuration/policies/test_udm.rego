@@ -179,6 +179,221 @@ test_submit_allowed_when_checklist_complete if {
 	not {m | some m in ev.error_messages; m.level in {"error", "critical"}} != set()
 }
 
+# ─── Tests: accept transition ───────────────────────────────────────────────────
+#
+# Setup: GROUP_A (members: MEMBER_A, MEMBER_B) in requested-reviewer-groups,
+#        USER_X (disjunct from the group) in requested-reviewer-users.
+#
+# Accept gate logic (reviews.rego):
+#   - every requested user must have a review with vote="accept"
+#   - every requested group must have at least one member with vote="accept"
+#
+# Combo A — both group members accept, USER_X does not → BLOCKED (USER_X missing)
+# Combo B — MEMBER_A + USER_X accept, MEMBER_B does not → ALLOWED (GROUP_A satisfied via MEMBER_A)
+# Combo C — MEMBER_B + USER_X accept, MEMBER_A does not → ALLOWED (GROUP_A satisfied via MEMBER_B)
+# Combo D — all three accept → ALLOWED
+#
+# For each blocking / allowing combo the non-accepting reviewer's state cycles
+# through: reject / revise / open / absent (no review node at all).
+
+_ACCEPT_MEMBER_A := {
+	"id": "aa000001-0000-0000-0000-000000000001",
+	"username": "member_a",
+	"email": "redacted@example.com",
+	"phone_number": "",
+	"is_active": true,
+	"is_staff": false,
+	"is_superuser": false,
+	"groups": [{"id": 10, "name": "Group A"}],
+	"permissions": [],
+}
+
+_ACCEPT_MEMBER_B := {
+	"id": "bb000001-0000-0000-0000-000000000001",
+	"username": "member_b",
+	"email": "redacted@example.com",
+	"phone_number": "",
+	"is_active": true,
+	"is_staff": false,
+	"is_superuser": false,
+	"groups": [{"id": 10, "name": "Group A"}],
+	"permissions": [],
+}
+
+_ACCEPT_USER_X := {
+	"id": "cc000001-0000-0000-0000-000000000001",
+	"username": "user_x",
+	"email": "redacted@example.com",
+	"phone_number": "",
+	"is_active": true,
+	"is_staff": false,
+	"is_superuser": false,
+	"groups": [],
+	"permissions": [],
+}
+
+_ACCEPT_GROUP_A := {
+	"id": 10,
+	"name": "Group A",
+	"members": [_ACCEPT_MEMBER_A, _ACCEPT_MEMBER_B],
+}
+
+_review(rid, author, vote) := {
+	"id": rid,
+	"type": "submodel:reviews",
+	"config_version_id": "6a2c5e84-62d5-442c-94ff-be5d33635cb7",
+	"config_id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
+	"type_id": null,
+	"fields": {
+		"author": {"data_type": "user_select", "localized": false, "value": author},
+		"vote": {"data_type": "workflow", "localized": false, "value": vote},
+		"comment": {"data_type": "text_long", "localized": false, "value": null},
+	},
+	"children": {},
+	"overflow_data": {},
+}
+
+_accept_with(reviews) := _mk([
+	_action("transition"),
+	_transition("accept"),
+	_field_path("status"),
+	_status("submitted"),
+	_as_user(USER_MODERATOR),
+	_field("requested-reviewer-groups", [_ACCEPT_GROUP_A]),
+	_field("requested-reviewer-users", [_ACCEPT_USER_X]),
+	_children("reviews", reviews),
+])
+
+# ── Combo A: both group members accept, USER_X does NOT — BLOCKED ────────────────
+
+test_accept_blocked_combo_a_user_x_rejects if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "reject"),
+	])
+	not ev.allow
+	some m in ev.error_messages
+	m.level == "error"
+}
+
+test_accept_blocked_combo_a_user_x_revises if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "revise"),
+	])
+	not ev.allow
+	some m in ev.error_messages
+	m.level == "error"
+}
+
+test_accept_blocked_combo_a_user_x_open if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "open"),
+	])
+	not ev.allow
+	some m in ev.error_messages
+	m.level == "error"
+}
+
+test_accept_blocked_combo_a_user_x_absent if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+	])
+	not ev.allow
+	some m in ev.error_messages
+	m.level == "error"
+}
+
+# ── Combo B: MEMBER_A + USER_X accept, MEMBER_B does NOT — ALLOWED ───────────────
+
+test_accept_allowed_combo_b_member_b_rejects if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "reject"),
+	])
+	ev.allow
+}
+
+test_accept_allowed_combo_b_member_b_revises if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "revise"),
+	])
+	ev.allow
+}
+
+test_accept_allowed_combo_b_member_b_open if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "open"),
+	])
+	ev.allow
+}
+
+test_accept_allowed_combo_b_member_b_absent if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+	])
+	ev.allow
+}
+
+# ── Combo C: MEMBER_B + USER_X accept, MEMBER_A does NOT — ALLOWED ───────────────
+
+test_accept_allowed_combo_c_member_a_rejects if {
+	ev := udm with input as _accept_with([
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+		_review("r-a", _ACCEPT_MEMBER_A, "reject"),
+	])
+	ev.allow
+}
+
+test_accept_allowed_combo_c_member_a_revises if {
+	ev := udm with input as _accept_with([
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+		_review("r-a", _ACCEPT_MEMBER_A, "revise"),
+	])
+	ev.allow
+}
+
+test_accept_allowed_combo_c_member_a_open if {
+	ev := udm with input as _accept_with([
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+		_review("r-a", _ACCEPT_MEMBER_A, "open"),
+	])
+	ev.allow
+}
+
+test_accept_allowed_combo_c_member_a_absent if {
+	ev := udm with input as _accept_with([
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+	])
+	ev.allow
+}
+
+# ── Combo D: all three accept — ALLOWED ──────────────────────────────────────────
+
+test_accept_allowed_combo_d_all_accept if {
+	ev := udm with input as _accept_with([
+		_review("r-a", _ACCEPT_MEMBER_A, "accept"),
+		_review("r-b", _ACCEPT_MEMBER_B, "accept"),
+		_review("r-x", _ACCEPT_USER_X, "accept"),
+	])
+	ev.allow
+}
+
 # ─── Base document ──────────────────────────────────────────────────────────────
 
 BASE_DOCUMENT := INPUT_DOCUMENT
