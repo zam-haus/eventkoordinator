@@ -16,19 +16,19 @@ import rego.v1
 
 _reviews := object.get(input.entity.children, "reviews", [])
 
+default _reviewer_users = []
+
 _reviewer_users := v if {
 	v := input.entity.fields["requested-reviewer-users"].value
 	v != null
 }
 
-else := []
+default _reviewer_groups = []
 
 _reviewer_groups := v if {
 	v := input.entity.fields["requested-reviewer-groups"].value
 	v != null
 }
-
-else := []
 
 _accepting_user_ids := {r.fields.author.value.id |
 	some r in _reviews
@@ -83,6 +83,10 @@ _voted_group_ids := {rg.id |
 	r.fields.vote.value != null
 	r.fields.vote.value != "open"
 }
+
+_changing_reviewer_assignments if input.changed_fields["requested-reviewer-groups"]
+_changing_reviewer_assignments if input.changed_fields["requested-reviewer-users"]
+
 
 # ── Per-reviewer status breakdown ──
 
@@ -149,9 +153,6 @@ error_messages contains msg if {
 	_changing_reviewer_assignments
 	msg := {"level": "critical", "text": "Only moderators may change reviewer assignments.", "field_slug": "tab-submission"}
 }
-
-_changing_reviewer_assignments if input.changed_fields["requested-reviewer-groups"]
-_changing_reviewer_assignments if input.changed_fields["requested-reviewer-users"]
 
 error_messages contains msg if {
 	input.action == "save"
