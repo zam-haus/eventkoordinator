@@ -1,19 +1,7 @@
-package udm
+package udm.udmframeworkv1.proposals
 
 import rego.v1
-
-import data.udm.transitions
-import data.udm.reviews
-
-
-# ─── Imports from other policy modules ─────────────────────────────────────────────
-allow if transitions.allow
-success_messages contains msg if some msg in transitions.success_messages
-error_messages contains msg if some msg in transitions.error_messages
-
-success_messages contains msg if some msg in reviews.success_messages
-error_messages contains msg if some msg in reviews.error_messages
-
+import data.udm.udmframeworkv1.config._deadline
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 # Set to true to allow superusers to bypass all access restrictions.

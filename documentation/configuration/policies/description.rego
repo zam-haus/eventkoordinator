@@ -1,11 +1,10 @@
-package udm
+package udm.udmframeworkv1.description
 
 import rego.v1
+import data.udm.udmframeworkv1.config._deadline
+import data.udm.udmframeworkv1.config._deadline_human
 
 # ── Deadline ──────────────────────────────────────────────────────────────────
-
-_deadline_human := "2026-12-31"
-_deadline := "2026-12-31T23:59:59Z"
 
 _days_left := round(
     (time.parse_rfc3339_ns(_deadline) - time.now_ns()) /

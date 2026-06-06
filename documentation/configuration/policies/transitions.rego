@@ -1,19 +1,19 @@
-package udm.transitions
+package udm.udmframeworkv1.transitions
 
 import rego.v1
-import data.udm.reviews
-import data.udm._proposal_ctx
-import data.udm.is_moderator
-import data.udm.is_owner_or_editor
-import data.udm.is_reviewer
-import data.udm.is_superuser_sudo
-import data.udm.current_status
-import data.udm.reviews._accepting_user_ids
-import data.udm.reviews._accepting_group_ids
-import data.udm.reviews._reviews
-import data.udm.reviews.all_reviews_accepted
-import data.udm._can_view
-import data.validation_rules._checklist_complete
+import data.udm.udmframeworkv1.reviews
+import data.udm.udmframeworkv1.reviews._accepting_user_ids
+import data.udm.udmframeworkv1.reviews._accepting_group_ids
+import data.udm.udmframeworkv1.reviews._reviews
+import data.udm.udmframeworkv1.reviews.all_reviews_accepted
+import data.udm.udmframeworkv1.proposals._proposal_ctx
+import data.udm.udmframeworkv1.proposals.is_moderator
+import data.udm.udmframeworkv1.proposals.is_owner_or_editor
+import data.udm.udmframeworkv1.proposals.is_reviewer
+import data.udm.udmframeworkv1.proposals.is_superuser_sudo
+import data.udm.udmframeworkv1.proposals.current_status
+import data.udm.udmframeworkv1.proposals._can_view
+import data.udm.udmframeworkv1.validation_rules._checklist_complete
 
 default allow := false
 

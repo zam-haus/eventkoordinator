@@ -1,9 +1,9 @@
-package udm.reviews
+package udm.udmframeworkv1.reviews
 
 import rego.v1
-import data.udm._proposal_ctx
-import data.udm.is_moderator
-import data.udm.current_status
+import data.udm.udmframeworkv1.proposals._proposal_ctx
+import data.udm.udmframeworkv1.proposals.is_moderator
+import data.udm.udmframeworkv1.proposals.current_status
 
 # ─── Accept gate ────────────────────────────────────────────────────────────────
 # Acceptance requires at least one requested reviewer, and every requested
