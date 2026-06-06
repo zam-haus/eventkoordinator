@@ -2,11 +2,10 @@ package udm.udmframeworkv1.modules.reviews
 
 import data.udm.udmframeworkv1.modules.proposals._can_view
 import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
-import data.udm.udmframeworkv1.modules.proposals.current_status
-import data.udm.udmframeworkv1.modules.proposals.is_moderator
-import data.udm.udmframeworkv1.modules.proposals.is_owner_or_editor
-import data.udm.udmframeworkv1.modules.proposals.is_reviewer
-import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
+import data.udm.udmframeworkv1.modules.workflow.current_status
+import data.udm.udmframeworkv1.modules.roles.is_moderator
+import data.udm.udmframeworkv1.modules.roles.is_owner_or_editor
+import data.udm.udmframeworkv1.modules.roles.is_reviewer
 import data.udm.udmframeworkv1.modules.roles
 import data.udm.udmframeworkv1.modules.workflow
 import rego.v1
@@ -150,7 +149,6 @@ error_messages contains msg if {
 	input.action == "save"
 	_can_view
 	not is_moderator
-	not is_superuser_sudo
 	_changing_reviewer_assignments
 	msg := {"level": "critical", "text": "Only moderators may change reviewer assignments.", "field_slug": "tab-submission"}
 }
@@ -159,7 +157,6 @@ error_messages contains msg if {
 	input.action == "save"
 	_can_view
 	not is_moderator
-	not is_superuser_sudo
 	_changing_reviewer_assignments
 	print(
 		"[block:reviewer-assignment] user=", input.user.username,
@@ -200,6 +197,7 @@ editable_fields contains "requested-reviewer-users" if roles.is_moderator
 editable_fields contains "reviews" if {
 	roles.is_reviewer
 	current_status == "submitted"
+	print("[reviews:editable_fields] user=", input.user.username, "is reviewer and proposal is submitted")
 }
 
 # Moderators always see reviewer fields, even in draft or when also owner/editor.

@@ -568,6 +568,7 @@ test_reviewer_can_vote_on_own_review if {
 		_set_node_id(_REVIEW_PHI_ID),
 		_as_user(USER_PHI1010),
 		_children("reviews", [_REVIEW_PHI]),
+		_old_reviews([_REVIEW_PHI]),
 	])
 	ev.allow
 }
