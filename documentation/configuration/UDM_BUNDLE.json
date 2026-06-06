@@ -12,7 +12,10 @@
         "proposals",
         "description",
         "dashboard",
-        "proposals-actions"
+        "proposals-actions",
+        "reviews",
+        "transitions",
+        "validation_rules"
       ]
     }
   ],
@@ -1513,6 +1516,15 @@
     },
     {
       "slug": "proposals-actions"
+    },
+    {
+      "slug": "reviews"
+    },
+    {
+      "slug": "transitions"
+    },
+    {
+      "slug": "validation_rules"
     }
   ]
 }
