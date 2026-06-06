@@ -394,6 +394,83 @@ test_accept_allowed_combo_d_all_accept if {
 	ev.allow
 }
 
+# ─── Tests: moderator-only transitions (reject / request-revision / allow-revision) ───
+#
+# Rule under test (transitions.rego):
+#   allow if {
+#       input.action == "transition"
+#       input.transition in {"reject", "request-revision", "allow-revision"}
+#       is_moderator
+#   }
+#
+# is_moderator is true when the user belongs to any group named in MODERATOR_GROUP_NAMES.
+# The rule has no status guard; status is set to match the typical workflow context.
+
+test_moderator_can_reject if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_transition("reject"),
+		_field_path("status"),
+		_as_user(USER_MODERATOR),
+	])
+	ev.allow
+}
+
+test_moderator_can_request_revision if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_transition("request-revision"),
+		_field_path("status"),
+		_as_user(USER_MODERATOR),
+	])
+	ev.allow
+}
+
+# allow-revision is typically applied to a rejected proposal.
+test_moderator_can_allow_revision if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_transition("allow-revision"),
+		_field_path("status"),
+		_status("rejected"),
+		_as_user(USER_MODERATOR),
+	])
+	ev.allow
+}
+
+# A regular authenticated user (reviewer, not moderator) is denied all three.
+
+test_non_moderator_cannot_reject if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_transition("reject"),
+		_field_path("status"),
+		_as_user(USER_PHI1010),
+	])
+	not ev.allow
+}
+
+test_non_moderator_cannot_request_revision if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_transition("request-revision"),
+		_field_path("status"),
+		_as_user(USER_PHI1010),
+	])
+	not ev.allow
+}
+
+test_non_moderator_cannot_allow_revision if {
+	ev := udm with input as _mk([
+		_action("transition"),
+		_transition("allow-revision"),
+		_field_path("status"),
+		_status("rejected"),
+		_as_user(USER_PHI1010),
+	])
+	not ev.allow
+}
+
 # ─── Base document ──────────────────────────────────────────────────────────────
 
 BASE_DOCUMENT := INPUT_DOCUMENT

@@ -47,22 +47,7 @@ allow if {
 	print("[allow:transition] accept granted user=", input.user.username)
 }
 
-# A reviewer may transition only the vote field on their own review node.
-# input.node_id identifies the specific review node; we verify the review's author
-# matches the current user. Moderators not in the reviewer lists cannot vote.
-allow if {
-	input.action == "transition"
-	input.field == "vote"
-	input.transition in {"accept", "reject", "revise", "reset"}
-	current_status == "submitted"
-	some r in _reviews
-	r.id == input.node_id
-	r.fields.author.value.id == input.user.id
-	print(
-		"[allow:transition] vote user=", input.user.username,
-		"transition=", input.transition, "node=", input.node_id,
-	)
-}
+
 
 allow if {
 	input.action == "transition"
