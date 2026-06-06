@@ -1,4 +1,4 @@
-package udm
+package udm.udmframeworkv1.modules.dashboard
 
 import rego.v1
 

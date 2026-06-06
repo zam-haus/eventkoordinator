@@ -3,10 +3,7 @@ package udm.udmframeworkv1.modules.transitions
 import data.udm.udmframeworkv1.modules.proposals._can_view
 import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
 import data.udm.udmframeworkv1.modules.proposals.current_status
-import data.udm.udmframeworkv1.modules.proposals.is_moderator
-import data.udm.udmframeworkv1.modules.proposals.is_owner_or_editor
-import data.udm.udmframeworkv1.modules.proposals.is_reviewer
-import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
+import data.udm.udmframeworkv1.modules.roles
 import data.udm.udmframeworkv1.modules.reviews
 import data.udm.udmframeworkv1.modules.reviews._accepting_group_ids
 import data.udm.udmframeworkv1.modules.reviews._accepting_user_ids
@@ -21,7 +18,7 @@ default allow := false
 allow if {
 	input.action == "transition"
 	input.transition in {"submit", "resubmit"}
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	_checklist_complete
 	print(
 		"[allow:transition] submit/resubmit user=", input.user.username,
@@ -32,7 +29,7 @@ allow if {
 allow if {
 	input.action == "transition"
 	input.transition in {"reject", "request-revision", "allow-revision"}
-	is_moderator
+	roles.is_moderator
 	print(
 		"[allow:transition] moderator action user=", input.user.username,
 		"transition=", input.transition, "status=", current_status,
@@ -42,26 +39,17 @@ allow if {
 allow if {
 	input.action == "transition"
 	input.transition == "accept"
-	is_moderator
+	roles.is_moderator
 	reviews.all_reviews_accepted
 	print("[allow:transition] accept granted user=", input.user.username)
 }
 
 
 
-allow if {
-	input.action == "transition"
-	is_superuser_sudo
-	print(
-		"[allow:transition] sudo user=", input.user.username,
-		"transition=", input.transition,
-	)
-}
-
 # ── View/Save/Transition: pending reviews summary for moderator ──
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	current_status == "submitted"
 	pending_count := count([r |
 		some r in _reviews
@@ -77,7 +65,7 @@ success_messages contains msg if {
 
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	current_status == "submitted"
 	reviews.all_reviews_accepted
 	msg := {
@@ -90,7 +78,7 @@ success_messages contains msg if {
 # moderator, submitted, accept allowed
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	current_status == "submitted"
 	reviews.all_reviews_accepted
 	msg := {
@@ -104,7 +92,7 @@ error_messages contains msg if {
 	input.action == "transition"
 	input.field == "status"
 	input.transition == "accept"
-	is_moderator
+	roles.is_moderator
 	_can_view
 	not reviews.all_reviews_accepted
 	print(
@@ -124,7 +112,7 @@ error_messages contains msg if {
 # owner/editor in draft: submit is available
 success_messages contains msg if {
 	_proposal_ctx
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	current_status == "draft"
 	msg := {
 		"level": "info",
@@ -136,7 +124,7 @@ success_messages contains msg if {
 # owner/editor in revise: resubmit is available
 success_messages contains msg if {
 	_proposal_ctx
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	current_status == "revise"
 	msg := {
 		"level": "info",
@@ -148,7 +136,7 @@ success_messages contains msg if {
 # moderator, submitted, accept blocked — show how many are missing per type
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	current_status == "submitted"
 	not all_reviews_accepted
 	missing_users := count({u.id | some u in input.entity.fields["requested-reviewer-users"].value} - _accepting_user_ids)
@@ -163,7 +151,7 @@ success_messages contains msg if {
 # moderator, submitted: reject and request-revision are always available
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	current_status == "submitted"
 	msg := {
 		"level": "info",
@@ -175,7 +163,7 @@ success_messages contains msg if {
 # moderator, rejected: allow-revision is available
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	current_status == "rejected"
 	msg := {
 		"level": "info",
@@ -187,9 +175,9 @@ success_messages contains msg if {
 # reviewer (not moderator, not owner/editor): no transitions available — explain why
 success_messages contains msg if {
 	_proposal_ctx
-	is_reviewer
-	not is_moderator
-	not is_owner_or_editor
+	roles.is_reviewer
+	not roles.is_moderator
+	not roles.is_owner_or_editor
 	msg := {
 		"level": "info",
 		"text": "No transitions available for reviewers. Submit your review and the moderator will decide.",
@@ -200,7 +188,7 @@ success_messages contains msg if {
 error_messages contains msg if {
 	input.action == "transition"
 	input.transition in {"submit", "resubmit"}
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	not _checklist_complete
 	print(
 		"[block:submit] checklist incomplete, user=", input.user.username,

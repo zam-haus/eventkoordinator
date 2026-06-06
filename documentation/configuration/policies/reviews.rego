@@ -7,6 +7,8 @@ import data.udm.udmframeworkv1.modules.proposals.is_moderator
 import data.udm.udmframeworkv1.modules.proposals.is_owner_or_editor
 import data.udm.udmframeworkv1.modules.proposals.is_reviewer
 import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
+import data.udm.udmframeworkv1.modules.roles
+import data.udm.udmframeworkv1.modules.workflow
 import rego.v1
 
 # ─── Accept gate ────────────────────────────────────────────────────────────────
@@ -16,14 +18,14 @@ import rego.v1
 
 _reviews := object.get(input.entity.children, "reviews", [])
 
-default _reviewer_users = []
+default _reviewer_users := []
 
 _reviewer_users := v if {
 	v := input.entity.fields["requested-reviewer-users"].value
 	v != null
 }
 
-default _reviewer_groups = []
+default _reviewer_groups := []
 
 _reviewer_groups := v if {
 	v := input.entity.fields["requested-reviewer-groups"].value
@@ -86,7 +88,6 @@ _voted_group_ids := {rg.id |
 
 _changing_reviewer_assignments if input.changed_fields["requested-reviewer-groups"]
 _changing_reviewer_assignments if input.changed_fields["requested-reviewer-users"]
-
 
 # ── Per-reviewer status breakdown ──
 
@@ -186,4 +187,38 @@ allow if {
 		"[allow:transition] vote user=", input.user.username,
 		"transition=", input.transition, "node=", input.node_id,
 	)
+}
+
+protected_fields := ["reviews", "requested-reviewer-users", "requested-reviewer-groups"]
+
+# Moderators can manage the reviewer assignment fields.
+editable_fields contains "requested-reviewer-groups" if roles.is_moderator
+editable_fields contains "requested-reviewer-users" if roles.is_moderator
+
+# Reviewers can add/update their own review submodel while the proposal is submitted.
+# The author field within a review is set automatically and blocked from editing above.
+editable_fields contains "reviews" if {
+	roles.is_reviewer
+	current_status == "submitted"
+}
+
+# Moderators always see reviewer fields, even in draft or when also owner/editor.
+viewable_fields contains "reviews" if {
+	roles.is_moderator
+	input.entity.fields.reviews
+}
+
+viewable_fields contains "requested-reviewer-groups" if {
+	roles.is_moderator
+	input.entity.fields["requested-reviewer-groups"]
+}
+
+viewable_fields contains "requested-reviewer-users" if {
+	roles.is_moderator
+	input.entity.fields["requested-reviewer-users"]
+}
+
+viewable_fields contains "reviews" if {
+	roles.is_owner_or_editor
+	workflow.is_status_post_review
 }

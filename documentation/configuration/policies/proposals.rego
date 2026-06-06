@@ -1,91 +1,14 @@
 package udm.udmframeworkv1.modules.proposals
 
 import data.udm.udmframeworkv1.modules.config._deadline
+import data.udm.udmframeworkv1.modules.roles
+import data.udm.udmframeworkv1.modules.utils
+import data.udm.udmframeworkv1.modules.workflow
+import data.udm.udmframeworkv1.modules.workflow.current_status
+import data.udm.udmframeworkv1.modules.sudo
 import rego.v1
 
-# ─── Configuration ─────────────────────────────────────────────────────────────
-# Set to true to allow superusers to bypass all access restrictions.
-SUDO_ACTIVE := false
-
-# Deadline after which new proposals may no longer be created (ISO-8601 UTC).
-# Must match the deadline in description.rego.
-SUBMISSION_DEADLINE := "2026-12-31T23:59:59Z"
-
-# Group names whose members act as proposal moderators.
-MODERATOR_GROUP_NAMES := ["moderators"]
-
-# States in which owner/editors may edit proposal content.
-EDITABLE_STATUSES := {"draft", "revise"}
-
-# States in which reviews become visible to the owner/editors.
-# Reviews are hidden while the proposal is in draft or submitted,
-# so owners cannot see reviewer feedback until a decision is reached.
-POST_REVIEW_STATUSES := {"revise", "accepted", "rejected"}
-
-# Human-readable status labels for info messages.
-_STATUS_LABEL := {
-	"draft": "Draft",
-	"submitted": "Submitted — awaiting review",
-	"revise": "Revision requested",
-	"accepted": "Accepted",
-	"rejected": "Rejected",
-}
-
-# ─── Current workflow state ────────────────────────────────────────────────────
-# Workflow fields serialize as the state name string (e.g. "draft").
-current_status := input.entity.fields.status.value
-
-# ─── Role helpers ──────────────────────────────────────────────────────────────
-is_owner if {
-	owner_val := input.entity.fields.owner.value
-	owner_val != null
-	owner_val.id == input.user.id
-	print("[role] is_owner user=", input.user.username)
-}
-
-is_editor if {
-	editors := input.entity.fields.editors.value
-	editors != null
-	some ed in editors
-	ed.id == input.user.id
-	print("[role] is_editor user=", input.user.username)
-}
-
-is_owner_or_editor if is_owner
-is_owner_or_editor if is_editor
-
-is_moderator if {
-	some group_name in MODERATOR_GROUP_NAMES
-	some ug in input.user.groups
-	ug.name == group_name
-	print("[role] is_moderator user=", input.user.username, "group=", ug.name)
-}
-
-is_direct_reviewer if {
-	reviewer_users := input.entity.fields["requested-reviewer-users"].value
-	reviewer_users != null
-	some ru in reviewer_users
-	ru.id == input.user.id
-	print("[role] is_direct_reviewer user=", input.user.username)
-}
-
-is_group_reviewer if {
-	reviewer_groups := input.entity.fields["requested-reviewer-groups"].value
-	reviewer_groups != null
-	some rg in reviewer_groups
-	some ug in input.user.groups
-	rg.id == ug.id
-	print("[role] is_group_reviewer user=", input.user.username, "group=", rg.name)
-}
-
-is_reviewer if is_direct_reviewer
-is_reviewer if is_group_reviewer
-
-is_superuser_sudo if {
-	SUDO_ACTIVE
-	input.user.is_superuser
-	print("[role] is_superuser_sudo user=", input.user.username)
-}
+_is_validation := utils.is_validation
 
 # ─── allow ─────────────────────────────────────────────────────────────────────
 default allow := false
@@ -94,26 +17,20 @@ default allow := false
 
 allow if {
 	input.action == "view"
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	print("[allow:view] owner/editor user=", input.user.username, "status=", current_status)
 }
 
 allow if {
 	input.action == "view"
-	is_superuser_sudo
-	print("[allow:view] sudo user=", input.user.username)
-}
-
-allow if {
-	input.action == "view"
-	is_moderator
+	roles.is_moderator
 	current_status != "draft"
 	print("[allow:view] moderator user=", input.user.username, "status=", current_status)
 }
 
 allow if {
 	input.action == "view"
-	is_reviewer
+	roles.is_reviewer
 	current_status != "draft"
 	print("[allow:view] reviewer user=", input.user.username, "status=", current_status)
 }
@@ -121,72 +38,53 @@ allow if {
 # ─── allow: browse ─────────────────────────────────────────────────────────────
 allow if {
 	input.action == "browse"
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	print("[allow:browse] owner/editor user=", input.user.username)
 }
 
 allow if {
 	input.action == "browse"
-	is_moderator
+	roles.is_moderator
 	print("[allow:browse] moderator user=", input.user.username)
 }
 
 allow if {
 	input.action == "browse"
-	is_reviewer
+	roles.is_reviewer
 	print("[allow:browse] reviewer user=", input.user.username)
 }
 
-allow if {
-	input.action == "browse"
-	is_superuser_sudo
-	print("[allow:browse] sudo user=", input.user.username)
-}
 
 # ─── allow: save ───────────────────────────────────────────────────────────────
 allow if {
 	input.action == "save"
-	is_owner_or_editor
-	current_status in EDITABLE_STATUSES
-	no_critical_errors
+	roles.is_owner_or_editor
+	roles.is_status_editable
 	print("[allow:save] owner/editor user=", input.user.username, "status=", current_status)
 }
 
 allow if {
 	input.action == "save"
-	is_moderator
-	no_critical_errors
+	roles.is_moderator
 	print("[allow:save] moderator user=", input.user.username, "status=", current_status)
 }
 
 allow if {
 	input.action == "save"
-	is_reviewer
+	roles.is_reviewer
 	current_status == "submitted"
-	no_critical_errors
 	print("[allow:save] reviewer user=", input.user.username)
 }
 
-allow if {
-	input.action == "save"
-	is_superuser_sudo
-	no_critical_errors
-	print("[allow:save] sudo user=", input.user.username)
-}
 
 # ─── allow: delete ─────────────────────────────────────────────────────────────
 allow if {
 	input.action == "delete"
-	is_owner
+	roles.is_owner
 	current_status == "draft"
 	print("[allow:delete] owner user=", input.user.username)
 }
 
-allow if {
-	input.action == "delete"
-	is_superuser_sudo
-	print("[allow:delete] sudo user=", input.user.username)
-}
 
 # ─── allow: create ─────────────────────────────────────────────────────────────
 # Any active logged-in user may create a new proposal before the deadline.
@@ -201,11 +99,6 @@ allow if {
 	print("[allow:create] deadline ok, user=", input.user.username)
 }
 
-allow if {
-	input.action == "create"
-	is_superuser_sudo
-	print("[allow:create] sudo user=", input.user.username)
-}
 
 # ─── error_messages ────────────────────────────────────────────────────────────
 # Evaluated before allow; critical-level entries block save/transition.
@@ -213,21 +106,7 @@ allow if {
 error_messages contains msg if {
 	input.action == "save"
 	_can_view
-	input.changed_fields["proposal-id"]
-	not is_superuser_sudo
-	print("[block:proposal-id] user=", input.user.username, "attempted to change proposal-id")
-	msg := {
-		"level": "critical",
-		"text": "The proposal ID cannot be changed.",
-		"field_slug": "proposal-id",
-	}
-}
-
-error_messages contains msg if {
-	input.action == "save"
-	_can_view
 	input.changed_fields.owner
-	not is_superuser_sudo
 	print("[block:owner] user=", input.user.username, "attempted to change owner")
 	msg := {
 		"level": "critical",
@@ -237,21 +116,20 @@ error_messages contains msg if {
 }
 
 _reviewer_save_permitted if {
-	is_reviewer
+	roles.is_reviewer
 	current_status == "submitted"
 	print("[role] _reviewer_save_permitted user=", input.user.username)
 }
 
 error_messages contains msg if {
 	input.action == "save"
-	is_owner_or_editor
-	not is_superuser_sudo
-	not is_moderator
+	roles.is_owner_or_editor
+	not roles.is_moderator
 	not _reviewer_save_permitted
-	not current_status in EDITABLE_STATUSES
+	workflow.is_status_editable
 	print(
 		"[block:status-edit] user=", input.user.username,
-		"status=", current_status, "not in editable statuses:", EDITABLE_STATUSES,
+		"status=", current_status, "not in editable statuses",
 	)
 	msg := {
 		"level": "critical",
@@ -266,7 +144,6 @@ error_messages contains msg if {
 error_messages contains msg if {
 	input.action == "save"
 	_can_view
-	not is_superuser_sudo
 	some op in input.changed_fields.reviews.value
 	op.op in {"update", "delete"}
 	some existing in object.get(input.old_entity.children, "reviews", [])
@@ -287,7 +164,6 @@ error_messages contains msg if {
 error_messages contains msg if {
 	input.action == "save"
 	_can_view
-	not is_superuser_sudo
 	some op in input.changed_fields.reviews.value
 	op.op == "update"
 	op.fields.author
@@ -306,7 +182,6 @@ error_messages contains msg if {
 error_messages contains msg if {
 	input.action == "save"
 	_can_view
-	not is_superuser_sudo
 	some op in input.changed_fields.reviews.value
 	op.op == "create"
 	op.fields.author != null
@@ -326,8 +201,7 @@ error_messages contains msg if {
 error_messages contains msg if {
 	input.action == "save"
 	_can_view
-	not is_superuser_sudo
-	not is_reviewer
+	not roles.is_reviewer
 	some op in input.changed_fields.reviews.value
 	op.op == "create"
 	print(
@@ -368,35 +242,35 @@ error_messages contains msg if {
 # regardless of how many roles they hold simultaneously.
 
 _can_view if {
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	print("[can_view] owner/editor user=", input.user.username)
 }
 
 _can_view if {
-	is_superuser_sudo
+	sudo.is_superuser_sudo
 	print("[can_view] sudo user=", input.user.username)
 }
 
 _can_view if {
-	is_moderator
+	roles.is_moderator
 	current_status != "draft"
 	print("[can_view] moderator user=", input.user.username, "status=", current_status)
 }
 
 _can_view if {
-	is_reviewer
+	roles.is_reviewer
 	current_status != "draft"
 	print("[can_view] reviewer user=", input.user.username, "status=", current_status)
 }
 
 # True when the user holds a role that would grant view access post-draft.
 _has_limited_role if {
-	is_moderator
+	roles.is_moderator
 	print("[role] _has_limited_role (moderator) user=", input.user.username)
 }
 
 _has_limited_role if {
-	is_reviewer
+	roles.is_reviewer
 	print("[role] _has_limited_role (reviewer) user=", input.user.username)
 }
 
@@ -404,7 +278,7 @@ error_messages contains msg if {
 	input.action == "view"
 	not _can_view
 	_has_limited_role
-	not is_owner_or_editor
+	not roles.is_owner_or_editor
 	print("[deny:view] draft-blocked limited-role user=", input.user.username, "status=", current_status)
 	msg := {
 		"level": "error",
@@ -417,8 +291,7 @@ error_messages contains msg if {
 	input.action == "view"
 	not _can_view
 	not _has_limited_role
-	not is_owner_or_editor
-	not is_superuser_sudo
+	not roles.is_owner_or_editor
 	print("[deny:view] no-role user=", input.user.username, "status=", current_status)
 	msg := {
 		"level": "error",
@@ -446,8 +319,8 @@ _proposal_ctx if {
 # ── View/Save/Transition: overall status label ──
 success_messages contains msg if {
 	_proposal_ctx
-	is_owner_or_editor
-	label := object.get(_STATUS_LABEL, current_status, current_status)
+	roles.is_owner_or_editor
+	label := object.get(workflow._STATUS_LABEL, current_status, current_status)
 	msg := {
 		"level": "info",
 		"text": sprintf("Status: %v", [label]),
@@ -457,9 +330,9 @@ success_messages contains msg if {
 
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	current_status != "draft"
-	label := object.get(_STATUS_LABEL, current_status, current_status)
+	label := workflow.current_status_label
 	msg := {
 		"level": "info",
 		"text": sprintf("Status: %v", [label]),
@@ -469,10 +342,10 @@ success_messages contains msg if {
 
 success_messages contains msg if {
 	_proposal_ctx
-	is_reviewer
-	not is_moderator
+	roles.is_reviewer
+	not roles.is_moderator
 	current_status != "draft"
-	label := object.get(_STATUS_LABEL, current_status, current_status)
+	label := workflow.current_status_label
 	msg := {
 		"level": "info",
 		"text": sprintf("Status: %v", [label]),
@@ -483,8 +356,8 @@ success_messages contains msg if {
 # ── View/Save/Transition: role context ──
 success_messages contains msg if {
 	_proposal_ctx
-	is_owner
-	not is_moderator
+	roles.is_owner
+	not roles.is_moderator
 	msg := {
 		"level": "info",
 		"text": "You are the owner of this proposal.",
@@ -494,8 +367,8 @@ success_messages contains msg if {
 
 success_messages contains msg if {
 	_proposal_ctx
-	is_editor
-	not is_owner
+	roles.is_editor
+	not roles.is_owner
 	msg := {
 		"level": "info",
 		"text": "You are an editor of this proposal.",
@@ -505,7 +378,7 @@ success_messages contains msg if {
 
 success_messages contains msg if {
 	_proposal_ctx
-	is_moderator
+	roles.is_moderator
 	msg := {
 		"level": "info",
 		"text": "You are reviewing this proposal as a moderator.",
@@ -515,8 +388,8 @@ success_messages contains msg if {
 
 success_messages contains msg if {
 	_proposal_ctx
-	is_reviewer
-	not is_moderator
+	roles.is_reviewer
+	not roles.is_moderator
 	current_status != "draft"
 	msg := {
 		"level": "info",
@@ -529,9 +402,8 @@ success_messages contains msg if {
 success_messages contains msg if {
 	input.action == "save"
 	not _is_validation
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	current_status == "draft"
-	no_critical_errors
 	msg := {
 		"level": "info",
 		"text": "Draft saved. Submit the proposal when all required fields are complete.",
@@ -542,9 +414,8 @@ success_messages contains msg if {
 success_messages contains msg if {
 	input.action == "save"
 	not _is_validation
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	current_status == "revise"
-	no_critical_errors
 	msg := {
 		"level": "info",
 		"text": "Revisions saved. Resubmit the proposal when ready.",
@@ -555,8 +426,7 @@ success_messages contains msg if {
 success_messages contains msg if {
 	input.action == "save"
 	not _is_validation
-	is_moderator
-	no_critical_errors
+	roles.is_moderator
 	msg := {
 		"level": "info",
 		"text": "Reviewer assignments updated.",
@@ -567,9 +437,8 @@ success_messages contains msg if {
 success_messages contains msg if {
 	input.action == "save"
 	not _is_validation
-	is_reviewer
+	roles.is_reviewer
 	current_status == "submitted"
-	no_critical_errors
 	msg := {
 		"level": "info",
 		"text": "Your review has been saved.",
@@ -582,7 +451,7 @@ success_messages contains msg if {
 	input.action == "transition"
 	input.field == "status"
 	input.transition in {"submit", "resubmit"}
-	is_owner_or_editor
+	roles.is_owner_or_editor
 	msg := {
 		"level": "info",
 		"text": "Proposal submitted. Moderators will be notified for review.",
@@ -594,7 +463,7 @@ success_messages contains msg if {
 	input.action == "transition"
 	input.field == "status"
 	input.transition == "accept"
-	is_moderator
+	roles.is_moderator
 	msg := {
 		"level": "info",
 		"text": "Proposal accepted. All requested reviewers approved.",
@@ -606,7 +475,7 @@ success_messages contains msg if {
 	input.action == "transition"
 	input.field == "status"
 	input.transition == "reject"
-	is_moderator
+	roles.is_moderator
 	msg := {
 		"level": "info",
 		"text": "Proposal rejected. The owner will be notified.",
@@ -618,7 +487,7 @@ success_messages contains msg if {
 	input.action == "transition"
 	input.field == "status"
 	input.transition == "request-revision"
-	is_moderator
+	roles.is_moderator
 	msg := {
 		"level": "info",
 		"text": "Revision requested. The owner will be notified to update and resubmit.",
@@ -630,109 +499,23 @@ success_messages contains msg if {
 	input.action == "transition"
 	input.field == "status"
 	input.transition == "allow-revision"
-	is_moderator
+	roles.is_moderator
 	msg := {
 		"level": "info",
 		"text": "Proposal returned to revision. The owner may update and resubmit.",
 		"field_slug": null,
 	}
 }
-
-# ── SUDO notice ──
-success_messages contains msg if {
-	is_superuser_sudo
-	msg := {
-		"level": "info",
-		"text": "SUDO mode active: all restrictions bypassed.",
-		"field_slug": null,
-	}
-}
-
 # ─── viewable_fields ───────────────────────────────────────────────────────────
-viewable_fields := [f | some f in _viewable_set]
-
-_viewable_set contains f if {
-	is_superuser_sudo
+viewable_fields contains f if {
 	input.entity.fields[f]
-}
-
-_viewable_set contains f if {
-	is_moderator
-	current_status != "draft"
-	input.entity.fields[f]
-}
-
-# Moderators always see reviewer fields, even in draft or when also owner/editor.
-_viewable_set contains "reviews" if {
-	is_moderator
-	input.entity.fields.reviews
-}
-
-_viewable_set contains "requested-reviewer-groups" if {
-	is_moderator
-	input.entity.fields["requested-reviewer-groups"]
-}
-
-_viewable_set contains "requested-reviewer-users" if {
-	is_moderator
-	input.entity.fields["requested-reviewer-users"]
-}
-
-_viewable_set contains f if {
-	is_reviewer
-	current_status != "draft"
-	input.entity.fields[f]
-}
-
-# Owner/editors see all fields except reviews while in draft or submitted.
-_viewable_set contains f if {
-	is_owner_or_editor
-	input.entity.fields[f]
-	f != "reviews"
-}
-
-_viewable_set contains "reviews" if {
-	is_owner_or_editor
-	current_status in POST_REVIEW_STATUSES
-}
-
-# ─── editable_fields ───────────────────────────────────────────────────────────
-editable_fields := [f | some f in _editable_set]
-
-_editable_set contains f if {
-	is_superuser_sudo
-	input.entity.fields[f]
+	not f in data.udm.protected_fields
 }
 
 # Owner/editors can edit content fields; reviewer assignment is moderator-only.
-_editable_set contains f if {
-	is_owner_or_editor
-	current_status in EDITABLE_STATUSES
+editable_fields contains f if {
+	roles.is_owner_or_editor
+	workflow.is_status_editable
 	input.entity.fields[f]
-	not f in {"owner", "proposal-id", "requested-reviewer-groups", "requested-reviewer-users"}
+	not f in data.udm.protected_fields
 }
-
-# Moderators can manage the reviewer assignment fields.
-_editable_set contains "requested-reviewer-groups" if is_moderator
-_editable_set contains "requested-reviewer-users" if is_moderator
-
-# Reviewers can add/update their own review submodel while the proposal is submitted.
-# The author field within a review is set automatically and blocked from editing above.
-_editable_set contains "reviews" if {
-	is_reviewer
-	current_status == "submitted"
-}
-
-# ─── Utilities ─────────────────────────────────────────────────────────────────
-no_critical_errors if not any_critical_error
-
-default any_critical_error := false
-
-any_critical_error if {
-	some m in error_messages
-	m.level == "critical"
-	print(m)
-}
-
-# True when the engine is doing a dry-run (validate_only=true from the API).
-_is_validation if input.validate_only == true
