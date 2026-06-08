@@ -74,6 +74,8 @@ def export_excel(request):
             "language": p.language.code if p.language else None,
             "owner": p.owner.username if p.owner else None,
             "call": p.call.title if p.call else None,
+            "description": p.description,
+            "abstract": p.abstract,
             "occurrence_count": p.occurrence_count,
             "duration_days": p.duration_days,
             "duration_time_per_day": p.duration_time_per_day,
