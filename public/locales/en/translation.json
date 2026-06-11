@@ -1,4 +1,10 @@
 {
+  "session": {
+    "expiredTitle": "Session expired",
+    "expiredMessage": "Your session has expired. Please re-authenticate or log out.",
+    "reauthenticate": "Re-authenticate",
+    "logout": "Log out"
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",

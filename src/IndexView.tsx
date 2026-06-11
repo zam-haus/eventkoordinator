@@ -12,6 +12,7 @@ import i18n from './i18n'
 import styles from './IndexView.module.css'
 import {ProposalSelectionPanel} from "./ProposalSelectionPanel.tsx";
 import { ProposalDashboard } from './ProposalDashboard'
+import { SessionExpiredDialog } from './SessionExpiredDialog'
 
 export function IndexView() {
   const { t } = useTranslation()
@@ -49,6 +50,7 @@ export function IndexView() {
 
   return (
     <div className={styles.layout}>
+      <SessionExpiredDialog />
       <Navbar user={user} onLogin={handleLogin} onLogout={handleLogout} />
       <main className={styles.main}>
         <Routes>

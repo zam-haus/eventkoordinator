@@ -1,4 +1,10 @@
 {
+  "session": {
+    "expiredTitle": "Sitzung abgelaufen",
+    "expiredMessage": "Ihre Sitzung ist abgelaufen. Bitte authentifizieren Sie sich erneut oder melden Sie sich ab.",
+    "reauthenticate": "Erneut anmelden",
+    "logout": "Abmelden"
+  },
   "common": {
     "save": "Speichern",
     "cancel": "Abbrechen",

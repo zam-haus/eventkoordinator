@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { initializeCsrfToken, login as apiLogin, fetchSiteConfig, type SiteConfig } from './api'
+import { getSsoAuthenticateUrl, submitOidcLogout } from './oidcAuth'
 import { usePermissions } from './usePermissions'
 import { translateApiError } from './apiError'
 import { useTranslation } from 'react-i18next'
@@ -66,45 +67,17 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     }
   }
 
-  const getCookieValue = (name: string): string => {
-    const value = `; ${document.cookie}`
-    const parts = value.split(`; ${name}=`)
-    if (parts.length === 2) {
-      return parts.pop()?.split(';').shift() ?? ''
-    }
-    return ''
-  }
-
   const handleLogout = async () => {
     onLogout()
     setIsDropdownOpen(false)
 
+    // Refresh the CSRF cookie before the OIDC logout endpoint (expects POST).
     await initializeCsrfToken()
-
-    // OIDC logout endpoint expects POST; submit a real form so redirects leave the SPA.
-    const form = document.createElement('form')
-    form.method = 'POST'
-    form.action = '/oidc/logout/'
-
-    const csrfInput = document.createElement('input')
-    csrfInput.type = 'hidden'
-    csrfInput.name = 'csrfmiddlewaretoken'
-    csrfInput.value = getCookieValue('csrftoken')
-    form.appendChild(csrfInput)
-
-    const nextInput = document.createElement('input')
-    nextInput.type = 'hidden'
-    nextInput.name = 'next'
-    nextInput.value = '/'
-    form.appendChild(nextInput)
-
-    document.body.appendChild(form)
-    form.submit()
+    submitOidcLogout()
   }
 
   const handleSsoLogin = () => {
-    const next = `${location.pathname}${location.search}`
-    window.location.href = `/oidc/authenticate/?next=${encodeURIComponent(next)}`
+    window.location.href = getSsoAuthenticateUrl()
   }
 
   return (

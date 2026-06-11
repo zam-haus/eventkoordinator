@@ -1,5 +1,6 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './schema'
+import { apiFetch, notifySessionExpired, SessionExpiredError } from './sessionExpiry'
 
 const CSRF_COOKIE_NAME = 'csrftoken'
 const CSRF_HEADER_NAME = 'X-CSRFToken'
@@ -21,7 +22,7 @@ function getCsrfTokenFromCookie(): string | null {
 // Fetch and cache CSRF token
 export async function initializeCsrfToken(): Promise<string> {
   try {
-    const response = await fetch('/api/v1/csrf', {
+    const response = await apiFetch('/api/v1/csrf', {
       method: 'GET',
       credentials: 'include',
     })
@@ -95,6 +96,16 @@ async function uploadMultipartJson<T>(
     }
 
     xhr.onload = () => {
+      // XHR cannot suppress redirects, so an expired session is only detectable
+      // best-effort: if a redirect happens to land back on a same-origin /oidc/
+      // page we treat it as expired. A redirect all the way to the cross-origin
+      // identity provider is blocked by CORS and surfaces via onerror instead.
+      if (xhr.responseURL && xhr.responseURL.includes('/oidc/')) {
+        notifySessionExpired()
+        reject(new SessionExpiredError())
+        return
+      }
+
       const fallbackMessage = `Upload failed: ${xhr.status} ${xhr.statusText}`.trim()
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress?.(100)
@@ -136,7 +147,7 @@ const client = createClient<paths>({
         credentials: 'include',
       })
 
-      return fetch(modifiedRequest)
+      return apiFetch(modifiedRequest)
     }
 
     // For GET and other safe methods, just ensure credentials
@@ -144,7 +155,7 @@ const client = createClient<paths>({
       credentials: 'include',
     })
 
-    return fetch(safeRequest)
+    return apiFetch(safeRequest)
   },
 })
 
@@ -1260,7 +1271,7 @@ export async function fetchProposalAreas(): Promise<LookupItem[]> {
 }
 
 export async function fetchPermissionGroups(): Promise<LookupItem[]> {
-  const response = await fetch('/api/v1/permission_groups', { credentials: 'include' })
+  const response = await apiFetch('/api/v1/permission_groups', { credentials: 'include' })
   if (!response.ok) {
     console.error('Failed to fetch permission groups:', response.statusText)
     return []
@@ -1367,7 +1378,7 @@ export interface EventFlowDiagram {
 }
 
 export async function fetchEventFlowDiagram(): Promise<EventFlowDiagram> {
-  const response = await fetch('/api/v1/series/event-flow-diagram', {
+  const response = await apiFetch('/api/v1/series/event-flow-diagram', {
     credentials: 'include',
   })
   if (!response.ok) {
@@ -1377,7 +1388,7 @@ export async function fetchEventFlowDiagram(): Promise<EventFlowDiagram> {
 }
 
 export async function fetchProposalFlowDiagram(): Promise<EventFlowDiagram> {
-  const response = await fetch('/api/v1/proposals/flow-diagram', {
+  const response = await apiFetch('/api/v1/proposals/flow-diagram', {
     credentials: 'include',
   })
   if (!response.ok) {
@@ -1524,7 +1535,7 @@ export interface SiteConfig {
 }
 
 export async function fetchSiteConfig(): Promise<SiteConfig> {
-  const response = await fetch('/api/v1/config')
+  const response = await apiFetch('/api/v1/config')
   if (!response.ok) throw new Error('common.internalError')
   return response.json() as Promise<SiteConfig>
 }
@@ -1543,7 +1554,7 @@ export interface CallOut {
 }
 
 export async function fetchCalls(activeOnly = true): Promise<CallOut[]> {
-  const response = await fetch(`/api/v1/calls/?active_only=${activeOnly}`, {
+  const response = await apiFetch(`/api/v1/calls/?active_only=${activeOnly}`, {
     credentials: 'include',
   })
   if (!response.ok) throw new Error('common.internalError')
@@ -1551,7 +1562,7 @@ export async function fetchCalls(activeOnly = true): Promise<CallOut[]> {
 }
 
 export async function fetchCall(callId: string): Promise<CallOut> {
-  const response = await fetch(`/api/v1/calls/${callId}`, {
+  const response = await apiFetch(`/api/v1/calls/${callId}`, {
     credentials: 'include',
   })
   if (!response.ok) throw new Error('common.internalError')
@@ -1589,7 +1600,7 @@ export interface ProposalReviewsOut {
 }
 
 export async function fetchProposalReviews(proposalId: string): Promise<ProposalReviewsOut> {
-  const response = await fetch(`/api/v1/proposals/${proposalId}/reviews`, {
+  const response = await apiFetch(`/api/v1/proposals/${proposalId}/reviews`, {
     credentials: 'include',
   })
   if (!response.ok) throw new Error('common.internalError')
@@ -1613,7 +1624,7 @@ export async function createProposalReview(
   payload: ProposalReviewCreateIn,
 ): Promise<ProposalReviewOut> {
   const csrf = await getCsrfToken()
-  const response = await fetch(`/api/v1/proposals/${proposalId}/reviews`, {
+  const response = await apiFetch(`/api/v1/proposals/${proposalId}/reviews`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
@@ -1633,7 +1644,7 @@ export async function updateProposalReview(
   comment: string,
 ): Promise<ProposalReviewOut> {
   const csrf = await getCsrfToken()
-  const response = await fetch(`/api/v1/proposals/${proposalId}/reviews/${reviewId}`, {
+  const response = await apiFetch(`/api/v1/proposals/${proposalId}/reviews/${reviewId}`, {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
@@ -1648,7 +1659,7 @@ export async function updateProposalReview(
 
 export async function deleteProposalReview(proposalId: string, reviewId: string): Promise<void> {
   const csrf = await getCsrfToken()
-  const response = await fetch(`/api/v1/proposals/${proposalId}/reviews/${reviewId}`, {
+  const response = await apiFetch(`/api/v1/proposals/${proposalId}/reviews/${reviewId}`, {
     method: 'DELETE',
     credentials: 'include',
     headers: { 'X-CSRFToken': csrf },
@@ -1660,7 +1671,7 @@ export async function deleteProposalReview(proposalId: string, reviewId: string)
 
 export async function resetProposalReviews(proposalId: string): Promise<ProposalReviewOut[]> {
   const csrf = await getCsrfToken()
-  const response = await fetch(`/api/v1/proposals/${proposalId}/reviews/reset`, {
+  const response = await apiFetch(`/api/v1/proposals/${proposalId}/reviews/reset`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
