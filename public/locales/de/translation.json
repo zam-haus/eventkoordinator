@@ -3,7 +3,11 @@
     "expiredTitle": "Sitzung abgelaufen",
     "expiredMessage": "Ihre Sitzung ist abgelaufen. Bitte authentifizieren Sie sich erneut oder melden Sie sich ab.",
     "reauthenticate": "Erneut anmelden",
-    "logout": "Abmelden"
+    "reauthWaiting": "Warten auf die erneute Anmeldung im neuen Tab…",
+    "logout": "Abmelden",
+    "reauthSuccessTitle": "Sie sind wieder angemeldet",
+    "reauthSuccessMessage": "Sie haben sich erfolgreich erneut angemeldet. Sie können diesen Tab schließen und im vorherigen Tab fortfahren.",
+    "reauthSuccessClosing": "Dieser Tab wird geschlossen…"
   },
   "common": {
     "save": "Speichern",

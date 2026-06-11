@@ -3,7 +3,11 @@
     "expiredTitle": "Session expired",
     "expiredMessage": "Your session has expired. Please re-authenticate or log out.",
     "reauthenticate": "Re-authenticate",
-    "logout": "Log out"
+    "reauthWaiting": "Waiting for re-authentication in the new tab…",
+    "logout": "Log out",
+    "reauthSuccessTitle": "You're logged in again",
+    "reauthSuccessMessage": "You have successfully logged in again. You can close this tab and continue in the previous tab.",
+    "reauthSuccessClosing": "Closing this tab…"
   },
   "common": {
     "save": "Save",

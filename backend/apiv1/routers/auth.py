@@ -5,8 +5,10 @@ Handles user authentication, login, logout, and CSRF token management.
 """
 
 import logging
+import time
 
 import django.contrib.auth
+from django.conf import settings
 from django.http import HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from ninja import Router
@@ -36,6 +38,14 @@ def authenticate(request, user: UserIn):
 @router.get("/me", response={200: UserOut, 401: ErrorOut})
 def get_current_user(request):
     """Get current authenticated user information"""
+
+    if settings.DEBUG:
+        expiration = request.session.get("oidc_id_token_expiration", 0)
+        now = time.time()
+        if expiration > now + 30:
+            request.session["oidc_id_token_expiration"] = now + 30
+        logger.warning(f"Current authenticated user: {request.user} until {expiration-now}s")
+
     if request.user.is_authenticated:
         return UserOut(
             username=request.user.get_username(), user_id=str(request.user.pk)

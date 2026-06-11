@@ -1,0 +1,42 @@
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.button {
+  padding: 0.6rem 1.1rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.reauthButton {
+  background-color: #2196f3;
+  color: #fff;
+}
+
+.reauthButton:hover {
+  background-color: #1976d2;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.4);
+}
+
+.logoutButton {
+  background-color: #fff;
+  color: #333;
+  border-color: #ccc;
+}
+
+.logoutButton:hover {
+  background-color: #f3f3f3;
+  border-color: #999;
+}
+
+.button:focus-visible {
+  outline: 2px solid #333;
+  outline-offset: 2px;
+}

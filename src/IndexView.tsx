@@ -13,6 +13,8 @@ import styles from './IndexView.module.css'
 import {ProposalSelectionPanel} from "./ProposalSelectionPanel.tsx";
 import { ProposalDashboard } from './ProposalDashboard'
 import { SessionExpiredDialog } from './SessionExpiredDialog'
+import { ReauthSuccessScreen } from './ReauthSuccessScreen'
+import { onReauthSuccess } from './sessionExpiry'
 
 export function IndexView() {
   const { t } = useTranslation()
@@ -35,6 +37,17 @@ export function IndexView() {
     initializeApp()
   }, [])
 
+  // After re-authentication completes in the new tab, refresh the navbar user
+  // indicator and permissions to reflect the restored session.
+  useEffect(() => onReauthSuccess(async () => {
+    try {
+      setUser(await getCurrentUser())
+    } catch {
+      setUser(null)
+    }
+    notifyAuthChanged()
+  }), [])
+
   const handleLogin = (authenticatedUser: User) => {
     setUser(authenticatedUser)
     notifyAuthChanged()
@@ -55,6 +68,7 @@ export function IndexView() {
       <main className={styles.main}>
         <Routes>
           <Route path="/" element={<DefaultScreen />} />
+          <Route path="/reauth-success" element={<ReauthSuccessScreen />} />
           <Route
             path="/coordinator/:seriesId?/:eventId?"
             element={
