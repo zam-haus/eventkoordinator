@@ -247,11 +247,7 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
                   </button>
                 </>
               ) : (
-                <form
-                  className={styles.loginForm}
-                  onSubmit={handleLoginSubmit}
-                  aria-label="Login form"
-                >
+                <div className={styles.loginForm}>
                   <button
                     type="button"
                     className={styles.ssoButton}
@@ -260,54 +256,61 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
                   >
                     {t('nav.loginWithSso')}
                   </button>
-                  <div className={styles.ssoHint} aria-hidden="true">{t('nav.ssoHint')}</div>
-                  {loginError && (
-                    <div className={styles.errorMessage} role="alert">{loginError}</div>
+                  {!__HIDE_PASSWORD_AUTH__ && (
+                    <form
+                      onSubmit={handleLoginSubmit}
+                      aria-label="Login form"
+                    >
+                      <div className={styles.ssoHint} aria-hidden="true">{t('nav.ssoHint')}</div>
+                      {loginError && (
+                        <div className={styles.errorMessage} role="alert">{loginError}</div>
+                      )}
+                      <div className={styles.formGroup}>
+                        <label htmlFor="username" className={styles.label}>
+                          {t('nav.username')}
+                        </label>
+                        <input
+                          id="username"
+                          type="text"
+                          className={styles.input}
+                          placeholder={t('nav.enterUsername')}
+                          value={loginFormData.username}
+                          onChange={(e) =>
+                            setLoginFormData({ ...loginFormData, username: e.target.value })
+                          }
+                          disabled={isLoggingIn}
+                          autoFocus
+                          autoComplete="username"
+                        />
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label htmlFor="password" className={styles.label}>
+                          {t('nav.password')}
+                        </label>
+                        <input
+                          id="password"
+                          type="password"
+                          className={styles.input}
+                          placeholder={t('nav.enterPassword')}
+                          value={loginFormData.password}
+                          onChange={(e) =>
+                            setLoginFormData({ ...loginFormData, password: e.target.value })
+                          }
+                          disabled={isLoggingIn}
+                          autoComplete="current-password"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className={styles.loginButton}
+                        disabled={!loginFormData.username.trim() || !loginFormData.password.trim() || isLoggingIn}
+                        aria-busy={isLoggingIn}
+                      >
+                        {isLoggingIn ? t('nav.loggingIn') : t('common.login')}
+                      </button>
+                    </form>
                   )}
-                  <div className={styles.formGroup}>
-                    <label htmlFor="username" className={styles.label}>
-                      {t('nav.username')}
-                    </label>
-                    <input
-                      id="username"
-                      type="text"
-                      className={styles.input}
-                      placeholder={t('nav.enterUsername')}
-                      value={loginFormData.username}
-                      onChange={(e) =>
-                        setLoginFormData({ ...loginFormData, username: e.target.value })
-                      }
-                      disabled={isLoggingIn}
-                      autoFocus
-                      autoComplete="username"
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="password" className={styles.label}>
-                      {t('nav.password')}
-                    </label>
-                    <input
-                      id="password"
-                      type="password"
-                      className={styles.input}
-                      placeholder={t('nav.enterPassword')}
-                      value={loginFormData.password}
-                      onChange={(e) =>
-                        setLoginFormData({ ...loginFormData, password: e.target.value })
-                      }
-                      disabled={isLoggingIn}
-                      autoComplete="current-password"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className={styles.loginButton}
-                    disabled={!loginFormData.username.trim() || !loginFormData.password.trim() || isLoggingIn}
-                    aria-busy={isLoggingIn}
-                  >
-                    {isLoggingIn ? t('nav.loggingIn') : t('common.login')}
-                  </button>
-                </form>
+                </div>
               )}
               {siteConfig && (
                 <>

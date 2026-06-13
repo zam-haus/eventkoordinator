@@ -38,6 +38,9 @@ FROM node:24-trixie-slim AS frontend-build
 
 WORKDIR /app
 
+ARG VITE_HIDE_PASSWORD_AUTH
+ENV VITE_HIDE_PASSWORD_AUTH=${VITE_HIDE_PASSWORD_AUTH}
+
 COPY package.json package-lock.json ./
 RUN npm ci
 

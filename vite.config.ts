@@ -9,7 +9,13 @@ export default defineConfig(({ command }) => {
   const djangoBuild = command === 'build' && !!process.env.VITE_DJANGO_BASE
   // print mode
     console.log(`Building for ${djangoBuild ? 'Django' : 'dev server'} mode...`)
+  // Set VITE_HIDE_PASSWORD_AUTH=1 to remove the username/password login form and
+  // show only SSO login (useful when password auth is disabled on the server).
+  const hidePasswordAuth = !!process.env.VITE_HIDE_PASSWORD_AUTH
   return {
+    define: {
+      __HIDE_PASSWORD_AUTH__: hidePasswordAuth,
+    },
     base: djangoBuild ? '/static/' : '/',
     plugins: [react()],
     css: {

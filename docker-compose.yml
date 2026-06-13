@@ -93,6 +93,7 @@ services:
       target: nginx
       args:
         NGINX_PROXY_HOST: ${NGINX_PROXY_HOST:?Set NGINX_PROXY_HOST to the host and port of the public endpoint of the backend, e.g. localhost:8000 when debugging}
+        VITE_HIDE_PASSWORD_AUTH: ${VITE_HIDE_PASSWORD_AUTH:-}
     expose:
       - "80"
     ports:
