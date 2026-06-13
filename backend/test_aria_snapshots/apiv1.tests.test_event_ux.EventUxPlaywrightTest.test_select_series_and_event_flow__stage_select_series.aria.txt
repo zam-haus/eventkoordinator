@@ -5,6 +5,7 @@
   - list:
     - listitem: Coordinator
     - listitem: Proposal Editor
+    - listitem: Proposal Dashboard
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": eventux-user
@@ -27,9 +28,4 @@
         - 'option "Ux Test Event Status of Ux Test Event: draft <localized-datetime> draft"': Ux Test Event Draft <localized-datetime> draft
     - main "Events content":
       - heading "Ux Test Series" [level=1]
-      - form "Edit series":
-        - text: Series Name
-        - textbox "Series Name": Ux Test Series
-        - text: Description
-        - textbox "Description": A series created for UX testing
-        - button "Save Changes" [disabled]
+      - paragraph: Loading…

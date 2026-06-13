@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Permission
 from playwright.sync_api import Page, sync_playwright, expect
 
-from apiv1.models.basedata import Event, Series
+from apiv1.models.basedata import Call, Event, Series
 from project import test_utils
 from project.test_utils import (
     SnapshotMixin,
@@ -105,7 +105,23 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
             },
         )
 
+        # Create an active call so the homepage shows a "Go to Coordinator" button.
+        self.call, _ = Call.objects.get_or_create(
+            title="UX Test Call",
+            defaults={
+                "description": "A call created for UX testing",
+                "execution_period_start": date(2026, 3, 1),
+                "execution_period_end": date(2026, 4, 30),
+                "submission_deadline": date(2026, 2, 15),
+                "print_deadline": date(2026, 2, 20),
+                "responsible_name": "Test Responsible",
+                "responsible_email": "test@example.com",
+                "is_active": True,
+            },
+        )
+
     def tearDown(self) -> None:
+        Call.objects.filter(title="UX Test Call").delete()
         Event.objects.filter(series__name="Ux Test Series").delete()
         Series.objects.filter(name="Ux Test Series").delete()
         Event.objects.filter(series__name__startswith="New Series").delete()
@@ -138,14 +154,14 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
             page.get_by_role("button", name="Login", exact=True).click()
 
         logger.debug("Waiting for username text to be visible: %r", self.username)
-        page.get_by_text(self.username, exact=True).wait_for(timeout=5000)
+        page.get_by_text(self.username, exact=True).wait_for(timeout=500)
 
         user_menu_button = page.get_by_role("button", name="User menu")
         if user_menu_button.get_attribute("aria-expanded") != "true":
             logger.debug("Re-opening User menu to confirm Logout item is present")
             user_menu_button.click()
         logger.debug("Waiting for Logout menu item to be visible")
-        page.get_by_role("menuitem", name="Logout").wait_for(timeout=5000)
+        page.get_by_role("menuitem", name="Logout").wait_for(timeout=500)
         if user_menu_button.get_attribute("aria-expanded") == "true":
             logger.debug("Closing User menu before navbar navigation")
             user_menu_button.click()
@@ -154,14 +170,15 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
         page.get_by_role("link", name="Coordinator").wait_for(timeout=500)
 
     def _go_to_coordinator(self, page: Page, base_url: str) -> None:
-        """Navigate to coordinator view and wait until the sidebar controls exist."""
-        logger.debug("Waiting for schedule button to appear")
-        schedule_button = page.get_by_role(
-            "button", name=re.compile(r"(Edit|View) Schedule", re.IGNORECASE)
+        """Navigate to coordinator view from homepage by clicking the button under an active call."""
+        logger.debug("Waiting for 'Go to Coordinator' button under the active call")
+        goToCoordinatorButton = page.get_by_role(
+            "button", name=re.compile(r"Go to Coordinator", re.IGNORECASE)
         )
-        schedule_button.wait_for(timeout=500)
-        logger.debug("Clicking schedule button to navigate to coordinator")
-        schedule_button.click()
+        goToCoordinatorButton.wait_for(timeout=500)
+        logger.debug("Clicking 'Go to Coordinator' button")
+        goToCoordinatorButton.wait_for(state="visible", timeout=500)
+        goToCoordinatorButton.click()
         logger.debug("Waiting for SPA pathname to start with /coordinator")
         page.wait_for_function(
             "() => window.location.pathname.startsWith('/coordinator')",

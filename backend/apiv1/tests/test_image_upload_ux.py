@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 import re
-import sys
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -13,9 +11,9 @@ from unittest import skip
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Permission
 from playwright.sync_api import Page, sync_playwright
-from PIL import Image
 
 from apiv1.models.basedata import ProposalArea, ProposalLanguage, SubmissionType
+from apiv1.tests.util_imggen import write_large_noise_png
 from project.test_utils import (
     ViteStaticLiveServerTestCase,
     playwright_launch_options,
@@ -23,17 +21,6 @@ from project.test_utils import (
     wait_for_loading_indicators_to_disappear,
     SnapshotMixin,
 )
-
-
-def _write_large_noise_png(path: Path) -> None:
-    """Write a high-entropy PNG around 9 MiB so upload progress becomes visible."""
-    width = 1800
-    height = 1800
-    image = Image.frombytes('RGB', (width, height), os.urandom(width * height * 3))
-    image.save(path, format='PNG', compress_level=0)
-
-    file_size = path.stat().st_size
-    assert file_size >= 9 * 1024 * 1024, f'Generated upload fixture is too small: {file_size} bytes'
 
 
 class ImageUploadUxTest(ViteStaticLiveServerTestCase, SnapshotMixin):
@@ -139,7 +126,7 @@ class ImageUploadUxTest(ViteStaticLiveServerTestCase, SnapshotMixin):
     def test_upload_fields_show_progress_and_preview_images(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             image_path = Path(tmp_dir) / 'tiny.png'
-            _write_large_noise_png(image_path)
+            write_large_noise_png(image_path)
 
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(**playwright_launch_options())

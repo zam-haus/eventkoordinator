@@ -4,6 +4,7 @@
     - heading "Event Coordinator" [level=1]
   - list:
     - listitem: Proposal Editor
+    - listitem: Proposal Dashboard
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": proposalux-user
@@ -12,9 +13,13 @@
     - heading "Proposals" [level=2]
     - button "Create New Proposal"
     - listbox "Proposals":
+      - option
       - option "My Title workshop" [selected]
   - main "Proposals content":
     - heading "Proposal Editor" [level=1]
+    - alert:
+      - heading "Draft – not yet submitted" [level=3]
+      - paragraph: This proposal will only be considered after you submit it via "Submit Proposal". In the meantime, you can save it, it does not get submitted by that.
     - form "Proposal editor":
       - tablist:
         - tab "1 General"
@@ -23,25 +28,56 @@
         - tab "4 Speakers"
         - tab "5 Submission" [selected]
       - tabpanel:
-        - alert:
-          - heading "Draft – not yet submitted" [level=3]
-          - paragraph: This proposal will only be considered after you submit it via "Submit Proposal". In the meantime, you can save it, it does not get submitted by that.
+        - text: Additional Information for the ZAM (optional)
+        - textbox "Additional Information for the ZAM (optional)": Internal Notes
+        - text: Not public. Use this to communicate with the ZAM team, e.g. equipment needs (laptops, projector, laser cutter) or other notes.
         - heading "Submission Checklist" [level=3]
         - list:
-          - listitem: ✓ Title (max 30 characters)
-          - listitem: ✓ Abstract (50–250 characters)
-          - listitem: ✓ Description (50–1000 characters)
-          - listitem: ✓ Duration set
-          - listitem: ✓ Max participants set
-          - listitem: ✓ Occurrence count set
-          - listitem: ✓ Preferred dates specified
-          - listitem: ✓ Language selected
-          - listitem: ✓ Submission type selected
-          - listitem: ✓ Workshop area selected
-          - listitem: ✓ At least one speaker added
-          - listitem: ✓ All speakers have a biography
+          - listitem:
+            - text: ✓
+            - button "Title (max 30 characters)"
+          - listitem:
+            - text: ✓
+            - button "Abstract (50–250 characters)"
+          - listitem:
+            - text: ✓
+            - button "Description (50–1000 characters)"
+          - listitem:
+            - text: ✓
+            - button "Duration set"
+          - listitem:
+            - text: ✓
+            - button "Max participants set"
+          - listitem:
+            - text: ✓
+            - button "Occurrence count set"
+          - listitem:
+            - text: ✓
+            - button "Preferred dates specified"
+          - listitem:
+            - text: ✓
+            - button "Language selected"
+          - listitem:
+            - text: ✓
+            - button "Submission type selected"
+          - listitem:
+            - text: ✓
+            - button "Workshop area selected"
+          - listitem:
+            - text: ✓
+            - button "At least one speaker added"
+          - listitem:
+            - text: ✓
+            - button "All speakers have a biography"
+          - listitem:
+            - text: ✓
+            - button "Proposal image uploaded (min. 1440×1080 px)"
+          - listitem:
+            - text: ✓
+            - button "Within submission deadline"
       - button "← Back"
-      - button "Submit proposal"
+      - button "Submit Proposal"
+      - button "▶ Proposal lifecycle diagram"
       - button "Save Proposal" [disabled]
       - button "Delete Proposal"
       - group: Edit history last changed just now

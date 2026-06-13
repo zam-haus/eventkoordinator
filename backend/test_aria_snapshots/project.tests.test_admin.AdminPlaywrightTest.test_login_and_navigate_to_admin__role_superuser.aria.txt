@@ -26,6 +26,16 @@
         - columnheader "Add link"
         - columnheader "Change or view list link"
     - rowgroup:
+      - row "Calls Add Change":
+        - rowheader "Calls":
+          - link "Calls":
+            - /url: /admin/apiv1/call/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/apiv1/call/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/apiv1/call/
       - row "Events Add Change":
         - rowheader "Events":
           - link "Events":
@@ -56,6 +66,16 @@
         - cell "Change":
           - link "Change":
             - /url: /admin/apiv1/proposallanguage/
+      - row "Proposal reviews Add Change":
+        - rowheader "Proposal reviews":
+          - link "Proposal reviews":
+            - /url: /admin/apiv1/proposalreview/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/apiv1/proposalreview/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/apiv1/proposalreview/
       - row "Proposals Add Change":
         - rowheader "Proposals":
           - link "Proposals":
@@ -176,6 +196,86 @@
         - cell "Change":
           - link "Change":
             - /url: /admin/openid_user_management/openiduser/
+  - table "Periodic Tasks":
+    - caption:
+      - link "Periodic Tasks":
+        - /url: /admin/django_celery_beat/
+    - rowgroup:
+      - row "Model name Add link Change or view list link":
+        - columnheader "Model name"
+        - columnheader "Add link"
+        - columnheader "Change or view list link"
+    - rowgroup:
+      - row "Clocked Add Change":
+        - rowheader "Clocked":
+          - link "Clocked":
+            - /url: /admin/django_celery_beat/clockedschedule/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/django_celery_beat/clockedschedule/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/django_celery_beat/clockedschedule/
+      - row "Crontabs Add Change":
+        - rowheader "Crontabs":
+          - link "Crontabs":
+            - /url: /admin/django_celery_beat/crontabschedule/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/django_celery_beat/crontabschedule/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/django_celery_beat/crontabschedule/
+      - row "Intervals Add Change":
+        - rowheader "Intervals":
+          - link "Intervals":
+            - /url: /admin/django_celery_beat/intervalschedule/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/django_celery_beat/intervalschedule/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/django_celery_beat/intervalschedule/
+      - row "Periodic tasks Add Change":
+        - rowheader "Periodic tasks":
+          - link "Periodic tasks":
+            - /url: /admin/django_celery_beat/periodictask/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/django_celery_beat/periodictask/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/django_celery_beat/periodictask/
+      - row "Solar events Add Change":
+        - rowheader "Solar events":
+          - link "Solar events":
+            - /url: /admin/django_celery_beat/solarschedule/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/django_celery_beat/solarschedule/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/django_celery_beat/solarschedule/
+  - table "Sync_Caldav":
+    - caption:
+      - link "Sync_Caldav":
+        - /url: /admin/sync_caldav/
+    - rowgroup:
+      - row "Model name Add link Change or view list link":
+        - columnheader "Model name"
+        - columnheader "Add link"
+        - columnheader "Change or view list link"
+    - rowgroup:
+      - row "Cal dav sync items Add Change":
+        - rowheader "Cal dav sync items":
+          - link "Cal dav sync items":
+            - /url: /admin/sync_caldav/caldavsyncitem/
+        - cell "Add":
+          - link "Add":
+            - /url: /admin/sync_caldav/caldavsyncitem/add/
+        - cell "Change":
+          - link "Change":
+            - /url: /admin/sync_caldav/caldavsyncitem/
   - table "Sync_Ical":
     - caption:
       - link "Sync_Ical":

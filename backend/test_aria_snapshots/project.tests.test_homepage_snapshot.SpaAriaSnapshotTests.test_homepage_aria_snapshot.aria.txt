@@ -5,7 +5,8 @@
   - list
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": Guest
+  - button "User menu": Login
 - main:
-  - heading "Welcome to Event Coordinator" [level=1]
-  - paragraph: You don't have permission to access any features. Please log in or -- if that didn't work -- contact an administrator for access.
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - paragraph: No active calls at the moment.

@@ -4,6 +4,7 @@
     - heading "Event Coordinator" [level=1]
   - list:
     - listitem: Proposal Editor
+    - listitem: Proposal Dashboard
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": proposalux-user
@@ -12,32 +13,32 @@
     - heading "Proposals" [level=2]
     - button "Create New Proposal"
     - listbox "Proposals":
+      - option
       - option [selected]
   - main "Proposals content":
     - heading "Proposal Editor" [level=1]
+    - alert:
+      - heading "Draft – not yet submitted" [level=3]
+      - paragraph: This proposal will only be considered after you submit it via "Submit Proposal". In the meantime, you can save it, it does not get submitted by that.
     - form "Proposal editor":
       - tablist:
         - tab "✎ General"
         - tab "✎ Participants and Costs"
         - tab "✎ Scheduling"
-        - tab "✎ Speakers" [selected]
+        - tab "4 Speakers" [selected]
         - tab "5 Submission"
       - tabpanel:
-        - checkbox "Are you a regular member?" [checked]
-        - text: Are you a regular member?
-        - checkbox "Do you have access to the ZAM building?" [checked]
-        - text: Do you have access to the ZAM building? Owner proposalux-user The owner is automatically set to the user who creates the proposal and cannot be changed. Editors Editors can view and edit this proposal. Add users who can edit the proposal.
-        - combobox "Editors"
-        - text: Editors can view and edit this proposal. Add users who can edit the proposal.
+        - checkbox "At least one speaker has access to the ZAM building"
+        - text: At least one speaker has access to the ZAM building Creator proposalux-user The creator is automatically set to the user who creates the proposal and cannot be changed. Editors
+        - textbox "Editors":
+          - /placeholder: Search and add editors...
+        - text: If you want to create and edit this proposal together with others, please enter their usernames here. They must have registered an account beforehand.
         - heading "Speakers" [level=3]
         - heading "Added Speakers (1)" [level=4]
-        - text: proposalux-user Name proposalux-user@example.com Bio
+        - text: proposalux-user Name proposalux-user@example.com Bio for the speaker
         - button "Edit"
         - button "Remove"
         - button "+ Add Speaker"
-        - text: Internal Notes (optional) ●
-        - textbox "Internal Notes (optional) unsaved change": Internal Notes
-        - text: Internal notes are not public. Mention equipment needs (e.g., laptops, projector, laser cutter).
       - button "← Back"
       - button "Next →"
       - button "Save Proposal"

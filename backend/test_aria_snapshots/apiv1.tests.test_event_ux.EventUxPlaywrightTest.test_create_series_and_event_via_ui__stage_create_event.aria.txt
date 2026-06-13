@@ -5,6 +5,7 @@
   - list:
     - listitem: Coordinator
     - listitem: Proposal Editor
+    - listitem: Proposal Dashboard
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": eventux-user
@@ -56,10 +57,5 @@
         - button "Save Changes" [disabled]
       - heading "Workflow Status and Transitions" [level=3]
       - text: "Status: Draft"
-      - button "Submit event" [disabled]
+      - button "Propose Date" [disabled]
       - button "▶ Event lifecycle diagram"
-      - heading "Calculated Prices" [level=3]
-      - paragraph: No calculated prices exist for this event yet.
-      - paragraph: You do not have permission to create calculated prices.
-      - heading "Synchronization Status" [level=3]
-      - paragraph: Changes to this event will be synchronized across all platforms.
