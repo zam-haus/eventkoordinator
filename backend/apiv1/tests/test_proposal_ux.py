@@ -52,6 +52,7 @@ class ProposalNavigationMixin:
     def navigate_from_proposaleditor_last_tab_to_submit_proposal(self, page: Page):
         logger.debug("Navigating from proposal editor last tab to submit proposal")
         page.get_by_role("button", name="Submit proposal").click()
+        page.get_by_role("heading", name="Submitted – under review").wait_for(timeout=1000)
         self.wait_some_more(page)
         wait_for_loading_indicators_to_disappear(page)
         self.wait_some_more(page)

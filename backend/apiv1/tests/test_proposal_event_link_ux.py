@@ -202,9 +202,7 @@ class ProposalEventLinkUxTest(ProposalNavigationMixin, SnapshotMixin, ViteStatic
                             "heading", name="My Title", exact=True
                         ).wait_for(timeout=5000)
                         page.get_by_text("Number of Days").wait_for(timeout=5000)
-                        page.locator(
-                            '[aria-label="Status of My Title Session: draft"]'
-                        ).first.wait_for(timeout=5000)
+                        page.get_by_label("Status of My Title: draft").first.wait_for(timeout=5000)
                         page.wait_for_load_state("networkidle")
                         wait_for_loading_indicators_to_disappear(page)
                         page.locator("body").screenshot(
