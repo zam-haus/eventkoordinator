@@ -387,7 +387,7 @@ class ProposalUxPlaywrightTest(ProposalNavigationMixin, SnapshotMixin, ViteStati
                         base_url = base_url()
 
                     self._login_via_navbar(page, base_url)
-                    page.get_by_role("button", name=re.compile(r"Submit proposal", re.IGNORECASE)).click()
+                    page.get_by_role("list").get_by_text("Proposal Editor").click()
                     page.get_by_role("heading", name="Proposal Editor").wait_for(timeout=5000)
                     page.get_by_role("listbox", name="Proposals").get_by_role(
                         "option", name=re.compile(r"^Delete Me Proposal\b")

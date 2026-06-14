@@ -4,6 +4,7 @@
     - heading "Event Coordinator" [level=1]
   - list:
     - listitem: Proposal Editor
+    - listitem: Proposal Dashboard
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": proposalux-user
