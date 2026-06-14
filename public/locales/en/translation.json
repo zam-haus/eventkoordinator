@@ -105,7 +105,7 @@
     "abstract": "Abstract (50-250 characters)",
     "abstractHint": "This will be published on our website in the program overview. (50–250 characters)",
     "description": "Description (50-1000 characters)",
-    "descriptionHint": "This will be published on our website in the detailed description. Please include goal, prerequisites and whether participants take something home. (50–1000 characters)",
+    "descriptionHint": "This will be published on our website in the detailed description. Helpful guiding questions: What is the offer intended for? Are basic skills required? What is specifically done? What will participants take away? (50–1000 characters)",
     "internalNotes": "Additional Information for the ZAM (optional)",
     "internalNotesHint": "Not public. Use this to communicate with the ZAM team, e.g. equipment needs (laptops, projector, laser cutter) or other notes.",
     "numberOfDays": "Number of Days",

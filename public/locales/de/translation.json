@@ -105,7 +105,7 @@
     "abstract": "Zusammenfassung (50-250 Zeichen)",
     "abstractHint": "Dies wird auf unserer Website in der Programmübersicht veröffentlicht. (50–250 Zeichen)",
     "description": "Beschreibung (50-1000 Zeichen)",
-    "descriptionHint": "Dies wird auf unserer Website in der detaillierten Beschreibung veröffentlicht. Bitte Ziel, Voraussetzungen und ob Teilnehmer*innen etwas mitnehmen angeben. (50–1000 Zeichen)",
+    "descriptionHint": "Dies wird auf unserer Website in der detaillierten Beschreibung veröffentlicht. Hilfreiche Leitfragen: Wofür ist das Angebot gedacht? Sind Grundkenntnisse erforderlich? Was wird konkret gemacht? Was nehmen die Teilnehmenden mit? (50–1000 Zeichen)",
     "internalNotes": "Hinweise an das ZAM (optional)",
     "internalNotesHint": "Nicht öffentlich. Nutze dieses Feld für Rückmeldungen ans ZAM-Team, z.B. Gerätebedarf (Laptops, Beamer, Laser) oder sonstige Hinweise.",
     "numberOfDays": "Anzahl der Tage",
