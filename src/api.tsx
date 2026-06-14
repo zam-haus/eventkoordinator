@@ -55,8 +55,9 @@ export async function getCsrfToken(): Promise<string> {
 function parseUploadError(responseText: string, fallbackMessage: string): Error {
   try {
     const payload = responseText ? JSON.parse(responseText) : null
-    const errorMessage = payload?.detail ? `${payload.code}: ${payload.detail}` : payload?.code
-    return new Error(errorMessage || fallbackMessage)
+    // Just pass the code, not the detail text, so translateApiError can look up the translation
+    const errorCode = payload?.code
+    return new Error(errorCode || fallbackMessage)
   } catch {
     return new Error(fallbackMessage)
   }
