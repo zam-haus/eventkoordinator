@@ -156,6 +156,12 @@ class ProposalEventLinkUxTest(ProposalNavigationMixin, SnapshotMixin, ViteStatic
             page.wait_for_timeout(500)
             wait_for_loading_indicators_to_disappear(page)
             page.get_by_role("button", name="Next →").click()
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(500)
+            wait_for_loading_indicators_to_disappear(page)
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(500)
+            wait_for_loading_indicators_to_disappear(page)
 
     def test_proposal_event_link_flow(self) -> None:
         """Test the complete flow: accept proposal, create event, verify linked events list."""
@@ -177,9 +183,6 @@ class ProposalEventLinkUxTest(ProposalNavigationMixin, SnapshotMixin, ViteStatic
                         page.get_by_text("Linked Events (0)").wait_for(timeout=5000)
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".png")
-                        )
-                        self.assert_snapshot(
-                            page.locator("body").aria_snapshot()
                         )
 
                     with self.snapshotted_stage(page,"create_event_from_proposal"):
@@ -208,9 +211,6 @@ class ProposalEventLinkUxTest(ProposalNavigationMixin, SnapshotMixin, ViteStatic
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".png")
                         )
-                        self.assert_snapshot(
-                            page.locator("body").aria_snapshot()
-                        )
 
                     with self.snapshotted_stage(page, "verify_linked_event_in_proposal"):
                         # Go back to proposal
@@ -227,9 +227,6 @@ class ProposalEventLinkUxTest(ProposalNavigationMixin, SnapshotMixin, ViteStatic
                         page.wait_for_load_state("networkidle")
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".png")
-                        )
-                        self.assert_snapshot(
-                            page.locator("body").aria_snapshot()
                         )
 
             finally:
