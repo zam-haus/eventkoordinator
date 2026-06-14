@@ -39,7 +39,6 @@
           - combobox "Series":
             - option "My Title (create new)" [selected]
             - option "-- Select series --"
-            - option "Test Workshop Series"
           - button "Create New Event"
       - button "← Back"
       - button "▶ Proposal lifecycle diagram"
