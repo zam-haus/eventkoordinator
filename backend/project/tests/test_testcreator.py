@@ -14,6 +14,7 @@ unified diff showing the changes.
 from __future__ import annotations
 
 import logging
+from unittest import skip
 
 from playwright.sync_api import sync_playwright
 
@@ -27,7 +28,7 @@ class TestCreatorTests(SnapshotMixin, ViteStaticLiveServerTestCase):
 
     vite_force_rebuild = True
 
-    @skip()
+    @skip("Only for test creation purposes.")
     def test_createtest(self) -> None:
         """Navigate to the root URL and write an ARIA snapshot to disk."""
         with sync_playwright() as playwright:

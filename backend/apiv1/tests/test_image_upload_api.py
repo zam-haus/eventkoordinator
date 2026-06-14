@@ -14,6 +14,7 @@ from apiv1.models import (
     Speaker,
     SubmissionType,
 )
+from apiv1.tests import util_imggen
 
 
 class ImageUploadApiTests(TestCase):
@@ -79,7 +80,7 @@ class ImageUploadApiTests(TestCase):
                 data={
                     'file': SimpleUploadedFile(
                         'poster.png',
-                        b'proposal-image',
+                        util_imggen.encode_large_noise_png(),
                         content_type='image/png',
                     )
                 },
