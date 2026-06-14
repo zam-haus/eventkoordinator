@@ -53,8 +53,8 @@
         - text: Event Schedule
         - grid:
           - text: <week-days> <hour-grid>
-          - button "My New Workshop, <time-range>": My New Workshop
           - button "New Event (internal-calendar), <time-range>": New Event (internal-calendar)
+          - button "My New Workshop, <time-range>": My New Workshop
         - button "Save Changes"
         - button "Cancel"
       - heading "Workflow Status and Transitions" [level=3]

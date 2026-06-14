@@ -5,6 +5,7 @@
   - list:
     - listitem: Coordinator
     - listitem: Proposal Editor
+    - listitem: Proposal Dashboard
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": proposaleventux-user
@@ -12,21 +13,21 @@
   - link "← Back":
     - /url: /proposal-editor/<uuid>
   - heading "My Title" [level=2]
-  - text: Number of Days 5 Time per day (HH:MM or minutes) 1:30 How often would you offer this event? 2 Submission Type workshop
-  - heading "Preferred Dates and Alternatives" [level=3]
+  - text: Number of Days 1 Duration per day (HH:MM or minutes) 1:30 How often would you offer this event? 1 Submission Type workshop
+  - heading "Preferred Dates, Time of Day and Alternatives" [level=3]
   - paragraph: Always
   - heading "Linked Events (1)" [level=3]
   - list:
     - listitem:
-      - strong: My Title Session
+      - strong: My Title
       - text: Draft Test Workshop Series <localized-datetime> – <localized-datetime>
   - text: Series Test Workshop Series
   - heading "Edit Event" [level=2]
-  - paragraph: My Title Session
+  - paragraph: My Title
   - heading "Event Details" [level=3]
   - form "Edit event details":
     - text: Name
-    - textbox "Name": My Title Session
+    - textbox "Name": My Title
     - text: Start Time
     - textbox "Start Time": <iso-datetime>
     - text: End Time
@@ -46,17 +47,12 @@
       - option "Event Schedule" [selected]
     - text: Event Schedule
     - grid:
-      - text: Mon 4 May <hour-grid>
-      - button "My Title Session (internal-calendar), <time-range>": My Title Session (internal-calendar)
-      - button "My Title Session, <time-range>": My Title Session
-      - text: Tue 5 May <hour-grid> Wed 6 May <hour-grid> Thu 7 May <hour-grid> Fri 8 May <hour-grid> Sat 9 May <hour-grid> Sun 10 May <hour-grid>
+      - text: Mon 15 Jun <hour-grid>
+      - button "My Title (internal-calendar), <time-range>": My Title (internal-calendar)
+      - button "My Title, <time-range>": My Title
+      - text: Tue 16 Jun <hour-grid> Wed 17 Jun <hour-grid> Thu 18 Jun <hour-grid> Fri 19 Jun <hour-grid> Sat 20 Jun <hour-grid> Sun 21 Jun <hour-grid>
     - button "Save Changes" [disabled]
   - heading "Workflow Status and Transitions" [level=3]
   - text: "Status: Draft"
-  - button "Submit event" [disabled]
+  - button "Propose Date" [disabled]
   - button "▶ Event lifecycle diagram"
-  - heading "Calculated Prices" [level=3]
-  - paragraph: No calculated prices exist for this event yet.
-  - paragraph: You do not have permission to create calculated prices.
-  - heading "Synchronization Status" [level=3]
-  - paragraph: Changes to this event will be synchronized across all platforms.

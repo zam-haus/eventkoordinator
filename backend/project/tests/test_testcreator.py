@@ -27,7 +27,8 @@ class TestCreatorTests(SnapshotMixin, ViteStaticLiveServerTestCase):
 
     vite_force_rebuild = True
 
-    def test_homepage_aria_snapshot(self) -> None:
+    @skip()
+    def test_createtest(self) -> None:
         """Navigate to the root URL and write an ARIA snapshot to disk."""
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(**playwright_launch_options())

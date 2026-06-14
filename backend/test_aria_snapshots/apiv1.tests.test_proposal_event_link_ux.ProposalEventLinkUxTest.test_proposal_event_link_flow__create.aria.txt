@@ -10,7 +10,32 @@
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": proposaleventux-user
 - main:
-  - heading "Current Calls" [level=1]
-  - paragraph: Submit a proposal for a workshop, course, or talk.
-  - paragraph: No active calls at the moment.
-  - button "Go to Coordinator →"
+  - complementary "Proposals":
+    - heading "Proposals" [level=2]
+    - button "Create New Proposal"
+    - listbox "Proposals":
+      - option
+      - option [selected]
+  - main "Proposals content":
+    - heading "Proposal Editor" [level=1]
+    - alert:
+      - heading "Draft – not yet submitted" [level=3]
+      - paragraph: This proposal will only be considered after you submit it via "Submit Proposal". In the meantime, you can save it, it does not get submitted by that.
+    - form "Proposal editor":
+      - tablist:
+        - tab "✎ General"
+        - tab "✎ Participants and Costs"
+        - tab "✎ Scheduling"
+        - tab "4 Speakers"
+        - tab "✎ Submission" [selected]
+      - tabpanel:
+        - text: Additional Information for the ZAM (optional) ●
+        - textbox "Additional Information for the ZAM (optional) unsaved change": Internal Notes
+        - text: Not public. Use this to communicate with the ZAM team, e.g. equipment needs (laptops, projector, laser cutter) or other notes.
+        - paragraph: Please save your changes before checking the submission checklist.
+      - button "← Back"
+      - button "▶ Proposal lifecycle diagram"
+      - button "Save Proposal"
+      - button "Cancel"
+      - button "Delete Proposal"
+      - group: Edit history last changed just now

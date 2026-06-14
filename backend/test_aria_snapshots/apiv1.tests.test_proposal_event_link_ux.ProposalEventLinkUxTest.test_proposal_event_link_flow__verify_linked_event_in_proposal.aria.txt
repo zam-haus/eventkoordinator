@@ -5,6 +5,7 @@
   - list:
     - listitem: Coordinator
     - listitem: Proposal Editor
+    - listitem: Proposal Dashboard
   - button "Switch to English" [pressed]: 🇬🇧
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": proposaleventux-user
@@ -13,32 +14,39 @@
     - heading "Proposals" [level=2]
     - button "Create New Proposal"
     - listbox "Proposals":
+      - option
       - option "My Title Workshop" [selected]
   - main "Proposals content":
     - heading "Proposal Editor" [level=1]
+    - alert:
+      - heading "Accepted" [level=3]
+      - paragraph: Your proposal was accepted! Please await date and time proposals from us and confirm.
     - form "Proposal editor":
       - tablist:
-        - tab "1 General"
-        - tab "2 Participants and Costs"
-        - tab "3 Scheduling"
-        - tab "4 Speakers"
-        - tab "5 Submission"
+        - tab "✓ General"
+        - tab "✓ Participants and Costs"
+        - tab "✓ Scheduling"
+        - tab "✓ Speakers"
+        - tab "✓ Submission"
         - tab "6 Date Arrangement" [selected]
       - tabpanel:
         - group:
           - text: Linked Events (1)
           - list:
             - listitem:
-              - link "My Title Session":
+              - link "My Title":
                 - /url: /proposal/<uuid>/event/<uuid>
-              - text: "Series: Test Workshop Series <localized-datetime> – <localized-datetime>"
+              - text: "Draft Series: Test Workshop Series <localized-datetime> – <localized-datetime>"
           - text: Series
           - textbox "Series":
             - /placeholder: Filter series...
           - combobox "Series":
-            - option "-- Select series --" [selected]
+            - option "My Title (create new)" [selected]
+            - option "-- Select series --"
             - option "Test Workshop Series"
-          - button "Create New Event" [disabled]
+          - button "Create New Event"
       - button "← Back"
+      - button "▶ Proposal lifecycle diagram"
       - button "Save Proposal" [disabled]
+      - group "Reviews": Reviews no reviews yet No reviews yet. Request one below or add your own.
       - group: Edit history last changed just now

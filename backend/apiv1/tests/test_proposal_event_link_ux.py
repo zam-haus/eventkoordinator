@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date
 
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.models import Permission
@@ -14,6 +15,7 @@ from apiv1.models.basedata import (
     ProposalLanguage,
     Series,
     SubmissionType,
+    Call,
 )
 from apiv1.tests.test_proposal_ux import ProposalNavigationMixin
 from project.test_utils import (
@@ -89,6 +91,22 @@ class ProposalEventLinkUxTest(ProposalNavigationMixin, SnapshotMixin, ViteStatic
             name="Test Workshop Series",
             description="A series for testing event linking",
         )
+
+        # Create an active call so the homepage shows a "Submit proposal" button.
+        self.call, _ = Call.objects.get_or_create(
+            title="UX Test Call",
+            defaults={
+                "description": "A call created for UX testing",
+                "execution_period_start": date(2026, 3, 1),
+                "execution_period_end": date(2026, 4, 30),
+                "submission_deadline": date(2026, 9, 15),
+                "print_deadline": date(2026, 9, 20),
+                "responsible_name": "Test Responsible",
+                "responsible_email": "test@example.com",
+                "is_active": True,
+            },
+        )
+        logger.debug(f"Created call: {self.call.title}")
 
     def tearDown(self) -> None:
         User = get_user_model()
