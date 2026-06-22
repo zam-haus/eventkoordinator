@@ -138,7 +138,7 @@ def search_proposals(request, q: str = ""):
     proposals = (
         ProposalModel.objects.select_related("submission_type")
         .filter(title__icontains=q)
-        .order_by("title")[:20]
+        .order_by("title")
     )
     return [
         model_proposal_to_schema(p)
