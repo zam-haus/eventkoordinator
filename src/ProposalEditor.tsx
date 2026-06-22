@@ -284,6 +284,14 @@ export function ProposalEditor({
     const [proposalImageError, setProposalImageError] = useState<string | null>(null)
     const [proposalImageCopyrightChecked, setProposalImageCopyrightChecked] = useState(false)
 
+    const [maxParticipantsRaw, setMaxParticipantsRaw] = useState(String(formData.max_participants))
+    const [durationDaysRaw, setDurationDaysRaw] = useState(String(formData.duration_days))
+    const [occurrenceCountRaw, setOccurrenceCountRaw] = useState(String(formData.occurrence_count))
+
+    useEffect(() => { setMaxParticipantsRaw(String(formData.max_participants)) }, [formData.max_participants])
+    useEffect(() => { setDurationDaysRaw(String(formData.duration_days)) }, [formData.duration_days])
+    useEffect(() => { setOccurrenceCountRaw(String(formData.occurrence_count)) }, [formData.occurrence_count])
+
     // Lifecycle diagram state
     const [flowChartOpen, setFlowChartOpen] = useState(false)
     const [flowDiagram, setFlowDiagram] = useState<EventFlowDiagram | null>(null)
@@ -1263,12 +1271,22 @@ export function ProposalEditor({
                                 </label>
                                 <input
                                     id="proposal-max-participants"
-                                    type="number"
-                                    value={formData.max_participants}
-                                    onChange={(e) => handleFieldChange('max_participants', parseInt(e.target.value) || 0)}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={maxParticipantsRaw}
+                                    onChange={(e) => {
+                                        const v = e.target.value.replace(/[^0-9]/g, '')
+                                        setMaxParticipantsRaw(v)
+                                        if (v !== '') handleFieldChange('max_participants', parseInt(v, 10))
+                                    }}
+                                    onBlur={() => {
+                                        const n = parseInt(maxParticipantsRaw, 10)
+                                        const final = (!maxParticipantsRaw || isNaN(n) || n < 0) ? 0 : n
+                                        setMaxParticipantsRaw(String(final))
+                                        handleFieldChange('max_participants', final)
+                                    }}
                                     className={`${styles.input} ${changedFields.has('max_participants') ? styles.changed : ''} ${highlightedChecklistItem === 'maxParticipants' ? styles.checklistHighlight : ''}`}
                                     disabled={isSaving || !canEdit}
-                                    required
                                 />
                             </div>
 
@@ -1280,13 +1298,20 @@ export function ProposalEditor({
                                 </label>
                                 <input
                                     id="proposal-material-cost"
-                                    type="number"
-                                    step="0.01"
+                                    type="text"
+                                    inputMode="decimal"
                                     value={formData.material_cost_eur}
-                                    onChange={(e) => handleFieldChange('material_cost_eur', e.target.value)}
+                                    onChange={(e) => {
+                                        const v = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
+                                        handleFieldChange('material_cost_eur', v)
+                                    }}
+                                    onBlur={() => {
+                                        const n = parseFloat(formData.material_cost_eur)
+                                        const final = (!formData.material_cost_eur || isNaN(n) || n < 0) ? '0.00' : n.toFixed(2)
+                                        handleFieldChange('material_cost_eur', final)
+                                    }}
                                     className={`${styles.input} ${changedFields.has('material_cost_eur') ? styles.changed : ''}`}
                                     disabled={isSaving || !canEdit}
-                                    required
                                 />
                             </div>
                         </div>
@@ -1304,13 +1329,22 @@ export function ProposalEditor({
                                 </label>
                                 <input
                                     id="proposal-duration-days"
-                                    type="number"
-                                    min="1"
-                                    value={formData.duration_days}
-                                    onChange={(e) => handleFieldChange('duration_days', parseInt(e.target.value) || 1)}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={durationDaysRaw}
+                                    onChange={(e) => {
+                                        const v = e.target.value.replace(/[^0-9]/g, '')
+                                        setDurationDaysRaw(v)
+                                        if (v !== '') handleFieldChange('duration_days', parseInt(v, 10))
+                                    }}
+                                    onBlur={() => {
+                                        const n = parseInt(durationDaysRaw, 10)
+                                        const final = (!durationDaysRaw || isNaN(n) || n < 1) ? 1 : n
+                                        setDurationDaysRaw(String(final))
+                                        handleFieldChange('duration_days', final)
+                                    }}
                                     className={`${styles.input} ${changedFields.has('duration_days') ? styles.changed : ''}`}
                                     disabled={isSaving || !canEdit}
-                                    required
                                 />
                                 <small className={styles.fieldHint}>
                                     {t('proposal.numberOfDaysHint')}
@@ -1356,12 +1390,22 @@ export function ProposalEditor({
                                 </label>
                                 <input
                                     id="proposal-occurrence-count"
-                                    type="number"
-                                    value={formData.occurrence_count}
-                                    onChange={(e) => handleFieldChange('occurrence_count', parseInt(e.target.value) || 0)}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={occurrenceCountRaw}
+                                    onChange={(e) => {
+                                        const v = e.target.value.replace(/[^0-9]/g, '')
+                                        setOccurrenceCountRaw(v)
+                                        if (v !== '') handleFieldChange('occurrence_count', parseInt(v, 10))
+                                    }}
+                                    onBlur={() => {
+                                        const n = parseInt(occurrenceCountRaw, 10)
+                                        const final = (!occurrenceCountRaw || isNaN(n) || n < 0) ? 0 : n
+                                        setOccurrenceCountRaw(String(final))
+                                        handleFieldChange('occurrence_count', final)
+                                    }}
                                     className={`${styles.input} ${changedFields.has('occurrence_count') ? styles.changed : ''} ${highlightedChecklistItem === 'occurrenceCount' ? styles.checklistHighlight : ''}`}
                                     disabled={isSaving || !canEdit}
-                                    required
                                 />
                                 <small className={styles.fieldHint}>
                                     {t('proposal.occurrenceCountHint')}
