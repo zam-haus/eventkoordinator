@@ -938,6 +938,38 @@ export async function reviseProposal(proposalId: string): Promise<ProposalDetail
   return data as unknown as ProposalDetail
 }
 
+export async function submitProposalOnBehalf(proposalId: string): Promise<ProposalDetail> {
+  const { data, error, response } = await client.POST('/api/v1/proposals/{proposal_id}/submit-on-behalf', {
+    params: {
+      path: {
+        proposal_id: proposalId,
+      },
+    },
+  })
+
+  if (error || !response.ok || !data) {
+    throw new Error(error?.code || 'proposals.transitionFailed')
+  }
+
+  return data as unknown as ProposalDetail
+}
+
+export async function undoAcceptProposal(proposalId: string): Promise<ProposalDetail> {
+  const { data, error, response } = await client.POST('/api/v1/proposals/{proposal_id}/undo-accept', {
+    params: {
+      path: {
+        proposal_id: proposalId,
+      },
+    },
+  })
+
+  if (error || !response.ok || !data) {
+    throw new Error(error?.code || 'proposals.transitionFailed')
+  }
+
+  return data as unknown as ProposalDetail
+}
+
 export async function createProposal(formData?: {
   title?: string
   submission_type?: string

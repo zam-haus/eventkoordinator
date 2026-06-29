@@ -67,7 +67,9 @@
       "revise": "Request Revision",
       "revise_after_rejection": "Allow Revision After Rejection",
       "accept": "Accept Proposal",
-      "reject": "Reject Proposal"
+      "reject": "Reject Proposal",
+      "submit_on_behalf": "Submit on behalf of owner",
+      "undo_accept": "Undo accept"
     },
     "checklist": {
       "title": "Title (max 30 characters)",

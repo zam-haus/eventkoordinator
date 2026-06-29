@@ -67,7 +67,9 @@
       "revise": "Überarbeitung anfordern",
       "revise_after_rejection": "Überarbeitung nach Ablehnung erlauben",
       "accept": "Vorschlag annehmen",
-      "reject": "Vorschlag ablehnen"
+      "reject": "Vorschlag ablehnen",
+      "submit_on_behalf": "Im Namen des Einreichers einreichen",
+      "undo_accept": "Akzeptanz des Vorschlags zurücknehmen"
     },
     "checklist": {
       "title": "Titel (max. 30 Zeichen)",

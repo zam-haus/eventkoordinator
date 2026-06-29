@@ -25,14 +25,6 @@ g_proposal_accept = Gauge('eventkoordinator_flow_proposal_accept_count', 'Accept
 
 
 
-_PROPOSAL_LABEL_IDS: dict[str, str] = {
-    "Submit proposal": "submit",
-    "Resubmit proposal": "resubmit",
-    "Request revision": "revise",
-    "Allow revision after rejection": "revise_after_rejection",
-    "Accept proposal": "accept",
-    "Reject proposal": "reject",
-}
 
 
 class ProposalTransition:
@@ -173,21 +165,46 @@ class ProposalFlow:
         logging.debug(f"Getting object status: {self}")
         return self.object.status
 
+
     @status.transition(
         source=Proposal.Status.DRAFT,
         target=Proposal.Status.SUBMITTED,
-        label="Submit proposal",
+        label="submit_on_behalf",
+        conditions=[],
+        permission=has_permission((apiv1, "revise", Proposal)),
+    )
+    def submit_on_behalf(self):
+        self._do_submit()
+
+    @status.transition(
+        source=Proposal.Status.ACCEPTED,
+        target=Proposal.Status.SUBMITTED,
+        label="undo_accept",
+        conditions=[],
+        permission=has_permission((apiv1, "accept", Proposal)),
+    )
+    def undo_accept(self):
+        logger.info(f"Undoing acceptance of proposal: {self.object!r}")
+        self.object.save()
+
+    @status.transition(
+        source=Proposal.Status.DRAFT,
+        target=Proposal.Status.SUBMITTED,
+        label="submit",
         conditions=[has_required_information],
         permission=has_permission((apiv1, "submit", Proposal)),
     )
     @status.transition(
         source=Proposal.Status.REVISE,
         target=Proposal.Status.SUBMITTED,
-        label="Resubmit proposal",
+        label="resubmit",
         conditions=[has_required_information],
         permission=has_permission((apiv1, "submit", Proposal)),
     )
     def submit(self):
+        self._do_submit()
+
+    def _do_submit(self):
         logger.info(f"Submitting proposal: {self.object!r}")
         g_proposal_submit.inc()
         self.object.save()
@@ -232,13 +249,13 @@ class ProposalFlow:
     @status.transition(
         source=Proposal.Status.SUBMITTED,
         target=Proposal.Status.REVISE,
-        label="Request revision",
+        label="revise",
         permission=has_permission((apiv1, "revise", Proposal)),
     )
     @status.transition(
         source=Proposal.Status.REJECTED,
         target=Proposal.Status.REVISE,
-        label="Allow revision after rejection",
+        label="revise_after_rejection",
         permission=has_permission((apiv1, "revise", Proposal)),
     )
     def revise(self):
@@ -274,7 +291,7 @@ class ProposalFlow:
     @status.transition(
         source=Proposal.Status.SUBMITTED,
         target=Proposal.Status.ACCEPTED,
-        label="Accept proposal",
+        label="accept",
         conditions=[reviews_allow_accept],
         permission=has_permission((apiv1, "accept", Proposal)),
     )
@@ -305,7 +322,7 @@ class ProposalFlow:
     @status.transition(
         source=Proposal.Status.SUBMITTED,
         target=Proposal.Status.REJECTED,
-        label="Reject proposal",
+        label="reject",
         permission=has_permission((apiv1, "reject", Proposal)),
     )
     def reject(self):
@@ -343,6 +360,8 @@ class ProposalFlow:
         # Get all transition methods from the class
         transition_methods = [
             ("submit", self.submit),
+            ("submit_on_behalf", self.submit_on_behalf),
+            ("undo_accept", self.undo_accept),
             ("revise", self.revise),
             ("accept", self.accept),
             ("reject", self.reject),
@@ -370,7 +389,7 @@ class ProposalFlow:
         Evaluate a single transition to determine if it's allowed.
         Uses the FSM transition's conditions and permissions.
         """
-        label_id = _PROPOSAL_LABEL_IDS.get(transition.label, action)
+        label_id = transition.label
 
         # Check conditions
         conditions_met = transition.conditions_met(self)
@@ -430,6 +449,8 @@ class ProposalFlow:
             "accept": self.accept,
             "reject": self.reject,
             "revise": self.revise,
+            "undo_accept": self.undo_accept,
+            "submit_on_behalf": self.submit_on_behalf,
         }
 
         method = action_to_method.get(action)

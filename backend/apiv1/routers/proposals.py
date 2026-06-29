@@ -886,6 +886,42 @@ def revise_proposal(
     return _execute_proposal_transition(request, proposal_id, "revise")
 
 
+@router.post(
+    "/{proposal_id}/submit-on-behalf",
+    response={
+        200: ProposalDetail,
+        400: ErrorOut,
+        404: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+    },
+)
+@api_permission_mandatory()
+def submit_proposal_on_behalf(
+    request, proposal_id: uuid.UUID
+) -> tuple[int, ProposalDetail | ErrorOut]:
+    """Submit a proposal on behalf of the author."""
+    return _execute_proposal_transition(request, proposal_id, "submit_on_behalf")
+
+
+@router.post(
+    "/{proposal_id}/undo-accept",
+    response={
+        200: ProposalDetail,
+        400: ErrorOut,
+        404: ErrorOut,
+        401: ErrorOut,
+        403: ErrorOut,
+    },
+)
+@api_permission_mandatory()
+def undo_accept_proposal(
+    request, proposal_id: uuid.UUID
+) -> tuple[int, ProposalDetail | ErrorOut]:
+    """Undo the acceptance of a proposal."""
+    return _execute_proposal_transition(request, proposal_id, "undo_accept")
+
+
 @router.get(
     "/{proposal_id}/events",
     response={200: list[ProposalEventSummary], 404: ErrorOut, 401: ErrorOut, 403: ErrorOut},

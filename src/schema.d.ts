@@ -53,8 +53,8 @@ export interface paths {
         };
         /**
          * List Calls
-         * @description List calls. Requires browse_proposal (submitters) or view_call (managers).
-         *     Submitters always see active-only calls; managers respect the active_only param.
+         * @description List calls. Publicly accessible — all users see active calls.
+         *     Managers with view_call can also see inactive calls when active_only=False.
          */
         get: operations["apiv1_routers_calls_list_calls"];
         put?: never;
@@ -173,6 +173,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/export/excel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Excel
+         * @description Download an Excel workbook with proposals, events, and event prices.
+         */
+        get: operations["apiv1_routers_export_export_excel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/export/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Images
+         * @description Download a ZIP archive of proposal photos, named by proposal ID.
+         */
+        get: operations["apiv1_routers_export_export_images"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -225,6 +265,26 @@ export interface paths {
          * @description Get current authenticated user information
          */
         get: operations["apiv1_routers_auth_get_current_user"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permission_groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Permission Groups
+         * @description Return all Django permission groups (excluding the catch-all authenticated-users group).
+         */
+        get: operations["apiv1_routers_lookups_get_permission_groups"];
         put?: never;
         post?: never;
         delete?: never;
@@ -358,6 +418,26 @@ export interface paths {
         };
         /** Flow Chart Image */
         get: operations["apiv1_routers_proposals_flow_chart_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/flow-diagram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proposal Flow Diagram
+         * @description Return the proposal FSM structure as a Pydantic model for frontend diagram rendering.
+         */
+        get: operations["apiv1_routers_proposals_proposal_flow_diagram"];
         put?: never;
         post?: never;
         delete?: never;
@@ -534,6 +614,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/proposals/{proposal_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reviews
+         * @description Return all reviews and group-review requests for a proposal.
+         *
+         *     Also returns pending_via_groups: group codes where the current user is a
+         *     member of a requested group but has not yet submitted a review.
+         */
+        get: operations["apiv1_routers_reviews_list_reviews"];
+        put?: never;
+        /**
+         * Create Review
+         * @description Create a new review (user or group) for a proposal.
+         *
+         *     - Moderators can request reviews from any user or group.
+         *     - Any authenticated user can add their own unsolicited review.
+         */
+        post: operations["apiv1_routers_reviews_create_review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{proposal_id}/reviews/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Reviews
+         * @description Reset all completed reviews to pending (called after resubmission).
+         *
+         *     Preserves previous_status and previous_comment for context.
+         *     Group requests get their requested_at refreshed.
+         *     System/note reviews are not reset.
+         *     Only the proposal owner/editors or moderators may call this.
+         */
+        post: operations["apiv1_routers_reviews_reset_reviews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{proposal_id}/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Review
+         * @description Submit or update a vote on an existing user review.
+         *
+         *     Only the reviewer themselves can update their own review.
+         *     Moderators can update any review.
+         */
+        put: operations["apiv1_routers_reviews_update_review"];
+        post?: never;
+        /**
+         * Delete Review
+         * @description Withdraw a review request or remove a review.
+         *
+         *     Moderators can withdraw any review. Reviewers can withdraw their own.
+         */
+        delete: operations["apiv1_routers_reviews_delete_review"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/proposals/{proposal_id}/revise": {
         parameters: {
             query?: never;
@@ -642,6 +806,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/proposals/{proposal_id}/submit-on-behalf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Proposal On Behalf
+         * @description Submit a proposal on behalf of the author.
+         */
+        post: operations["apiv1_routers_proposals_submit_proposal_on_behalf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/proposals/{proposal_id}/transitions": {
         parameters: {
             query?: never;
@@ -656,6 +840,26 @@ export interface paths {
         get: operations["apiv1_routers_proposals_get_proposal_transitions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{proposal_id}/undo-accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Accept Proposal
+         * @description Undo the acceptance of a proposal.
+         */
+        post: operations["apiv1_routers_proposals_undo_accept_proposal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1708,19 +1912,6 @@ export interface components {
             /** Timestamp */
             timestamp: string;
         };
-        /** ReviewStats */
-        ReviewStats: {
-            /** Approved */
-            approved: number;
-            /** Revise */
-            revise: number;
-            /** Rejected */
-            rejected: number;
-            /** Pending */
-            pending: number;
-            /** Total */
-            total: number;
-        };
         /** ProposalListItem */
         ProposalListItem: {
             /** Accepted Event Count */
@@ -1732,9 +1923,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** My Review Status */
+            my_review_status?: string | null;
             /** Occurrence Count */
             occurrence_count: number;
             owner?: components["schemas"]["UserBasic"] | null;
+            review_stats?: components["schemas"]["ReviewStats"];
             /** Speakers */
             speakers: string[];
             /** Status */
@@ -1743,9 +1937,144 @@ export interface components {
             submission_type?: string | null;
             /** Title */
             title: string;
-            review_stats: components["schemas"]["ReviewStats"];
-            /** My Review Status */
-            my_review_status?: string | null;
+        };
+        /**
+         * ProposalReviewCreateIn
+         * @description Create a new review or group-review request.
+         */
+        ProposalReviewCreateIn: {
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+            /** Group Code */
+            group_code?: string | null;
+            /** Kind */
+            kind: string;
+            /**
+             * Migrated
+             * @default false
+             */
+            migrated: boolean;
+            /**
+             * Requested Directly
+             * @default false
+             */
+            requested_directly: boolean;
+            /** Requested Via Groups */
+            requested_via_groups?: string[];
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            /**
+             * Reviewer Is System
+             * @default false
+             */
+            reviewer_is_system: boolean;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
+        };
+        /** ProposalReviewOut */
+        ProposalReviewOut: {
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /**
+             * Group Code
+             * @default
+             */
+            group_code: string;
+            /**
+             * Group Label
+             * @default
+             */
+            group_label: string;
+            /** Group Member Count */
+            group_member_count?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Migrated
+             * @default false
+             */
+            migrated: boolean;
+            /**
+             * Previous Comment
+             * @default
+             */
+            previous_comment: string;
+            /**
+             * Previous Status
+             * @default
+             */
+            previous_status: string;
+            /** Requested At */
+            requested_at?: string | null;
+            /** Requested By Id */
+            requested_by_id?: string | null;
+            /** Requested By Username */
+            requested_by_username?: string | null;
+            /**
+             * Requested Directly
+             * @default false
+             */
+            requested_directly: boolean;
+            /** Requested Via Groups */
+            requested_via_groups?: string[];
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            /**
+             * Reviewer Is System
+             * @default false
+             */
+            reviewer_is_system: boolean;
+            /** Reviewer Username */
+            reviewer_username?: string | null;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
+        };
+        /**
+         * ProposalReviewUpdateIn
+         * @description Submit or update a vote on an existing user review.
+         */
+        ProposalReviewUpdateIn: {
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ProposalReviewsOut
+         * @description Wrapper returned by GET /proposals/{id}/reviews.
+         */
+        ProposalReviewsOut: {
+            /** Pending Via Groups */
+            pending_via_groups?: string[];
+            /** Reviews */
+            reviews: components["schemas"]["ProposalReviewOut"][];
         };
         /** ProposalSpeakerOut */
         ProposalSpeakerOut: {
@@ -1844,6 +2173,34 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** ReviewStats */
+        ReviewStats: {
+            /**
+             * Approved
+             * @default 0
+             */
+            approved: number;
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Rejected
+             * @default 0
+             */
+            rejected: number;
+            /**
+             * Revise
+             * @default 0
+             */
+            revise: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /** Series */
         Series: {
             /** Description */
@@ -1940,11 +2297,8 @@ export interface components {
             event_id: string;
             /** Properties */
             properties: components["schemas"]["PropertyDiff"][];
-            /**
-             * Series Id
-             * Format: uuid
-             */
-            series_id: string;
+            /** Series Id */
+            series_id?: string | null;
             /**
              * Target Id
              * Format: uuid
@@ -2213,24 +2567,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CallOut"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorOut"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };
@@ -2523,6 +2859,82 @@ export interface operations {
             };
         };
     };
+    apiv1_routers_export_export_excel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_export_export_images: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apiv1_api_health_check: {
         parameters: {
             query?: never;
@@ -2592,6 +3004,44 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_lookups_get_permission_groups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LookupOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2997,6 +3447,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_proposals_proposal_flow_diagram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventFlowDiagram"];
                 };
             };
         };
@@ -3534,6 +4004,277 @@ export interface operations {
             };
         };
     };
+    apiv1_routers_reviews_list_reviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalReviewsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_reviews_create_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalReviewCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalReviewOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_reviews_reset_reviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalReviewOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_reviews_update_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalReviewUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalReviewOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_reviews_delete_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apiv1_routers_proposals_revise_proposal: {
         parameters: {
             query?: never;
@@ -3945,6 +4686,64 @@ export interface operations {
             };
         };
     };
+    apiv1_routers_proposals_submit_proposal_on_behalf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     apiv1_routers_proposals_get_proposal_transitions: {
         parameters: {
             query?: never;
@@ -3963,6 +4762,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposalTransitions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_proposals_undo_accept_proposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Unauthorized */

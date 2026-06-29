@@ -6,6 +6,8 @@ import {
   acceptProposal,
   rejectProposal,
   reviseProposal,
+  submitProposalOnBehalf,
+  undoAcceptProposal,
   type ProposalTransition,
   type ProposalDetail,
 } from './api'
@@ -69,6 +71,12 @@ export function ProposalTransitionButtons({
           break
         case 'revise':
           result = await reviseProposal(proposalId)
+          break
+        case 'submit_on_behalf':
+          result = await submitProposalOnBehalf(proposalId)
+          break
+        case 'undo_accept':
+          result = await undoAcceptProposal(proposalId)
           break
         default:
           throw new Error(`Unknown action: ${action}`)
