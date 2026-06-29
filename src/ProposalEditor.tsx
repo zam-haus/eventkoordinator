@@ -560,7 +560,8 @@ export function ProposalEditor({
 
     // Track unsaved changes
     const hasChanges = changedFields.size > 0
-    const canLinkEvents = Boolean(_proposalId && _proposalId.trim()) && currentStatus === 'accepted'
+    const canViewLinkedEvents = Boolean(_proposalId && _proposalId.trim())
+    const canLinkEvents = canViewLinkedEvents && currentStatus === 'accepted'
     const canShowLinkedEventCreateControls =
         canLinkEvents && !permissionsLoading && canView('series') && canAdd('event')
     const matchingSeries =
@@ -818,7 +819,7 @@ export function ProposalEditor({
     ]
 
     const isStatusFinal = ['submitted', 'accepted', 'rejected'].includes(currentStatus)
-    const showTerminfestlegungTab = currentStatus === 'accepted' || currentStatus === 'archived'
+    const showTerminfestlegungTab = currentStatus === 'accepted' || currentStatus === 'archived' || linkedEvents.length > 0
     if (showTerminfestlegungTab) {
         tabs.push({id: 5, label: t('proposal.tabDateArrangement')})
     }
@@ -1685,7 +1686,7 @@ export function ProposalEditor({
                              role="tabpanel">
                             <div className={styles.detailsContent}>
                                 {/* Linked Events Section */}
-                                {canLinkEvents && (
+                                {canViewLinkedEvents && (
                                     <details
                                         className={styles.fieldset}
                                         style={{marginTop: '1.5rem'}}
