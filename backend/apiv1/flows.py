@@ -596,30 +596,31 @@ class EventFlow:
         logger.info(f"Approving event: {self.object!r}")
         self.object.save()
         self._notify_call_contact_event("approve")
-        # if there are no overlapping events for the block (or any blocks, if a multiday block event that does not span full days),
-        # publish automatically. This allows events that are not in conflict with others to skip the "planned" state and be published immediately.
-        conflicts = self.object.find_active_conflicts()
-        if conflicts:
-            for conflict in conflicts:
-                logger.debug(
-                    "Auto-publish blocked for %r: block %s conflicts with %r (status=%s) block %s",
+        if False:
+            # if there are no overlapping events for the block (or any blocks, if a multiday block event that does not span full days),
+            # publish automatically. This allows events that are not in conflict with others to skip the "planned" state and be published immediately.
+            conflicts = self.object.find_active_conflicts()
+            if conflicts:
+                for conflict in conflicts:
+                    logger.debug(
+                        "Auto-publish blocked for %r: block %s conflicts with %r (status=%s) block %s",
+                        self.object,
+                        conflict.my_block,
+                        conflict.conflicting_event,
+                        conflict.conflicting_event.status,
+                        conflict.conflicting_block,
+                    )
+                logger.info(
+                    "Not auto-publishing %r: %d conflict(s) found",
                     self.object,
-                    conflict.my_block,
-                    conflict.conflicting_event,
-                    conflict.conflicting_event.status,
-                    conflict.conflicting_block,
+                    len(conflicts),
                 )
-            logger.info(
-                "Not auto-publishing %r: %d conflict(s) found",
-                self.object,
-                len(conflicts),
-            )
-        else:
-            logger.info(
-                "Auto-publishing %r: no overlapping active events found",
-                self.object,
-            )
-            self.publish()
+            else:
+                logger.info(
+                    "Auto-publishing %r: no overlapping active events found",
+                    self.object,
+                )
+                self.publish()
 
     def _has_overlapping_events(self) -> bool:
         """Thin wrapper kept for backwards compatibility. Prefer find_active_conflicts() directly."""
@@ -646,6 +647,7 @@ class EventFlow:
     def publish(self):
         logger.info(f"Publishing event: {self.object!r}")
         self.object.save()
+        self._notify_proposal_owner_event("publish")
 
     @status.transition(
         source=Event.Status.PUBLISHED,
@@ -712,6 +714,7 @@ class EventFlow:
         event_url = f"{settings.FRONTEND_BASE_URL}/proposal/{proposal.pk}/event/{self.object.pk}"
         _subjects = {
             "submit": ("Neuer Terminvorschlag", "New date proposal"),
+            "publish": ("Termin wird veröffentlicht", "Date will be published"),
             "confirm": ("Termin bestätigt", "Date confirmed"),
             "cancel": ("Termin abgesagt", "Date canceled"),
         }
