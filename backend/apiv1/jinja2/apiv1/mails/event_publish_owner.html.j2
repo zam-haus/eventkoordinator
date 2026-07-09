@@ -46,8 +46,8 @@
     <p>Der folgende Termin für deine Einreichung <span class="proposal-title">"{{ proposal_title }}"</span> für <span class="proposal-title">"{{ call_title }}"</span> wird nun veröffentlicht:</p>
 
     <p><strong>Veranstaltung:</strong> <span class="proposal-title">{{ object.name }}</span><br>
-    <strong>Beginn:</strong> {{ object.start_time.strftime('%d.%m.%Y %H:%M') }}<br>
-    <strong>Ende:</strong> {{ object.end_time.strftime('%d.%m.%Y %H:%M') }}</p>
+    <strong>Beginn:</strong> {{ object.start_time|berlin('%d.%m.%Y %H:%M %Z') }}<br>
+    <strong>Ende:</strong> {{ object.end_time|berlin('%d.%m.%Y %H:%M %Z') }}</p>
 
     <p>Den Termin kannst du unter folgendem Link einsehen:</p>
 
@@ -66,8 +66,8 @@
     <p>The following date for your submission <span class="proposal-title">"{{ proposal_title }}"</span> for <span class="proposal-title">"{{ call_title }}"</span> is now being published:</p>
 
     <p><strong>Event:</strong> <span class="proposal-title">{{ object.name }}</span><br>
-    <strong>Start:</strong> {{ object.start_time.strftime('%Y-%m-%d %H:%M') }}<br>
-    <strong>End:</strong> {{ object.end_time.strftime('%Y-%m-%d %H:%M') }}</p>
+    <strong>Start:</strong> {{ object.start_time|berlin('%Y-%m-%d %H:%M %Z') }}<br>
+    <strong>End:</strong> {{ object.end_time|berlin('%Y-%m-%d %H:%M %Z') }}</p>
 
     <p>You can view the date at the following link:</p>
 

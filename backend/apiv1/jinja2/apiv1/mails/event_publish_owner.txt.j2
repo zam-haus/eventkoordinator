@@ -7,8 +7,8 @@ Hi!
 Der folgende Termin für deine Einreichung "{{ proposal_title }}" für "{{ call_title }}" wird nun veröffentlicht:
 
   Veranstaltung: {{ object.name }}
-  Beginn: {{ object.start_time.strftime('%d.%m.%Y %H:%M') }}
-  Ende: {{ object.end_time.strftime('%d.%m.%Y %H:%M') }}
+  Beginn: {{ object.start_time|berlin('%d.%m.%Y %H:%M %Z') }}
+  Ende: {{ object.end_time|berlin('%d.%m.%Y %H:%M %Z') }}
 
 Den Termin kannst du unter folgendem Link einsehen:
 
@@ -27,8 +27,8 @@ Hi!
 The following date for your submission "{{ proposal_title }}" for "{{ call_title }}" is now being published:
 
   Event: {{ object.name }}
-  Start: {{ object.start_time.strftime('%Y-%m-%d %H:%M') }}
-  End: {{ object.end_time.strftime('%Y-%m-%d %H:%M') }}
+  Start: {{ object.start_time|berlin('%Y-%m-%d %H:%M %Z') }}
+  End: {{ object.end_time|berlin('%Y-%m-%d %H:%M %Z') }}
 
 You can view the date at the following link:
 

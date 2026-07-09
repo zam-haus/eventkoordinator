@@ -44,8 +44,8 @@
     <p><strong>Veranstaltung:</strong> <span class="proposal-title">{{ object.name }}</span><br>
     <strong>Einreichung:</strong> {{ proposal_title }}<br>
     <strong>Einreicher:</strong> {{ owner_name }}<br>
-    <strong>Beginn:</strong> {{ object.start_time.strftime('%d.%m.%Y %H:%M') }}<br>
-    <strong>Ende:</strong> {{ object.end_time.strftime('%d.%m.%Y %H:%M') }}</p>
+    <strong>Beginn:</strong> {{ object.start_time|berlin('%d.%m.%Y %H:%M %Z') }}<br>
+    <strong>Ende:</strong> {{ object.end_time|berlin('%d.%m.%Y %H:%M %Z') }}</p>
 
     <p>Einreichung ansehen:</p>
     <a class="cta-link" href="{{ proposal_url }}">{{ proposal_url }}</a>
@@ -62,8 +62,8 @@
     <p><strong>Event:</strong> <span class="proposal-title">{{ object.name }}</span><br>
     <strong>Submission:</strong> {{ proposal_title }}<br>
     <strong>Submitted by:</strong> {{ owner_name }}<br>
-    <strong>Start:</strong> {{ object.start_time.strftime('%Y-%m-%d %H:%M') }}<br>
-    <strong>End:</strong> {{ object.end_time.strftime('%Y-%m-%d %H:%M') }}</p>
+    <strong>Start:</strong> {{ object.start_time|berlin('%Y-%m-%d %H:%M %Z') }}<br>
+    <strong>End:</strong> {{ object.end_time|berlin('%Y-%m-%d %H:%M %Z') }}</p>
 
     <p>View submission:</p>
     <a class="cta-link" href="{{ proposal_url }}">{{ proposal_url }}</a>

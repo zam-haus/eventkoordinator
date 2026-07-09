@@ -1,5 +1,6 @@
 import logging
 import textwrap
+from zoneinfo import ZoneInfo
 
 from django.templatetags.static import static
 from django.urls import reverse
@@ -31,6 +32,9 @@ def environment(**options):
             "pprint": lambda v: pprint.pformat(v, indent=4),
             "tojson": lambda v: json.dumps(v, indent=4, sort_keys=True, default=str),
             "textwrap": lambda v, width=80: "\n".join(textwrap.wrap(v, width=width)),
+            "berlin": lambda dt, fmt="%d.%m.%Y %H:%M %Z": dt.astimezone(
+                ZoneInfo("Europe/Berlin")
+            ).strftime(fmt),
         }
     )
     return env

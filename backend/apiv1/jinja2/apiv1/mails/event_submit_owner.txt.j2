@@ -7,8 +7,8 @@ Hi!
 Wir möchten dir mitteilen, dass ein neuer Terminvorschlag für deine Einreichung "{{ proposal_title }}" für "{{ call_title }}" erstellt wurde:
 
   Veranstaltung: {{ object.name }}
-  Beginn: {{ object.start_time.strftime('%d.%m.%Y %H:%M') }}
-  Ende: {{ object.end_time.strftime('%d.%m.%Y %H:%M') }}
+  Beginn: {{ object.start_time|berlin('%d.%m.%Y %H:%M %Z') }}
+  Ende: {{ object.end_time|berlin('%d.%m.%Y %H:%M %Z') }}
 
 Du kannst den Terminvorschlag unter folgendem Link ansehen und bestätigen oder ablehnen:
 
@@ -27,8 +27,8 @@ Hi!
 We would like to let you know that a new date proposal has been created for your submission "{{ proposal_title }}" for "{{ call_title }}":
 
   Event: {{ object.name }}
-  Start: {{ object.start_time.strftime('%Y-%m-%d %H:%M') }}
-  End: {{ object.end_time.strftime('%Y-%m-%d %H:%M') }}
+  Start: {{ object.start_time|berlin('%Y-%m-%d %H:%M %Z') }}
+  End: {{ object.end_time|berlin('%Y-%m-%d %H:%M %Z') }}
 
 You can view and confirm or reject the date proposal at the following link:
 

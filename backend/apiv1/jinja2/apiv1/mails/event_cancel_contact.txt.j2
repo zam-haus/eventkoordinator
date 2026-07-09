@@ -10,8 +10,8 @@ Der folgende Termin wurde abgesagt:
   Veranstaltung: {{ object.name }}
   Einreichung: {{ proposal_title }}
   Einreicher: {{ owner_name }}
-  Beginn: {{ object.start_time.strftime('%d.%m.%Y %H:%M') }}
-  Ende: {{ object.end_time.strftime('%d.%m.%Y %H:%M') }}
+  Beginn: {{ object.start_time|berlin('%d.%m.%Y %H:%M %Z') }}
+  Ende: {{ object.end_time|berlin('%d.%m.%Y %H:%M %Z') }}
 
 Die Einreichung ist unter folgendem Link einsehbar:
 
@@ -32,8 +32,8 @@ The following date has been canceled:
   Event: {{ object.name }}
   Submission: {{ proposal_title }}
   Submitted by: {{ owner_name }}
-  Start: {{ object.start_time.strftime('%Y-%m-%d %H:%M') }}
-  End: {{ object.end_time.strftime('%Y-%m-%d %H:%M') }}
+  Start: {{ object.start_time|berlin('%Y-%m-%d %H:%M %Z') }}
+  End: {{ object.end_time|berlin('%Y-%m-%d %H:%M %Z') }}
 
 The submission can be viewed at the following link:
 
