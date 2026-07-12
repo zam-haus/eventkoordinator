@@ -8,9 +8,10 @@ from django.db import transaction
 from ninja import Router
 from ninja.security import django_auth
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 
 from userdefinedmodel.api_helpers import (
+    ApiError,
     _create_field_default,
     _require_perms,
     _serialize_config_version,
@@ -150,7 +151,7 @@ def delete_config(request, config_id: uuid.UUID):
             {"detail": "Config cannot be deleted because it is still referenced by migration history or other configs. Remove those references first."},
             status=400,
         )
-    return JsonResponse({}, status=204)
+    return HttpResponse(status=204)
 
 
 @router.get("/configs/{config_id}/versions/", auth=django_auth)
@@ -261,12 +262,12 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
             if fd_in.data_type == SchemaDataType.SLUG_ID:
                 prefix = (fd_in.type_config or {}).get("prefix", "")
                 if prefix in slug_id_prefixes.values():
-                    return JsonResponse({"detail": f"Duplicate SLUG_ID prefix '{prefix}' in this version"}, status=400)
+                    raise ApiError(400, {"detail": f"Duplicate SLUG_ID prefix '{prefix}' in this version"})
                 slug_id_prefixes[fd_in.slug] = prefix
         for slug, prefix in slug_id_prefixes.items():
             conflict = SlugIdSequence.objects.filter(prefix=prefix).exclude(owner_config=cfg).exclude(owner_config__isnull=True).first()
             if conflict:
-                return JsonResponse({"detail": f"Prefix '{prefix}' is already claimed by another config"}, status=400)
+                raise ApiError(400, {"detail": f"Prefix '{prefix}' is already claimed by another config"})
 
         field_map = {}
         for fd_in in payload.fields:
@@ -275,14 +276,14 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
                 try:
                     submodel_config = ConfigVersion.objects.get(id=fd_in.submodel_config_version_id)
                 except ConfigVersion.DoesNotExist:
-                    return JsonResponse({"detail": f"ConfigVersion {fd_in.submodel_config_version_id} not found"}, status=400)
+                    raise ApiError(400, {"detail": f"ConfigVersion {fd_in.submodel_config_version_id} not found"})
 
             workflow_version = None
             if fd_in.workflow_version_id:
                 try:
                     workflow_version = WorkflowVersion.objects.get(id=fd_in.workflow_version_id)
                 except WorkflowVersion.DoesNotExist:
-                    return JsonResponse({"detail": f"WorkflowVersion {fd_in.workflow_version_id} not found"}, status=400)
+                    raise ApiError(400, {"detail": f"WorkflowVersion {fd_in.workflow_version_id} not found"})
 
             fd = FieldDefinition.objects.create(
                 version=draft,
@@ -307,7 +308,7 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
             if fd_in.default is not None:
                 err = _create_field_default(fd, fd_in.default, fd_in.is_localized)
                 if err:
-                    return JsonResponse({"errors": {fd_in.slug: [err]}}, status=400)
+                    raise ApiError(400, {"errors": {fd_in.slug: [err]}})
 
         # Claim or re-confirm SLUG_ID sequence ownership for this config
         for slug, prefix in slug_id_prefixes.items():

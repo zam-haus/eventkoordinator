@@ -201,7 +201,7 @@ export function MigrationAssistant({ entityId, targetTypeId, sourceConfig, onMig
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
-  const [migrationId, setMigrationId] = useState<string | null>(null)
+  const [targetVersionId, setTargetVersionId] = useState<string | null>(null)
   const [rows, setRows] = useState<MappingRow[]>([])
   const [targetFields, setTargetFields] = useState<FieldDefinitionOut[]>([])
   const [mapping, setMapping] = useState<MappingState>({})
@@ -213,7 +213,7 @@ export function MigrationAssistant({ entityId, targetTypeId, sourceConfig, onMig
     setErrors([])
     try {
       const preview = await udmMigrationPreview(entityId, { targetTypeId })
-      setMigrationId(preview.migration_id)
+      setTargetVersionId(preview.target_version_id)
       // Seed the mapping table from the server's suggestions.
       const state: MappingState = {}
       const builtRows: MappingRow[] = preview.field_previews.map(fp => {
@@ -236,11 +236,11 @@ export function MigrationAssistant({ entityId, targetTypeId, sourceConfig, onMig
   }
 
   async function confirm() {
-    if (!migrationId) return
+    if (!targetVersionId) return
     setBusy(true)
     setErrors([])
     try {
-      const updated = await udmExecuteMigration(entityId, migrationId, toPayload(mapping))
+      const updated = await udmExecuteMigration(entityId, { targetVersionId }, toPayload(mapping))
       setOpen(false)
       onMigrated(updated)
     } catch (e) {

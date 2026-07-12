@@ -21,6 +21,21 @@ from userdefinedmodel.schemas import (
 logger = logging.getLogger(__name__)
 
 
+class ApiError(Exception):
+    """Error response raised from inside a route handler.
+
+    Raising (instead of returning a JsonResponse) matters inside
+    transaction.atomic() blocks: an exception aborts the transaction, whereas a
+    normal return would commit any writes made before the error was detected.
+    Converted to a JsonResponse by the NinjaAPI exception handler in api.py.
+    """
+
+    def __init__(self, status: int, payload: dict):
+        super().__init__(payload)
+        self.status = status
+        self.payload = payload
+
+
 def _wcag_text_color(hex_color: str) -> str:
     """Return '#ffffff' or '#000000' for maximum WCAG contrast against the given bg."""
     h = hex_color.lstrip("#")

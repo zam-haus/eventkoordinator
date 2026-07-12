@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.utils import OperationalError
 from django.http import JsonResponse
 from django.utils.timezone import now
-from ninja import Router
+from ninja import Query, Router
 from ninja.security import django_auth
 
 from userdefinedmodel.api_helpers import (
@@ -99,23 +99,26 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
             "errors": {},
         })
 
-    with transaction.atomic():
-        from userdefinedmodel.actions import ActionContext, dispatch_actions
-        entity = UserDefinedModelEntity.objects.create(
-            config_version=version, user_defined_model_type=udm_type,
-        )
-        entity.materialize_defaults()
-        entity.materialize_user_defaults(request.user)
-        result = evaluate_policy(entity, request.user, "create", locale=_locale(request))
-        if not result.allow:
-            from userdefinedmodel.engine import PolicyError
-            raise PolicyError(result.messages or [{"level": "critical", "text": "Create denied by policy."}])
-        pre_ctx = ActionContext(
-            node=entity, user=request.user, trigger="create", phase="pre",
-        )
-        dispatch_actions(result.actions, pre_ctx)
-        post_ctx = pre_ctx.model_copy(update={"phase": "post"})
-        dispatch_actions(result.actions, post_ctx)
+    from userdefinedmodel.engine import PolicyError
+    try:
+        with transaction.atomic():
+            from userdefinedmodel.actions import ActionContext, dispatch_actions
+            entity = UserDefinedModelEntity.objects.create(
+                config_version=version, user_defined_model_type=udm_type,
+            )
+            entity.materialize_defaults()
+            entity.materialize_user_defaults(request.user)
+            result = evaluate_policy(entity, request.user, "create", locale=_locale(request))
+            if not result.allow:
+                raise PolicyError(result.messages or [{"level": "critical", "text": "Create denied by policy."}])
+            pre_ctx = ActionContext(
+                node=entity, user=request.user, trigger="create", phase="pre",
+            )
+            dispatch_actions(result.actions, pre_ctx)
+            post_ctx = pre_ctx.model_copy(update={"phase": "post"})
+            dispatch_actions(result.actions, post_ctx)
+    except PolicyError as e:
+        return JsonResponse({"policy_messages": e.messages}, status=422)
     return 201, _entity_out_for_user(entity, request.user)
 
 
@@ -175,17 +178,23 @@ def patch_entity(request, entity_id: uuid.UUID, payload: EntityPatchIn):
 
 @router.delete("/entities/{entity_id}/", auth=django_auth)
 def delete_entity(request, entity_id: uuid.UUID):
+    from django.http import HttpResponse
     from userdefinedmodel.models import UserDefinedModelEntity
-    try:
-        entity = UserDefinedModelEntity.objects.get(id=entity_id)
-    except UserDefinedModelEntity.DoesNotExist:
-        return JsonResponse({"detail": "Not found"}, status=404)
-    # Object-level delete authorization is delegated to the entity's policy
-    # ("delete" action). Default-deny: no policy means no delete.
-    if not _policy_allows(entity, request.user, "delete", locale=_locale(request)):
-        return JsonResponse({"detail": "Delete denied by policy"}, status=403)
-    entity.delete()
-    return JsonResponse({}, status=204)
+    with transaction.atomic():
+        try:
+            entity = (UserDefinedModelEntity.objects
+                      .select_for_update(nowait=True, of=("self",))
+                      .get(id=entity_id))
+        except UserDefinedModelEntity.DoesNotExist:
+            return JsonResponse({"detail": "Not found"}, status=404)
+        except OperationalError:
+            return _http409_concurrent()
+        # Object-level delete authorization is delegated to the entity's policy
+        # ("delete" action). Default-deny: no policy means no delete.
+        if not _policy_allows(entity, request.user, "delete", locale=_locale(request)):
+            return JsonResponse({"detail": "Delete denied by policy"}, status=403)
+        entity.delete()
+    return HttpResponse(status=204)
 
 
 @router.post("/entities/{entity_id}/transition/", response=EntityOut, auth=django_auth)
@@ -337,7 +346,12 @@ def validation_preview(request, entity_id: uuid.UUID, payload: EntityPatchIn):
 
 
 @router.get("/entities/{entity_id}/history/", response=EditHistoryOut, auth=django_auth)
-def entity_history(request, entity_id: uuid.UUID, page: int = 1, page_size: int = 20):
+def entity_history(
+    request,
+    entity_id: uuid.UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
     from userdefinedmodel.models import UserDefinedModelEntity
     from userdefinedmodel.models.history import EditGroup
     from userdefinedmodel.engine import evaluate_policy
@@ -441,6 +455,34 @@ def entity_policy_document(request, entity_id: uuid.UUID):
 
 # ─── Migration ────────────────────────────────────────────────────────────────
 
+def _resolve_migration_target(entity, target_type_id, target_version_id):
+    """Resolve (target_type, target_version) for a migration, or raise ApiError.
+
+    Either an explicit ConfigVersion id, or a UDMType id whose published config
+    version is used. Shared by preview (pure) and execute (creates the record).
+    """
+    from userdefinedmodel.api_helpers import ApiError
+    from userdefinedmodel.models import ConfigVersion, UserDefinedModelType
+    if target_version_id:
+        try:
+            tgt_version = ConfigVersion.objects.get(id=target_version_id)
+        except ConfigVersion.DoesNotExist:
+            raise ApiError(404, {"detail": "Target version not found"})
+        tgt_type = entity.user_defined_model_type
+    elif target_type_id:
+        try:
+            tgt_type = UserDefinedModelType.objects.select_related("field_config").get(id=target_type_id)
+        except UserDefinedModelType.DoesNotExist:
+            raise ApiError(404, {"detail": "Target type not found"})
+        try:
+            tgt_version = ConfigVersion.objects.get(config=tgt_type.field_config, status=ConfigVersion.Status.PUBLISHED)
+        except ConfigVersion.DoesNotExist:
+            raise ApiError(404, {"detail": "Target type has no published config"})
+    else:
+        raise ApiError(400, {"detail": "Either target_user_defined_model_type or target_version is required"})
+    return tgt_type, tgt_version
+
+
 @router.get("/entities/{entity_id}/migration-preview/", response=MigrationPreviewOut, auth=django_auth)
 def migration_preview(
     request,
@@ -448,45 +490,19 @@ def migration_preview(
     target_user_defined_model_type: Optional[uuid.UUID] = None,
     target_version: Optional[uuid.UUID] = None,
 ):
-    from userdefinedmodel.models import (
-        UserDefinedModelEntity, ConfigVersion, UserDefinedModelType, UserDefinedModelEntityMigration,
-    )
+    """Side-effect-free migration preview: the migration record is created by
+    the execute endpoint, so refreshes/retries of this GET write nothing."""
+    from userdefinedmodel.models import UserDefinedModelEntity
     from userdefinedmodel.schemas import MigrationAction, MigrationPreviewFieldOut
+    if not request.user.is_superuser:
+        return JsonResponse({"detail": "Not allowed"}, status=403)
     try:
         entity = UserDefinedModelEntity.objects.select_related("config_version").get(id=entity_id)
     except UserDefinedModelEntity.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
 
-    # Migration rewrites the entity's field values, so it is a write to the
-    # entity: gate on the "save" allow decision before reading its fields or
-    # creating the migration record.
-    if not _policy_allows(entity, request.user, "save"):
-        return JsonResponse({"detail": "Not allowed"}, status=403)
-
-    if target_version:
-        try:
-            tgt_version = ConfigVersion.objects.get(id=target_version)
-        except ConfigVersion.DoesNotExist:
-            return JsonResponse({"detail": "Target version not found"}, status=404)
-        tgt_type = entity.user_defined_model_type
-    elif target_user_defined_model_type:
-        try:
-            tgt_type = UserDefinedModelType.objects.select_related("field_config").get(id=target_user_defined_model_type)
-        except UserDefinedModelType.DoesNotExist:
-            return JsonResponse({"detail": "Target type not found"}, status=404)
-        try:
-            tgt_version = ConfigVersion.objects.get(config=tgt_type.field_config, status=ConfigVersion.Status.PUBLISHED)
-        except ConfigVersion.DoesNotExist:
-            return JsonResponse({"detail": "Target type has no published config"}, status=404)
-    else:
-        return JsonResponse({"detail": "Either target_user_defined_model_type or target_version is required"}, status=400)
-
-    migration = UserDefinedModelEntityMigration.objects.create(
-        user_defined_model_entity=entity,
-        source_version=entity.config_version,
-        target_user_defined_model_type=tgt_type,
-        target_version=tgt_version,
-    )
+    _tgt_type, tgt_version = _resolve_migration_target(
+        entity, target_user_defined_model_type, target_version)
 
     source_fields = {f.slug: f for f in entity.config_version.field_definitions.all()}
     target_fields = {f.slug: f for f in tgt_version.field_definitions.all()}
@@ -518,7 +534,6 @@ def migration_preview(
             ))
 
     return MigrationPreviewOut(
-        migration_id=migration.id,
         source_version_id=entity.config_version_id,
         target_version_id=tgt_version.id,
         field_previews=previews,
@@ -551,19 +566,12 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
     from userdefinedmodel.models import (
         UserDefinedModelEntity, UserDefinedModelEntityMigration, MigrationFieldMapping, FieldValue,
     )
+    if not request.user.is_superuser:
+        return JsonResponse({"detail": "Not allowed"}, status=403)
     try:
         entity = UserDefinedModelEntity.objects.get(id=entity_id)
     except UserDefinedModelEntity.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
-    # Migration is a write to the entity: gate on the "save" allow decision.
-    if not _policy_allows(entity, request.user, "save"):
-        return JsonResponse({"detail": "Not allowed"}, status=403)
-    try:
-        migration = UserDefinedModelEntityMigration.objects.select_related(
-            "target_version", "target_user_defined_model_type"
-        ).get(id=payload.migration_id, user_defined_model_entity=entity)
-    except UserDefinedModelEntityMigration.DoesNotExist:
-        return JsonResponse({"detail": "Migration not found"}, status=404)
 
     with transaction.atomic():
         try:
@@ -573,7 +581,14 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
         except OperationalError:
             return _http409_concurrent()
 
-        tgt_version = migration.target_version
+        tgt_type, tgt_version = _resolve_migration_target(
+            entity, payload.target_user_defined_model_type_id, payload.target_version_id)
+        migration = UserDefinedModelEntityMigration.objects.create(
+            user_defined_model_entity=entity,
+            source_version=entity.config_version,
+            target_user_defined_model_type=tgt_type,
+            target_version=tgt_version,
+        )
         source_field_map = {f.slug: f for f in entity.config_version.field_definitions.all()}
         target_field_map = {f.slug: f for f in tgt_version.field_definitions.all()}
         overflow = {}
@@ -582,20 +597,25 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
             src_field = source_field_map.get(mapping_in.source_field_slug)
             if not src_field:
                 continue
-            fv = entity.field_values.filter(field=src_field).first()
-            if not fv:
+            # All languages: localized fields carry one FieldValue row per language.
+            fvs = list(entity.field_values.filter(field=src_field))
+            if not fvs:
                 continue
             action = mapping_in.action.value
             if action == "map" and mapping_in.target_field_slug:
                 tgt_field = target_field_map.get(mapping_in.target_field_slug)
                 if tgt_field:
-                    val = _resolve_migration_value(fv, tgt_field)
-                    if val is not None:
-                        new_fv, _ = FieldValue.objects.get_or_create(node=entity, field=tgt_field, language=fv.language)
-                        new_fv.set_value(val, field=tgt_field)
-                        new_fv.save()
+                    for fv in fvs:
+                        val = _resolve_migration_value(fv, tgt_field)
+                        if val is not None:
+                            new_fv, _ = FieldValue.objects.get_or_create(node=entity, field=tgt_field, language=fv.language)
+                            new_fv.set_value(val, field=tgt_field)
+                            new_fv.save()
             elif action == "overflow":
-                overflow[src_field.slug] = str(fv.get_value())
+                if src_field.is_localized:
+                    overflow[src_field.slug] = {fv.language: str(fv.get_value()) for fv in fvs}
+                else:
+                    overflow[src_field.slug] = str(fvs[0].get_value())
             MigrationFieldMapping.objects.create(
                 migration=migration,
                 source_field=src_field,
@@ -606,14 +626,30 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
         if overflow:
             entity.overflow_data = {**entity.overflow_data, **overflow}
         entity.config_version = tgt_version
-        entity.user_defined_model_type = migration.target_user_defined_model_type
+        entity.user_defined_model_type = tgt_type
         try:
             entity.validate_for_save()
         except ValidationError as exc:
+            transaction.set_rollback(True)
             errors = exc.message_dict if hasattr(exc, "message_dict") else {"__all__": exc.messages}
             return JsonResponse({"errors": errors}, status=400)
         entity.save(update_fields=["config_version", "user_defined_model_type", "overflow_data"])
         entity.materialize_defaults()
+        # Save gate on the MIGRATED state: evaluate "save" as if the new entity
+        # were the preexisting one (old doc == new doc), so the policy verifies
+        # the migrated model is valid as-is under its new config/type. A denial
+        # rolls back the whole migration.
+        from userdefinedmodel.engine import evaluate_policy, build_entity_document
+        result = evaluate_policy(
+            entity, request.user, "save",
+            locale=_locale(request),
+            old_entity_doc=build_entity_document(entity),
+        )
+        if not result.allow:
+            transaction.set_rollback(True)
+            return JsonResponse(
+                {"detail": "Not allowed", "policy_messages": result.messages}, status=403,
+            )
         migration.executed_at = now()
         migration.executed_by = request.user
         migration.save(update_fields=["executed_at", "executed_by"])

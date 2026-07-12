@@ -301,7 +301,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Migration Preview */
+        /**
+         * Migration Preview
+         * @description Side-effect-free migration preview: the migration record is created by
+         *     the execute endpoint, so refreshes/retries of this GET write nothing.
+         */
         get: operations["userdefinedmodel_api_entities_migration_preview"];
         put?: never;
         post?: never;
@@ -1227,6 +1231,8 @@ export interface components {
             type_config?: {
                 [key: string]: unknown;
             };
+            /** Workflow Definition Id */
+            workflow_definition_id?: string | null;
             /** Workflow Version Id */
             workflow_version_id?: string | null;
         };
@@ -1329,11 +1335,10 @@ export interface components {
             confirmed: true;
             /** Field Mappings */
             field_mappings: components["schemas"]["MigrationFieldMappingIn"][];
-            /**
-             * Migration Id
-             * Format: uuid
-             */
-            migration_id: string;
+            /** Target User Defined Model Type Id */
+            target_user_defined_model_type_id?: string | null;
+            /** Target Version Id */
+            target_version_id?: string | null;
         };
         /** MigrationFieldMappingIn */
         MigrationFieldMappingIn: {
@@ -1359,11 +1364,6 @@ export interface components {
         MigrationPreviewOut: {
             /** Field Previews */
             field_previews: components["schemas"]["MigrationPreviewFieldOut"][];
-            /**
-             * Migration Id
-             * Format: uuid
-             */
-            migration_id: string;
             /**
              * Source Version Id
              * Format: uuid
@@ -2391,8 +2391,8 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
-                type_ids?: string;
-                ids?: string;
+                type_ids?: string[] | null;
+                ids?: string[] | null;
             };
             header?: never;
             path?: never;
@@ -2437,7 +2437,7 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
-                ids?: string;
+                ids?: number[] | null;
             };
             header?: never;
             path?: never;
@@ -2904,6 +2904,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
             /** @description Created */
             201: {
                 headers: {
@@ -2962,8 +2971,8 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
-                group_ids?: string;
-                ids?: string;
+                group_ids?: number[] | null;
+                ids?: string[] | null;
             };
             header?: never;
             path?: never;

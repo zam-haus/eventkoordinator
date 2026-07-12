@@ -640,8 +640,8 @@ export async function udmEntityHistory(entityId: string, page = 1): Promise<Edit
 // ── Migration ─────────────────────────────────────────────────────────────────
 
 /** Build a migration preview for one entity. Targets either the published config
- *  of a UDM type, or an explicit target config version. NOTE: each call creates a
- *  migration row server-side, so only invoke on explicit user action. */
+ *  of a UDM type, or an explicit target config version. Side-effect free: the
+ *  migration record is created by udmExecuteMigration. */
 export async function udmMigrationPreview(
   entityId: string,
   opts: { targetTypeId?: string; targetVersionId?: string },
@@ -661,12 +661,17 @@ export async function udmMigrationPreview(
 
 export async function udmExecuteMigration(
   entityId: string,
-  migrationId: string,
+  target: { targetTypeId?: string; targetVersionId?: string },
   fieldMappings: MigrationFieldMappingIn[],
 ): Promise<EntityOut> {
   const { data, error, response } = await udmClient.POST('/api/udm/entities/{entity_id}/migrate/', {
     params: { path: { entity_id: entityId } },
-    body: { migration_id: migrationId, confirmed: true, field_mappings: fieldMappings },
+    body: {
+      target_user_defined_model_type_id: target.targetTypeId ?? null,
+      target_version_id: target.targetVersionId ?? null,
+      confirmed: true,
+      field_mappings: fieldMappings,
+    },
   })
   if (error || !response.ok || !data) throwApiError(error, 'Migration failed')
   return data as EntityOut
@@ -714,25 +719,33 @@ export async function udmExecuteBulkMigration(planId: string): Promise<void> {
 
 // ── Autocomplete ──────────────────────────────────────────────────────────────
 
-export async function udmSearchUsers(q = '', groupIds?: string): Promise<UserAutocompleteItem[]> {
+// The backend takes typed list params (repeated ?ids=..&ids=..), so callers
+// pass arrays; comma-joined strings from older call sites are split here.
+function toIdList(v?: string | string[] | number[]): (string | number)[] | undefined {
+  if (v === undefined || v === null || v === '') return undefined
+  if (Array.isArray(v)) return v.length ? v : undefined
+  return v.split(',').map(s => s.trim()).filter(Boolean)
+}
+
+export async function udmSearchUsers(q = '', groupIds?: string | number[]): Promise<UserAutocompleteItem[]> {
   const { data, response } = await udmClient.GET('/api/udm/users/', {
-    params: { query: { q, group_ids: groupIds } },
+    params: { query: { q, group_ids: toIdList(groupIds) as number[] | undefined } },
   })
   if (!response.ok) return []
   return (data as UserAutocompleteItem[]) || []
 }
 
-export async function udmSearchGroups(q = ''): Promise<GroupAutocompleteItem[]> {
+export async function udmSearchGroups(q = '', ids?: string | number[]): Promise<GroupAutocompleteItem[]> {
   const { data, response } = await udmClient.GET('/api/udm/groups/', {
-    params: { query: { q } },
+    params: { query: { q, ids: toIdList(ids) as number[] | undefined } },
   })
   if (!response.ok) return []
   return (data as GroupAutocompleteItem[]) || []
 }
 
-export async function udmSearchEntities(q = '', typeIds?: string, ids?: string): Promise<EntityAutocompleteItem[]> {
+export async function udmSearchEntities(q = '', typeIds?: string | string[], ids?: string | string[]): Promise<EntityAutocompleteItem[]> {
   const { data, response } = await udmClient.GET('/api/udm/entity-search/', {
-    params: { query: { q, type_ids: typeIds, ids } },
+    params: { query: { q, type_ids: toIdList(typeIds) as string[] | undefined, ids: toIdList(ids) as string[] | undefined } },
   })
   if (!response.ok) return []
   return (data as EntityAutocompleteItem[]) || []
