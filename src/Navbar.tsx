@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menubar } from 'primereact/menubar'
 import type { MenuItem } from 'primereact/menuitem'
-import { initializeCsrfToken, login as apiLogin, fetchSiteConfig, type SiteConfig } from './api'
-import { usePermissions } from './usePermissions'
+import { initializeCsrfToken, login as apiLogin, fetchSiteConfig, setSudoMode, type SiteConfig } from './api'
+import { usePermissions, notifyAuthChanged } from './usePermissions'
 import { translateApiError } from './apiError'
 import { useTranslation } from 'react-i18next'
 import i18n from './i18n'
@@ -22,6 +22,7 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
   const [loginFormData, setLoginFormData] = useState({ username: '', password: '' })
   const [loginError, setLoginError] = useState<string | null>(null)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [isTogglingSudo, setIsTogglingSudo] = useState(false)
   const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
@@ -90,6 +91,19 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     form.appendChild(nextInput)
     document.body.appendChild(form)
     form.submit()
+  }
+
+  const handleSudoToggle = async () => {
+    if (!permissions || isTogglingSudo) return
+    setIsTogglingSudo(true)
+    try {
+      await setSudoMode(!permissions.sudo_mode)
+      notifyAuthChanged()
+    } catch (error) {
+      console.error('Failed to toggle sudo mode:', error)
+    } finally {
+      setIsTogglingSudo(false)
+    }
   }
 
   const handleSsoLogin = () => {
@@ -204,6 +218,12 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
 
   const end = (
     <div className={styles.endSection}>
+      {permissions?.sudo_mode && (
+        <span className={styles.sudoIndicator} title={t('nav.sudoMode')} role="status">
+          <i className="pi pi-exclamation-triangle" aria-hidden="true" />
+          {t('nav.sudoMode')}
+        </span>
+      )}
       <div className={styles.langSwitcher} aria-label="Language switcher">
         <button
           type="button"
@@ -260,6 +280,24 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
                   >
                     {t('nav.manageAccount')}
                   </a>
+                )}
+                {permissions?.is_superuser && (
+                  <>
+                    <hr className={styles.divider} />
+                    <label
+                      className={`${styles.sudoToggle} ${permissions.sudo_mode ? styles.sudoToggleActive : ''}`}
+                      role="menuitemcheckbox"
+                      aria-checked={permissions.sudo_mode}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={permissions.sudo_mode}
+                        disabled={isTogglingSudo}
+                        onChange={() => void handleSudoToggle()}
+                      />
+                      {t('nav.sudoMode')}
+                    </label>
+                  </>
                 )}
                 <hr className={styles.divider} />
                 <button
@@ -363,7 +401,7 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
 
   return (
     <Menubar
-      className={styles.menubar}
+      className={`${styles.menubar} ${permissions?.sudo_mode ? styles.menubarSudo : ''}`}
       model={navItems}
       start={start}
       end={end}

@@ -146,6 +146,9 @@ def _serialize_user(user, *, include_permissions: bool = False) -> dict:
         "is_active": user.is_active,
         "is_staff": user.is_staff,
         "is_superuser": user.is_superuser,
+        # Session-scoped sudo toggle; annotated by SudoModeMiddleware, so it is
+        # only ever True on the requesting user, never on lookup-map users.
+        "sudo": bool(user.is_superuser and getattr(user, "sudo_mode", False)),
         "groups": [{"id": g.id, "name": g.name} for g in user.groups.all()],
     }
     if include_permissions:

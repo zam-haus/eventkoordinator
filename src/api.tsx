@@ -168,6 +168,7 @@ export interface UserPermissions {
   is_staff: boolean
   is_superuser: boolean
   is_active: boolean
+  sudo_mode: boolean
   permissions: string[]
 }
 
@@ -539,6 +540,7 @@ export async function getUserPermissions(): Promise<UserPermissions> {
         is_staff: false,
         is_superuser: false,
         is_active: false,
+        sudo_mode: false,
         permissions: [],
       }
     }
@@ -547,6 +549,16 @@ export async function getUserPermissions(): Promise<UserPermissions> {
   }
 
   return data as unknown as UserPermissions
+}
+
+export async function setSudoMode(enabled: boolean): Promise<void> {
+  const { error, response } = await client.POST('/api/v1/user/sudo', {
+    body: { enabled },
+  })
+
+  if (error || !response.ok) {
+    throw new Error((error as unknown as AuthError)?.code || 'auth.permissionDenied')
+  }
 }
 
 export async function checkObjectPermission(request: PermissionCheckRequest): Promise<boolean> {

@@ -67,6 +67,8 @@ class UserDocument(BaseModel):
     id: str
     username: str
     groups: list[GroupRef]
+    # session-scoped superuser sudo toggle; only ever True on input.user
+    sudo: bool = False
 
 
 class GroupDocument(BaseModel):

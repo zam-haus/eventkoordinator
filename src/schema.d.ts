@@ -1240,6 +1240,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/user/sudo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Sudo Mode
+         * @description Toggle sudo mode for the current session (superusers only).
+         *
+         *     While enabled, the flag is passed through to the UDM Rego policies as
+         *     ``input.user.sudo``. Returns 403 for non-superusers.
+         */
+        post: operations["openid_user_management_api_set_sudo_mode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/user/users": {
         parameters: {
             query?: never;
@@ -1713,6 +1736,11 @@ export interface components {
             is_superuser: boolean;
             /** Permissions */
             permissions: string[];
+            /**
+             * Sudo Mode
+             * @default false
+             */
+            sudo_mode: boolean;
         };
         /** PropertyDiff */
         PropertyDiff: {
@@ -2223,6 +2251,22 @@ export interface components {
             id: string;
             /** Profile Picture */
             profile_picture?: string | null;
+        };
+        /**
+         * SudoModeIn
+         * @description Schema for toggling sudo mode on the current session.
+         */
+        SudoModeIn: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * SudoModeOut
+         * @description Schema for the sudo mode state of the current session.
+         */
+        SudoModeOut: {
+            /** Sudo Mode */
+            sudo_mode: boolean;
         };
         /** SyncDeleteResult */
         SyncDeleteResult: {
@@ -5700,6 +5744,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PermissionsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    openid_user_management_api_set_sudo_mode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SudoModeIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SudoModeOut"];
                 };
             };
             /** @description Unauthorized */

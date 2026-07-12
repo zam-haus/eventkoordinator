@@ -366,7 +366,8 @@
     "adminLink": "Admin-Bereich",
     "imprint": "Impressum",
     "privacyPolicy": "Datenschutzerklärung",
-    "manageAccount": "Konto verwalten"
+    "manageAccount": "Konto verwalten",
+    "sudoMode": "Sudo-Modus"
   },
   "event": {
     "statusLabel": "Veranstaltungsstatus: {{status}}",

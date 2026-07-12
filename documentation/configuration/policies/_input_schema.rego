@@ -260,6 +260,8 @@ example_user := {
 	"is_active": true,
 	"is_staff": false,
 	"is_superuser": false,
+	# session-scoped superuser sudo toggle; only ever true on input.user
+	"sudo": false,
 	"groups": [{"id": 1, "name": "moderators"}],
 	"permissions": ["view_entity"],
 }

@@ -81,7 +81,21 @@ class PermissionsOut(Schema):
     is_staff: bool
     is_superuser: bool
     is_active: bool
+    sudo_mode: bool = False
     permissions: list[str]
+
+
+class SudoModeIn(Schema):
+    """Schema for toggling sudo mode on the current session."""
+
+    enabled: bool
+
+
+class SudoModeOut(Schema):
+    """Schema for the sudo mode state of the current session."""
+
+    sudo_mode: bool
+
 
 class PermissionIn(Schema):
     """Schema for user permissions request."""

@@ -24,7 +24,10 @@ from openid_user_management.schemas import (
     ErrorOut,
     PermissionsOut,
     PermissionIn,
+    SudoModeIn,
+    SudoModeOut,
 )
+from openid_user_management.sudo import SUDO_SESSION_KEY, is_sudo_active
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -139,11 +142,36 @@ def get_current_user_permissions(request: HttpRequest) -> tuple:
             is_staff=user.is_staff,
             is_superuser=user.is_superuser,
             is_active=user.is_active,
+            sudo_mode=is_sudo_active(request),
             permissions=list(set(p for p in permissions if p is not None)),  # Remove duplicates and None values
         )
     except Exception as e:
         logger.error(f"Failed to retrieve user permissions: {str(e)}")
         raise Exception("Failed to retrieve permissions") from e
+
+
+@router.post(
+    "/sudo",
+    response={200: SudoModeOut, 401: ErrorOut, 403: ErrorOut},
+)
+def set_sudo_mode(request: HttpRequest, payload: SudoModeIn) -> tuple:
+    """
+    Toggle sudo mode for the current session (superusers only).
+
+    While enabled, the flag is passed through to the UDM Rego policies as
+    ``input.user.sudo``. Returns 403 for non-superusers.
+    """
+    if not request.user or not request.user.is_authenticated:
+        return 401, ErrorOut(code="auth.notAuthenticated")
+    if not request.user.is_superuser:
+        return 403, ErrorOut(code="auth.permissionDenied")
+
+    if payload.enabled:
+        request.session[SUDO_SESSION_KEY] = True
+    else:
+        request.session.pop(SUDO_SESSION_KEY, None)
+    logger.info("sudo mode %s for user %s", "enabled" if payload.enabled else "disabled", request.user.username)
+    return 200, SudoModeOut(sudo_mode=payload.enabled)
 
 
 @router.post(

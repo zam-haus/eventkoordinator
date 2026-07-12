@@ -3,7 +3,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "loading": "Loading\u2026",
+    "loading": "Loading…",
     "error": "Error",
     "close": "Close",
     "edit": "Edit",
@@ -421,7 +421,8 @@
     "adminLink": "Admin panel",
     "imprint": "Imprint",
     "privacyPolicy": "Privacy Policy",
-    "manageAccount": "Manage Account"
+    "manageAccount": "Manage Account",
+    "sudoMode": "Sudo mode"
   },
   "syncDiff": {
     "missingParams": "Missing required parameters",

@@ -32,6 +32,7 @@ export function usePermissions() {
             is_staff: false,
             is_superuser: false,
             is_active: false,
+            sudo_mode: false,
             permissions: [],
           })
         }

@@ -133,6 +133,31 @@
   background-color: rgba(255, 255, 255, 0.3) !important;
 }
 
+/* Sudo mode active: whole navbar (incl. button row and mobile popup) turns red.
+   .menubar.menubarSudo outranks every single-class .menubar rule above. */
+.menubar.menubarSudo,
+.menubar.menubarSudo :global(.p-menubar-root-list) {
+  background-color: #b91c1c !important;
+}
+
+.menubar.menubarSudo :global(.p-menubar-mobile-active .p-submenu-list) {
+  background: #dc2626;
+}
+
+/* Yellow warning icon shown while sudo mode is active */
+.sudoIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #facc15;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sudoIndicator :global(.pi) {
+  font-size: 1.2rem;
+}
+
 /* Dropdown sub-link items (desktop: light panel; mobile: overridden below) */
 .subLink,
 .activeSubLink {
@@ -355,6 +380,30 @@
 .logoutButton:focus {
   outline: 2px solid #333;
   outline-offset: 2px;
+}
+
+.sudoToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #333;
+  user-select: none;
+}
+
+.sudoToggle:hover {
+  background-color: #f5f5f5;
+}
+
+.sudoToggleActive {
+  color: #d32f2f;
+  font-weight: 600;
+}
+
+.sudoToggle input {
+  cursor: pointer;
 }
 
 .loginForm {
