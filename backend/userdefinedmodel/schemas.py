@@ -318,6 +318,9 @@ class WorkflowTransitionIn(Schema):
     to_state: Annotated[str, Field(min_length=1, max_length=_MAX_STATE_NAME_LEN)]
     source_handle: Annotated[str, Field(max_length=30)] = ""
     target_handle: Annotated[str, Field(max_length=30)] = ""
+    # Free-form JSON consumed by policies (input.transition_descriptor /
+    # candidate_transitions); merged over the version-level properties.
+    properties: dict = Field(default_factory=dict)
     model_config = {"extra": "forbid"}
 
     @model_validator(mode="after")
@@ -353,6 +356,7 @@ class WorkflowTransitionOut(Schema):
     name: str; label: dict[str, str]
     from_state: Optional[str]; from_undefined_only: bool; to_state: str
     source_handle: str; target_handle: str
+    properties: dict = {}
 
 
 class WorkflowOut(Schema):
@@ -521,8 +525,9 @@ class EntityOut(Schema):
     children: dict[str, list[Any]]
     overflow_data: dict[str, Any]
     created_at: str; updated_at: str
-    viewable_fields: Optional[list[str]] = None
-    editable_fields: list[str] = []
+    # Per-node grant maps {node_id: [slugs]} covering the whole tree (§3.1-1).
+    viewable_fields: dict[str, list[str]] = {}
+    editable_fields: dict[str, list[str]] = {}
     policy_messages: list[Any] = []
     dashboard_columns: list[DashboardColumnOut] = []
 

@@ -56,6 +56,67 @@ import styles from './UdmAdminPage.module.css'
 type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle' | 'workflow'
 type ConfigView = 'list' | 'detail'
 
+// ── Policy evaluator: field-grant tree ────────────────────────────────────────
+// Renders the entity tree from the evaluator's input document and marks every
+// field with its grant state (✏ editable, 👁 view only, struck-through hidden).
+
+interface GrantTreeNode {
+  id: string
+  schema_id?: string
+  parent_field_slug?: string | null
+  fields: Record<string, unknown>
+  children: Record<string, GrantTreeNode[]>
+}
+
+function FieldGrantTree({ node, schemas, viewable, editable, label }: {
+  node: GrantTreeNode
+  schemas: Record<string, { slug?: string }>
+  viewable: Record<string, string[]>
+  editable: Record<string, string[]>
+  label: string
+}) {
+  const canView = new Set(viewable[node.id] ?? [])
+  const canEdit = new Set(editable[node.id] ?? [])
+  const schemaSlug = node.schema_id ? schemas[node.schema_id]?.slug : undefined
+  const fieldSlugs = Object.keys(node.fields ?? {}).sort()
+  const childEntries = Object.entries(node.children ?? {})
+  return (
+    <div style={{ fontSize: '0.85rem', fontFamily: 'monospace' }}>
+      <div style={{ fontWeight: 600, color: '#333' }}>
+        {label}
+        {schemaSlug && <span style={{ color: '#888', fontWeight: 400 }}> ({schemaSlug})</span>}
+        <span style={{ color: '#bbb', fontWeight: 400 }}> {node.id.slice(0, 8)}…</span>
+      </div>
+      <ul style={{ listStyle: 'none', margin: '0.15rem 0 0.3rem 0', paddingLeft: '1.2rem', borderLeft: '1px solid #e2e8f0' }}>
+        {fieldSlugs.map(slug => {
+          const isEdit = canEdit.has(slug)
+          const isView = canView.has(slug)
+          const color = isEdit ? '#155724' : isView ? '#0066cc' : '#999'
+          return (
+            <li key={slug} style={{ color, padding: '0.05rem 0' }}>
+              <span style={{ display: 'inline-block', width: '1.4rem' }}>{isEdit ? '✏' : isView ? '👁' : '·'}</span>
+              {isView || isEdit ? slug : <s>{slug}</s>}
+            </li>
+          )
+        })}
+        {childEntries.map(([slug, children]) => (
+          <li key={`child-${slug}`} style={{ padding: '0.1rem 0' }}>
+            {children.map((child, i) => (
+              <FieldGrantTree key={child.id} node={child} schemas={schemas}
+                viewable={viewable} editable={editable}
+                label={`${slug}[${i}]`} />
+            ))}
+            {children.length === 0 && (
+              <span style={{ color: '#bbb' }}>{slug}: (no items)</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+
 const DATA_TYPES: DataType[] = [
   'text_short', 'text_long', 'text_markdown', 'text_richtext',
   'integer', 'float', 'boolean', 'date', 'time', 'datetime',
@@ -1833,9 +1894,9 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
               <span style={{ fontSize: '0.875rem', color: '#555' }}>
                 {(result.output.messages as unknown[]).length} message{(result.output.messages as unknown[]).length !== 1 ? 's' : ''}
                 {' · '}
-                {(result.output.viewable_fields as string[]).length} viewable fields
+                {Object.values((result.output.viewable_fields ?? {}) as Record<string, string[]>).flat().length} viewable fields
                 {' · '}
-                {(result.output.editable_fields as string[]).length} editable fields
+                {Object.values((result.output.editable_fields ?? {}) as Record<string, string[]>).flat().length} editable fields
               </span>
             )}
           </div>
@@ -1857,29 +1918,22 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
             </div>
           )}
 
-          {/* Field lists */}
-          {((result.output.viewable_fields as string[]).length > 0 || (result.output.editable_fields as string[]).length > 0) && (
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-              {(result.output.viewable_fields as string[]).length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#555', marginBottom: '0.25rem' }}>Viewable fields</div>
-                  <div className={styles.langGrid}>
-                    {(result.output.viewable_fields as string[]).map(f => (
-                      <span key={f} className={styles.ruleTag}>{f}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {(result.output.editable_fields as string[]).length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#555', marginBottom: '0.25rem' }}>Editable fields</div>
-                  <div className={styles.langGrid}>
-                    {(result.output.editable_fields as string[]).map(f => (
-                      <span key={f} className={styles.ruleTag} style={{ background: '#d4edda', color: '#155724' }}>{f}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {/* Field grants as a tree: node → fields, with per-field view/edit state */}
+          {result.input_document?.entity != null && (
+            <div style={{ marginBottom: '0.75rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#555', marginBottom: '0.25rem' }}>
+                Field grants
+                <span style={{ fontWeight: 400, marginLeft: '0.6rem', color: '#777' }}>
+                  ✏ editable · 👁 view only · <s>hidden</s>
+                </span>
+              </div>
+              <FieldGrantTree
+                node={result.input_document.entity as GrantTreeNode}
+                schemas={(result.input_document.schemas ?? {}) as Record<string, { slug?: string }>}
+                viewable={(result.output.viewable_fields ?? {}) as Record<string, string[]>}
+                editable={(result.output.editable_fields ?? {}) as Record<string, string[]>}
+                label="root"
+              />
             </div>
           )}
 

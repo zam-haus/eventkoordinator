@@ -198,7 +198,12 @@ PolicyActionOutput = Annotated[
 
 
 class PolicyEvaluationOutput(BaseModel):
-    """Typed, validated output of a Rego policy evaluation.
+    """Typed, validated output of a Rego policy evaluation (data.udm.result).
+
+    Field grants are PER-NODE maps ``{node_id: [slugs]}`` covering the whole
+    model tree; empty means fully redacted (deny-by-default — there is no
+    unrestricted sentinel). ``additional_result`` is the policy-defined
+    carry-over from the VIEW pre-check to save/transition/preview inputs.
 
     ``actions`` is stored as raw dicts so that externally-registered action
     types (not in the built-in discriminated union) can be included without
@@ -208,10 +213,12 @@ class PolicyEvaluationOutput(BaseModel):
 
     allow: bool = False
     messages: list[dict] = []
-    viewable_fields: list[str] | None = None
-    editable_fields: list[str] = []
+    viewable_fields: dict[str, list[str]] = {}
+    editable_fields: dict[str, list[str]] = {}
+    valid_transitions: list[dict] = []
     dashboard_columns: list[dict] = []
     actions: list[dict] = []
+    additional_result: dict = {}
 
 
 # ─── Registry ─────────────────────────────────────────────────────────────────

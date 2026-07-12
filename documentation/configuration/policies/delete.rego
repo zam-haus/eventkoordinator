@@ -1,6 +1,5 @@
 package udm.udmframeworkv1.modules.delete
 
-import data.udm
 import data.udm.udmframeworkv1.modules.roles
 import data.udm.udmframeworkv1.modules.view
 import data.udm.udmframeworkv1.modules.workflow

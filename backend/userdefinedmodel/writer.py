@@ -27,12 +27,25 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def serialize_node(node: "UserDefinedModelEntityNode") -> dict:
-    """Build the EntityOut-compatible dict for a node and its children."""
+def serialize_node(node: "UserDefinedModelEntityNode", viewable: dict[str, list[str]] | None = None) -> dict:
+    """Build the EntityOut-compatible dict for a node and its children.
+
+    ``viewable`` is the policy's per-node field grant ``{node_id: [slugs]}``
+    (§5): when given, this is the single redaction point — field values and
+    child lists are filtered RECURSIVELY for every node in the tree. A node id
+    absent from the map exposes nothing. ``None`` disables filtering and is
+    reserved for internal (non-API) callers.
+    """
     from userdefinedmodel.models import UserDefinedModelEntity
+
+    allowed: set[str] | None = None
+    if viewable is not None:
+        allowed = set(viewable.get(str(node.id), []))
 
     field_values = []
     for fv in node.field_values.select_related("field", "value_file").filter(field__version_id=node.config_version_id):
+        if allowed is not None and fv.field.slug not in allowed:
+            continue
         # For file/image fields use the already-loaded FileAttachment object so
         # _serialize_value can include the URL without an extra query.
         if fv.field.data_type in ("image", "file") and fv.value_file_id is not None:
@@ -49,9 +62,11 @@ def serialize_node(node: "UserDefinedModelEntityNode") -> dict:
     children = {}
     for child in node.children.select_related("parent_field").order_by("submodelinstance__sort_order", "id"):
         slug = child.parent_field.slug if child.parent_field else "unknown"
+        if allowed is not None and slug not in allowed:
+            continue
         if slug not in children:
             children[slug] = []
-        children[slug].append(serialize_node(child))
+        children[slug].append(serialize_node(child, viewable))
 
     result = {
         "id": str(node.id),
@@ -100,10 +115,18 @@ def apply_patch(
     edit_group=None,
     validate_only: bool = False,
     _old_entity_doc: dict | None = None,
+    locale: str | None = None,
+    skip_policy: bool = False,
 ) -> "EditGroup":
     """
     Apply a partial PATCH to node. Must be called inside transaction.atomic()
     with root lock held. Returns the EditGroup created.
+
+    ``validate_only`` suppresses irreversible side effects (staging-file
+    promotion) for callers that roll the transaction back.
+    ``skip_policy=True`` applies only the writes — no save-policy evaluation,
+    no action dispatch, no validate_for_save. Used by the validation-preview
+    endpoint, which runs its own single "preview" evaluation afterwards.
     """
     from userdefinedmodel.models import FieldDefinition, FieldValue, UserDefinedModelEntity
     from userdefinedmodel.models.history import EditGroup, FieldEdit
@@ -156,14 +179,10 @@ def apply_patch(
 
     # Capture the pre-write root entity document once at the top level so the
     # policy can inspect state that no longer exists after writes (e.g. the author
-    # field of a deleted review submodel). Threaded to recursive calls unchanged.
+    # field of a deleted review submodel). Raw PKs only — the engine resolves
+    # references via the input.users/groups/linked_entities lookup maps.
     if _old_entity_doc is None:
-        from userdefinedmodel.engine import _expand_fields
         _old_entity_doc = root_entity.to_policy_document()
-        _expand_fields(_old_entity_doc.get("fields", {}))
-        for _child_list in _old_entity_doc.get("children", {}).values():
-            for _child_doc in _child_list:
-                _expand_fields(_child_doc.get("fields", {}))
 
     if edit_group is None:
         edit_group = EditGroup.objects.create(node=node, root_entity=root_entity, saved_by=user)
@@ -178,9 +197,18 @@ def apply_patch(
         if isinstance(ops, list):
             _apply_submodel_ops(node, field, ops, user, edit_group, validate_only=validate_only, old_entity_doc=_old_entity_doc)
 
+    if skip_policy:
+        # Nested submodel patches and the validation-preview path: the ONE
+        # root-level evaluation covers the whole tree (contract §3.3-12), so no
+        # per-node policy runs here. Save rules still apply per node unless the
+        # caller validates the subtree itself.
+        if not validate_only:
+            node.validate_for_save()
+        return edit_group, []
+
     # Evaluate policy for SAVE before validation so PRE actions can normalise
     # field values that validation will then check.
-    output, messages = _evaluate_save_policy(node, user, changed_fields, validate_only=validate_only, old_entity_doc=_old_entity_doc)
+    output, messages = _evaluate_save_policy(node, user, changed_fields, old_entity_doc=_old_entity_doc, locale=locale)
 
     # Dispatch PRE-phase save actions (after writes, before validation).
     from userdefinedmodel.actions import ActionContext, dispatch_actions
@@ -203,44 +231,33 @@ def apply_patch(
     return edit_group, messages
 
 
-def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool = False, old_entity_doc: dict | None = None):
+def _evaluate_save_policy(node, user, changed_fields: dict, old_entity_doc: dict | None = None, locale: str | None = None):
     """Evaluate Rego policy for SAVE action.
 
     Returns ``(PolicyEvaluationOutput, messages_list)``.
     Raises PolicyError if allow=False.
     """
-    import decimal
-    import datetime as dt
-    from userdefinedmodel.engine import evaluate_policy, evaluate_view_precheck, PolicyError
+    from userdefinedmodel.engine import (
+        evaluate_policy, evaluate_view_precheck, build_entity_document, PolicyError,
+    )
 
-    def _safe(v):
-        if isinstance(v, decimal.Decimal):
-            return float(v)
-        if isinstance(v, (dt.datetime, dt.date, dt.time)):
-            return v.isoformat()
-        if hasattr(v, "pk"):
-            return str(v.pk)
-        return v
-
-    safe_changed = {
-        slug: {"value": _safe(val)}
-        for slug, val in changed_fields.items()
-    }
+    safe_changed = serialize_changed_fields(changed_fields)
 
     logger.debug(
         "policy save eval node=%s user=%s changed_slugs=%s",
         node.id, user.username, list(safe_changed.keys()),
     )
 
-    view_was_allowed, old_editable_fields = evaluate_view_precheck(node, user, old_entity_doc)
+    if old_entity_doc is None:
+        old_entity_doc = build_entity_document(node)
+    _view_allowed, additional_result = evaluate_view_precheck(node, user, old_entity_doc, locale=locale)
 
     output = evaluate_policy(
         node, user, "save",
+        locale=locale,
         changed_fields=safe_changed,
-        validate_only=validate_only,
-        old_entity=old_entity_doc,
-        view_was_allowed=view_was_allowed,
-        old_editable_fields=old_editable_fields,
+        old_entity_doc=old_entity_doc,
+        additional_result=additional_result,
     )
 
     logger.debug(
@@ -254,6 +271,24 @@ def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool 
         raise PolicyError(messages or [{"level": "critical", "text": "Save denied by policy."}])
 
     return output, messages
+
+
+def serialize_changed_fields(changed_fields: dict) -> dict:
+    """Wrap the raw submitted payload as {slug: {"value": <json-safe>}} for the
+    policy input (same scalar encoding as entity field values)."""
+    import decimal
+    import datetime as dt
+
+    def _safe(v):
+        if isinstance(v, decimal.Decimal):
+            return float(v)
+        if isinstance(v, (dt.datetime, dt.date, dt.time)):
+            return v.isoformat()
+        if hasattr(v, "pk"):
+            return str(v.pk)
+        return v
+
+    return {slug: {"value": _safe(val)} for slug, val in changed_fields.items()}
 
 
 def _apply_scalar_write(node, field, value, user, edit_group) -> None:
@@ -303,7 +338,7 @@ def _write_field_value(node, field, value, language, user, edit_group) -> None:
             # Apply caller-supplied field values before setting the initial state
             op_fields = value.get("fields") or {}
             if op_fields:
-                _, _msgs = apply_patch(child, op_fields, user, edit_group)
+                _, _msgs = apply_patch(child, op_fields, user, edit_group, skip_policy=True)
             value = child.id  # fall through to set value_node_id
         elif op == "update":
             # Update the fields of the currently-referenced child; the FK itself
@@ -316,7 +351,7 @@ def _write_field_value(node, field, value, language, user, edit_group) -> None:
                     child = None
                 op_fields = value.get("fields") or {}
                 if child and op_fields:
-                    _, _msgs = apply_patch(child, op_fields, user, edit_group)
+                    _, _msgs = apply_patch(child, op_fields, user, edit_group, skip_policy=True)
             return
         elif op == "delete":
             if fv and fv.value_node_id:
@@ -457,7 +492,7 @@ def _apply_submodel_ops(parent_node, field, ops, user, edit_group, validate_only
             child.materialize_user_defaults(user)
 
             if op_fields:
-                _, _msgs = apply_patch(child, op_fields, user, edit_group=edit_group, validate_only=validate_only, _old_entity_doc=old_entity_doc)
+                _, _msgs = apply_patch(child, op_fields, user, edit_group=edit_group, validate_only=validate_only, _old_entity_doc=old_entity_doc, skip_policy=True)
 
             FieldEdit.objects.create(
                 group=edit_group,
@@ -486,7 +521,7 @@ def _apply_submodel_ops(parent_node, field, ops, user, edit_group, validate_only
                 )
 
             if op_fields:
-                _, _msgs = apply_patch(child, op_fields, user, edit_group=edit_group, validate_only=validate_only, _old_entity_doc=old_entity_doc)
+                _, _msgs = apply_patch(child, op_fields, user, edit_group=edit_group, validate_only=validate_only, _old_entity_doc=old_entity_doc, skip_policy=True)
 
         elif op == "delete":
             try:

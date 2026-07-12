@@ -24,6 +24,10 @@ class WorkflowVersion(MetaBase):
     published_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
     virtual_node_positions = models.JSONField(default=dict, blank=True)
+    # Free-form defaults merged into every transition descriptor of this
+    # version (the transition's own properties win). Consumed by Rego policies
+    # via input.candidate_transitions / input.transition_descriptor.
+    properties = models.JSONField(default=dict, blank=True)
 
     class Meta:
         constraints = [
@@ -60,6 +64,7 @@ class WorkflowVersion(MetaBase):
             status=WorkflowVersion.Status.DRAFT,
             notes="",
             virtual_node_positions=self.virtual_node_positions,
+            properties=self.properties,
         )
         state_map = {}
         for old_state in self.states.prefetch_related("translations").all():
@@ -85,6 +90,7 @@ class WorkflowVersion(MetaBase):
                 to_state=state_map[old_trans.to_state_id],
                 source_handle=old_trans.source_handle,
                 target_handle=old_trans.target_handle,
+                properties=old_trans.properties,
             )
             for t in old_trans.translations.all():
                 WorkflowTransitionTranslation.objects.create(
@@ -155,9 +161,22 @@ class WorkflowTransition(MetaBase):
     )
     source_handle = models.CharField(max_length=30, blank=True, default="")
     target_handle = models.CharField(max_length=30, blank=True, default="")
+    # Free-form JSON consumed by Rego policies (merged over the version's
+    # properties) so rules can match on semantics instead of transition names.
+    properties = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"{self.version} / {self.name}"
+
+    def to_descriptor(self) -> dict:
+        """TransitionDescriptor for the policy input document (contract:
+        documentation/configuration/policies/_input_schema.rego)."""
+        return {
+            "from_state": self.from_state.name if self.from_state else None,
+            "to_state": self.to_state.name,
+            "from_undefined_only": self.from_undefined_only,
+            "properties": {**(self.version.properties or {}), **(self.properties or {})},
+        }
 
 
 class WorkflowTransitionTranslation(MetaBase):

@@ -14,37 +14,52 @@ import rego.v1
 
 default allow := false
 
-# ─── allow: transition ─────────────────────────────────────────────────────────
-allow if {
-	input.action == "transition"
-	input.transition in {"submit", "resubmit"}
+# ─── Shared authorization predicates ─────────────────────────────────────────
+# ONE predicate authorizes both the real transition (input.transition_descriptor)
+# and the preview matrix (input.candidate_transitions), so they cannot diverge.
+# `_` is the descriptor — match on descriptor.properties/to_state where the
+# workflow configures them; the demo workflow is matched by name.
+
+_transition_permitted(node_id, field_slug, name, _) if {
+	node_id == input.entity.id
+	field_slug == "status"
+	name in {"submit", "resubmit"}
 	roles.is_owner_or_editor
 	_checklist_complete
-	print(
-		"[allow:transition] submit/resubmit user=", input.user.username,
-		"transition=", input.transition, "status=", current_status,
-	)
 }
 
-allow if {
-	input.action == "transition"
-	input.transition in {"reject", "request-revision", "allow-revision"}
+_transition_permitted(node_id, field_slug, name, _) if {
+	node_id == input.entity.id
+	field_slug == "status"
+	name in {"reject", "request-revision", "allow-revision"}
 	roles.is_moderator
-	print(
-		"[allow:transition] moderator action user=", input.user.username,
-		"transition=", input.transition, "status=", current_status,
-	)
 }
 
-allow if {
-	input.action == "transition"
-	input.transition == "accept"
+_transition_permitted(node_id, field_slug, name, _) if {
+	node_id == input.entity.id
+	field_slug == "status"
+	name == "accept"
 	roles.is_moderator
 	reviews.all_reviews_accepted
-	print("[allow:transition] accept granted user=", input.user.username)
 }
 
+# ─── allow: transition (real execution) ───────────────────────────────────────
+allow if {
+	input.action == "transition"
+	_transition_permitted(input.node_id, input.field, input.transition, input.transition_descriptor)
+	print(
+		"[allow:transition] user=", input.user.username,
+		"transition=", input.transition, "status=", current_status,
+	)
+}
 
+# ─── valid_transitions: preview matrix (§4, single evaluation) ────────────────
+valid_transitions contains {"node": node_id, "field": field_slug, "name": name} if {
+	some node_id, wf_fields in input.candidate_transitions
+	some field_slug, wf in wf_fields
+	some name, descriptor in wf.transitions
+	_transition_permitted(node_id, field_slug, name, descriptor)
+}
 
 # ── View/Save/Transition: pending reviews summary for moderator ──
 success_messages contains msg if {
@@ -139,8 +154,8 @@ success_messages contains msg if {
 	roles.is_moderator
 	current_status == "submitted"
 	not all_reviews_accepted
-	missing_users := count({u.id | some u in input.entity.fields["requested-reviewer-users"].value} - _accepting_user_ids)
-	missing_groups := count({g.id | some g in input.entity.fields["requested-reviewer-groups"].value} - _accepting_group_ids)
+	missing_users := count({u | some u in reviews._reviewer_users} - _accepting_user_ids)
+	missing_groups := count({g | some g in reviews._reviewer_groups} - _accepting_group_ids)
 	msg := {
 		"level": "warning",
 		"text": sprintf("↑ accept: blocked — %v direct reviewer(s) and %v group(s) have not yet accepted.", [missing_users, missing_groups]),

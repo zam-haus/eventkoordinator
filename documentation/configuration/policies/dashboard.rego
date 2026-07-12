@@ -1,6 +1,11 @@
 package udm.udmframeworkv1.modules.dashboard
 
+import data.udm.udmframeworkv1.modules.roles
 import rego.v1
+
+# Local group lookup: regorus cannot resolve cross-module function calls,
+# so each module defines its own (input.groups is keyed by stringified PK).
+_group_doc(gid) := input.groups[sprintf("%v", [gid])]
 
 # ─── dashboard_columns ────────────────────────────────────────────────────────
 #
@@ -85,23 +90,23 @@ dashboard_columns contains col if {
 	total_slots > 0
 
 	# Sets of reviewer IDs that have cast each vote
-	accepting_ids := {r.fields.author.value.id | some r in reviews; r.fields.vote.value == "accept"}
-	revising_ids  := {r.fields.author.value.id | some r in reviews; r.fields.vote.value == "revise"}
-	rejecting_ids := {r.fields.author.value.id | some r in reviews; r.fields.vote.value == "reject"}
+	accepting_ids := {r.fields.author.value | some r in reviews; r.fields.vote.value == "accept"}
+	revising_ids  := {r.fields.author.value | some r in reviews; r.fields.vote.value == "revise"}
+	rejecting_ids := {r.fields.author.value | some r in reviews; r.fields.vote.value == "reject"}
 
 	# User slots: direct match by ID
-	u_accepted := count({u.id | some u in reviewer_users; u.id in accepting_ids})
-	u_revised  := count({u.id | some u in reviewer_users; u.id in revising_ids})
-	u_rejected := count({u.id | some u in reviewer_users; u.id in rejecting_ids})
+	u_accepted := count({u | some u in reviewer_users; u in accepting_ids})
+	u_revised  := count({u | some u in reviewer_users; u in revising_ids})
+	u_rejected := count({u | some u in reviewer_users; u in rejecting_ids})
 	u_pending  := count(reviewer_users) - u_accepted - u_revised - u_rejected
 
 	# Group slots: best-vote-wins using set differences to avoid negation in comprehensions
-	all_group_ids   := {g.id | some g in reviewer_groups}
-	g_accept_ids    := {g.id | some g in reviewer_groups; some m in g.members; m.id in accepting_ids}
+	all_group_ids   := {g | some g in reviewer_groups}
+	g_accept_ids    := {g | some g in reviewer_groups; some m in _group_doc(g).member_ids; m in accepting_ids}
 	g_no_accept_ids := all_group_ids - g_accept_ids
-	g_revise_ids    := {g.id | some g in reviewer_groups; g.id in g_no_accept_ids; some m in g.members; m.id in revising_ids}
+	g_revise_ids    := {g | some g in reviewer_groups; g in g_no_accept_ids; some m in _group_doc(g).member_ids; m in revising_ids}
 	g_no_acrev_ids  := g_no_accept_ids - g_revise_ids
-	g_reject_ids    := {g.id | some g in reviewer_groups; g.id in g_no_acrev_ids; some m in g.members; m.id in rejecting_ids}
+	g_reject_ids    := {g | some g in reviewer_groups; g in g_no_acrev_ids; some m in _group_doc(g).member_ids; m in rejecting_ids}
 	g_pending_cnt   := count(g_no_acrev_ids) - count(g_reject_ids)
 
 	accepted := u_accepted + count(g_accept_ids)

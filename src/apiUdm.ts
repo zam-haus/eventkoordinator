@@ -193,13 +193,30 @@ export function highlightedSubFieldsFromResult(result: ValidationResult): Record
   return out
 }
 
-export async function udmValidateEntity(
+// ── Validation preview (single request; replaces the removed validate_only modes) ──
+
+export interface WorkflowFieldPreview {
+  current_state: string | null
+  /** Transition names that are currently valid (state check AND policy). */
+  valid_transitions: string[]
+}
+
+export interface ValidationPreview {
+  save: { valid: boolean; errors: Record<string, string[]> }
+  messages: PolicyMessage[]
+  /** node id → workflow field slug → preview (covers root and all submodels). */
+  nodes: Record<string, Record<string, WorkflowFieldPreview>>
+}
+
+/** One preview call returns the save verdict, all policy messages, and the
+ * per-node per-workflow-field transition-button matrix — no per-button calls. */
+export async function udmValidationPreview(
   entityId: string,
   changedFields: Record<string, unknown>,
-): Promise<ValidationResult> {
+): Promise<ValidationPreview> {
   const token = await getCsrfToken()
-  const resp = await fetch(`/api/udm/entities/${entityId}/?validate_only=true`, {
-    method: 'PATCH',
+  const resp = await fetch(`/api/udm/entities/${entityId}/validation-preview/`, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'X-CSRFToken': token } : {}),
@@ -208,26 +225,7 @@ export async function udmValidateEntity(
     credentials: 'include',
   })
   if (resp.status === 404) throw new Error('Entity not found')
-  return resp.json() as Promise<ValidationResult>
-}
-
-export async function udmValidateTransition(
-  entityId: string,
-  field: string,
-  transition: string,
-): Promise<ValidationResult> {
-  const token = await getCsrfToken()
-  const resp = await fetch(`/api/udm/entities/${entityId}/transition/?validate_only=true`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'X-CSRFToken': token } : {}),
-    },
-    body: JSON.stringify({ field, transition }),
-    credentials: 'include',
-  })
-  if (resp.status === 404) throw new Error('Entity not found')
-  return resp.json() as Promise<ValidationResult>
+  return resp.json() as Promise<ValidationPreview>
 }
 
 /** For raw fetch() calls: read the body, then throw. */

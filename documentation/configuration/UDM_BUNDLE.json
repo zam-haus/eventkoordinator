@@ -1,1543 +1,1586 @@
 {
-  "version": 1,
-  "scope_type_ids": [
-    "e08720eb-1491-4920-9386-cc2fa520de25"
-  ],
-  "udm_types": [
+ "version": 1,
+ "scope_type_ids": [
+  "e08720eb-1491-4920-9386-cc2fa520de25"
+ ],
+ "udm_types": [
+  {
+   "id": "e08720eb-1491-4920-9386-cc2fa520de25",
+   "name": "Proposal",
+   "field_config_id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
+   "policy_slugs": [
+    "utils",
+    "test_udm",
+    "dashboard",
+    "config",
+    "validation_rules",
+    "view",
+    "transitions",
+    "udm",
+    "roles",
+    "reviews",
+    "save",
+    "timemachine",
+    "workflow",
+    "delete",
+    "sudo",
+    "description",
+    "proposals",
+    "proposals-actions",
+    "proposal_id",
+    "tabs",
+    "framework"
+   ]
+  }
+ ],
+ "field_configs": [
+  {
+   "id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
+   "name": "Proposal Review",
+   "description": "",
+   "languages": [
     {
-      "id": "e08720eb-1491-4920-9386-cc2fa520de25",
-      "name": "Proposal",
-      "field_config_id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
-      "policy_slugs": [
-"utils",
-"test_udm",
-"dashboard",
-"config",
-"validation_rules",
-"view",
-"transitions",
-"udm",
-"roles",
-"reviews",
-"save",
-"timemachine",
-"workflow",
-"delete",
-"sudo",
-"description",
-"proposals",
-"proposals-actions",
-"proposal_id",
-"tabs"
-
-      ]
+     "code": "en",
+     "label": "English",
+     "is_default": true,
+     "sort_order": 0
     }
-  ],
-  "field_configs": [
+   ],
+   "draft": {
+    "notes": "",
+    "fields": [
+     {
+      "slug": "author",
+      "data_type": "user_select",
+      "sort_order": 0,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Author"
+      },
+      "help_texts": {},
+      "type_config": {
+       "default_current_user": true
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "vote",
+      "data_type": "workflow",
+      "sort_order": 1,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Vote"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": "79c54393-e89c-4389-8e70-d2c5fc4798d9",
+      "parent_slug": null,
+      "workflow_definition_id": "10d4a0c3-21cc-470f-b349-73bf11ea95ad"
+     },
+     {
+      "slug": "comment",
+      "data_type": "text_long",
+      "sort_order": 2,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Comment"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
+   "name": "Proposal",
+   "description": "",
+   "languages": [
     {
-      "id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
-      "name": "Proposal Review",
-      "description": "",
-      "languages": [
-        {
-          "code": "en",
-          "label": "English",
-          "is_default": true,
-          "sort_order": 0
-        }
-      ],
-      "draft": {
-        "notes": "",
-        "fields": [
-          {
-            "slug": "author",
-            "data_type": "user_select",
-            "sort_order": 0,
-            "is_localized": false,
-            "is_preview": true,
-            "labels": {
-              "en": "Author"
-            },
-            "help_texts": {},
-            "type_config": {
-              "default_current_user": true
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "vote",
-            "data_type": "workflow",
-            "sort_order": 1,
-            "is_localized": false,
-            "is_preview": true,
-            "labels": {
-              "en": "Vote"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": "79c54393-e89c-4389-8e70-d2c5fc4798d9",
-            "parent_slug": null,
-            "workflow_definition_id": "10d4a0c3-21cc-470f-b349-73bf11ea95ad"
-          },
-          {
-            "slug": "comment",
-            "data_type": "text_long",
-            "sort_order": 2,
-            "is_localized": false,
-            "is_preview": true,
-            "labels": {
-              "en": "Comment"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          }
-        ]
-      }
+     "code": "en",
+     "label": "English",
+     "is_default": true,
+     "sort_order": 0
+    }
+   ],
+   "draft": {
+    "notes": "",
+    "fields": [
+     {
+      "slug": "proposal-id",
+      "data_type": "slug_id",
+      "sort_order": 0,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Proposal ID",
+       "de": "Vorschlags-ID"
+      },
+      "help_texts": {
+       "en": "Auto-generated identifier, starts with \"PROP-\"",
+       "de": "Automatisch generierter Bezeichner, beginnt mit \"PROP-\""
+      },
+      "type_config": {
+       "prefix": "PROP"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "title",
+      "data_type": "text_short",
+      "sort_order": 1,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Title (max 30 characters)",
+       "de": "Titel (max. 30 Zeichen)"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "status",
+      "data_type": "workflow",
+      "sort_order": 2,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Status",
+       "de": "Status"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": "4710ebd1-8b09-4066-8347-ba46c7753326",
+      "parent_slug": null,
+      "workflow_definition_id": "e22b4114-a8d2-42fe-958b-fd366b2fac25"
+     },
+     {
+      "slug": "owner",
+      "data_type": "user_select",
+      "sort_order": 3,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Creator",
+       "de": "Ersteller*in"
+      },
+      "help_texts": {
+       "en": "The creator is automatically set to the user who creates the proposal and cannot be changed.",
+       "de": "Der Ersteller wird automatisch auf den Benutzer festgelegt, der den Vorschlag erstellt, und kann nicht ge\u00e4ndert werden."
+      },
+      "type_config": {
+       "default_current_user": true
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "main-tabs",
+      "data_type": "tab_container",
+      "sort_order": 4,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "tab-general",
+      "data_type": "tab",
+      "sort_order": 5,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "title": "General"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "main-tabs"
+     },
+     {
+      "slug": "submission-type",
+      "data_type": "select_single",
+      "sort_order": 6,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Submission Type",
+       "de": "Einreichungstyp"
+      },
+      "help_texts": {
+       "en": "Workshop: Fixed booking, fee required, providers receive a remuneration; Open offer: No booking or fee required; takes place in the main building.",
+       "de": "Workshop: Feste Buchung, Geb\u00fchr erforderlich, Anbieter erhalten eine Verg\u00fctung; Offenes Angebot: Keine Buchung oder Geb\u00fchr erforderlich; findet im Hauptgeb\u00e4ude statt."
+      },
+      "type_config": {
+       "choices": [
+        "workshop",
+        "course",
+        "talk",
+        "lightning-talk",
+        "open-space",
+        "other"
+       ]
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "area",
+      "data_type": "select_single",
+      "sort_order": 7,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Area (optional)",
+       "de": "Bereich (optional)"
+      },
+      "help_texts": {},
+      "type_config": {
+       "choices": [
+        "digital",
+        "creative",
+        "culture",
+        "community",
+        "health",
+        "sport",
+        "science",
+        "other"
+       ]
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "language",
+      "data_type": "select_single",
+      "sort_order": 8,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Language",
+       "de": "Sprache"
+      },
+      "help_texts": {},
+      "type_config": {
+       "choices": [
+        "de",
+        "en"
+       ]
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "abstract",
+      "data_type": "text_long",
+      "sort_order": 9,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Abstract (50\u2013250 characters)",
+       "de": "Zusammenfassung (50\u2013250 Zeichen)"
+      },
+      "help_texts": {
+       "en": "This will be published on our website in the program overview. (50\u2013250 characters)",
+       "de": "Dies wird auf unserer Website in der Programm\u00fcbersicht ver\u00f6ffentlicht. (50\u2013250 Zeichen)"
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "description",
+      "data_type": "text_markdown",
+      "sort_order": 10,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "de": "Beschreibung (50\u20131000 Zeichen)",
+       "en": "Description (50\u20131000 characters)"
+      },
+      "help_texts": {
+       "de": "Dies wird auf unserer Website in der detaillierten Beschreibung ver\u00f6ffentlicht. Bitte Ziel, Voraussetzungen und ob Teilnehmer*innen etwas mitnehmen angeben. (50\u20131000 Zeichen)",
+       "en": "This will be published on our website in the detailed description. Please include goal, prerequisites and whether participants take something home. (50\u20131000 characters)"
+      },
+      "type_config": {
+       "renderer": "markdown_preview"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "photo-copyright-consent",
+      "data_type": "boolean",
+      "sort_order": 11,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "I will only upload images that I hold the copyright of and permit the ZAM to use publicly",
+       "de": "Ich lade nur Bilder hoch, an denen ich das Urheberrecht besitze, und erlaube dem ZAM, diese \u00f6ffentlich zu verwenden"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": false,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "photo",
+      "data_type": "image",
+      "sort_order": 12,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Proposal image",
+       "de": "Vorschlagsbild"
+      },
+      "help_texts": {
+       "en": "Upload a JPG or PNG image up to 10 MB for this proposal. Minimum resolution: 1440\u00d71080 pixels.",
+       "de": "Laden Sie ein JPG- oder PNG-Bild bis zu 10 MB f\u00fcr diesen Vorschlag hoch. Mindestaufl\u00f6sung: 1440\u00d71080 Pixel."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "nav-general",
+      "data_type": "hstack",
+      "sort_order": 13,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-general"
+     },
+     {
+      "slug": "nav-general-right",
+      "data_type": "hstack_group",
+      "sort_order": 14,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "right"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-general"
+     },
+     {
+      "slug": "save-button-4",
+      "data_type": "save_button",
+      "sort_order": 15,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-general-right"
+     },
+     {
+      "slug": "next-general",
+      "data_type": "tab_next",
+      "sort_order": 16,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "Next \u2192"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-general-right"
+     },
+     {
+      "slug": "tab-participants",
+      "data_type": "tab",
+      "sort_order": 17,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "title": "Participants & Cost"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "main-tabs"
+     },
+     {
+      "slug": "is-basic-course",
+      "data_type": "boolean",
+      "sort_order": 18,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "This workshop is a basic course",
+       "de": "Dieser Workshop ist ein Grundlagenkurs"
+      },
+      "help_texts": {
+       "en": "A basic course is one that is mandatory for using certain resources, such as machines or rooms.",
+       "de": "Ein Grundlagenkurs ist ein Kurs, der f\u00fcr die Nutzung bestimmter Maschinen, R\u00e4ume, etc. verpflichtend ist."
+      },
+      "type_config": {},
+      "default": false,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-participants"
+     },
+     {
+      "slug": "max-participants",
+      "data_type": "integer",
+      "sort_order": 19,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Max. number of participants",
+       "de": "Max. Anzahl der Teilnehmer*innen"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": 0,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-participants"
+     },
+     {
+      "slug": "material-cost-eur",
+      "data_type": "float",
+      "sort_order": 20,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Material cost per participant (EUR)",
+       "de": "Materialkosten pro Teilnehmer*in (EUR)"
+      },
+      "help_texts": {},
+      "type_config": {
+       "decimal_places": 2
+      },
+      "default": "0E-10",
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-participants"
+     },
+     {
+      "slug": "nav-participants",
+      "data_type": "hstack",
+      "sort_order": 21,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-participants"
+     },
+     {
+      "slug": "nav-participants-left",
+      "data_type": "hstack_group",
+      "sort_order": 22,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "left"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-participants"
+     },
+     {
+      "slug": "prev-participants",
+      "data_type": "tab_prev",
+      "sort_order": 23,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "\u2190 Previous"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-participants-left"
+     },
+     {
+      "slug": "nav-participants-right",
+      "data_type": "hstack_group",
+      "sort_order": 24,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "right"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-participants"
+     },
+     {
+      "slug": "save-button-3",
+      "data_type": "save_button",
+      "sort_order": 25,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-participants-right"
+     },
+     {
+      "slug": "next-participants",
+      "data_type": "tab_next",
+      "sort_order": 26,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "Next \u2192"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-participants-right"
+     },
+     {
+      "slug": "tab-scheduling",
+      "data_type": "tab",
+      "sort_order": 27,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "title": "Scheduling"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "main-tabs"
+     },
+     {
+      "slug": "duration-days",
+      "data_type": "integer",
+      "sort_order": 28,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Number of Days",
+       "de": "Anzahl der Tage"
+      },
+      "help_texts": {
+       "en": "Number of days for a single occurrence of the event (minimum 1).",
+       "de": "Anzahl der Tage f\u00fcr eine einzelne Durchf\u00fchrung der Veranstaltung (mindestens 1)."
+      },
+      "type_config": {},
+      "default": 1,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-scheduling"
+     },
+     {
+      "slug": "duration-time-per-day",
+      "data_type": "text_short",
+      "sort_order": 29,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Duration per day (HH:MM or minutes)",
+       "de": "Dauer pro Tag (HH:MM oder Minuten)"
+      },
+      "help_texts": {
+       "en": "Duration per day in HH:MM format. The product of days and time must be greater than zero. (Example: 08:30 for 8 hours 30 minutes)",
+       "de": "Dauer pro Tag im HH:MM Format. Produkt aus Tagen und Zeit sollte gr\u00f6\u00dfer als null sein. (Beispiel: 08:30 f\u00fcr 8 Stunden 30 Minuten)"
+      },
+      "type_config": {},
+      "default": "00:00",
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-scheduling"
+     },
+     {
+      "slug": "occurrence-count",
+      "data_type": "integer",
+      "sort_order": 30,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "How often would you offer this event?",
+       "de": "Wie oft w\u00fcrdest du diese Veranstaltung anbieten?"
+      },
+      "help_texts": {
+       "en": "E.g. 4 = monthly for a trimester call for proposals.",
+       "de": "Z.B. 4 = monatlich bei einem Trimester-Ausschreibungsverfahren."
+      },
+      "type_config": {},
+      "default": 1,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-scheduling"
+     },
+     {
+      "slug": "preferred-dates",
+      "data_type": "text_long",
+      "sort_order": 31,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Preferred Dates, Time of Day and Alternatives",
+       "de": "Bevorzugte Termine, Tageszeit und Alternativen"
+      },
+      "help_texts": {
+       "en": "Please specify dates, preferred time of day (e.g. morning, afternoon, evening) and alternatives.",
+       "de": "Bitte spezifische Daten, bevorzugte Tageszeit (z. B. Vormittag, Nachmittag, Abend) und Alternativen angeben."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-scheduling"
+     },
+     {
+      "slug": "nav-scheduling",
+      "data_type": "hstack",
+      "sort_order": 32,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-scheduling"
+     },
+     {
+      "slug": "nav-scheduling-left",
+      "data_type": "hstack_group",
+      "sort_order": 33,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "left"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-scheduling"
+     },
+     {
+      "slug": "prev-scheduling",
+      "data_type": "tab_prev",
+      "sort_order": 34,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "\u2190 Previous"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-scheduling-left"
+     },
+     {
+      "slug": "nav-scheduling-right",
+      "data_type": "hstack_group",
+      "sort_order": 35,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "right"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-scheduling"
+     },
+     {
+      "slug": "save-button-2",
+      "data_type": "save_button",
+      "sort_order": 36,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-scheduling-right"
+     },
+     {
+      "slug": "next-scheduling",
+      "data_type": "tab_next",
+      "sort_order": 37,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "Next \u2192"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-scheduling-right"
+     },
+     {
+      "slug": "tab-people",
+      "data_type": "tab",
+      "sort_order": 38,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "title": "Speakers & Editors"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "main-tabs"
+     },
+     {
+      "slug": "has-building-access",
+      "data_type": "boolean",
+      "sort_order": 39,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "At least one speaker has access to the ZAM building",
+       "de": "Mind. ein Referent hat Zugang zum ZAM-Geb\u00e4ude"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": false,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-people"
+     },
+     {
+      "slug": "editors",
+      "data_type": "user_select_multi",
+      "sort_order": 40,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Editors",
+       "de": "Mitbearbeiter*innen"
+      },
+      "help_texts": {
+       "en": "If you want to create and edit this proposal together with others, please enter their usernames here. They must have registered an account beforehand.",
+       "de": "Falls du deinen Vorschlag gemeinsam mit anderen Personen erstellen und hier bearbeiten willst, trage die Benutzernamen anderen Personen bitte hier ein. Sie m\u00fcssen sich vorher hier angemeldet haben."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-people"
+     },
+     {
+      "slug": "nav-people",
+      "data_type": "hstack",
+      "sort_order": 41,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-people"
+     },
+     {
+      "slug": "nav-people-left",
+      "data_type": "hstack_group",
+      "sort_order": 42,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "left"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-people"
+     },
+     {
+      "slug": "prev-people",
+      "data_type": "tab_prev",
+      "sort_order": 43,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "\u2190 Previous"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-people-left"
+     },
+     {
+      "slug": "nav-people-right",
+      "data_type": "hstack_group",
+      "sort_order": 44,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "right"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-people"
+     },
+     {
+      "slug": "save-button",
+      "data_type": "save_button",
+      "sort_order": 45,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-people-right"
+     },
+     {
+      "slug": "next-people",
+      "data_type": "tab_next",
+      "sort_order": 46,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "Next \u2192"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-people-right"
+     },
+     {
+      "slug": "tab-submission",
+      "data_type": "tab",
+      "sort_order": 47,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "title": "Submission"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "main-tabs"
+     },
+     {
+      "slug": "internal-notes",
+      "data_type": "text_long",
+      "sort_order": 48,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Additional Information for the ZAM (optional)",
+       "de": "Hinweise an das ZAM (optional)"
+      },
+      "help_texts": {
+       "en": "Not public. Use this to communicate with the ZAM team, e.g. equipment needs (laptops, projector, laser cutter) or other notes.",
+       "de": "Nicht \u00f6ffentlich. Nutze dieses Feld f\u00fcr R\u00fcckmeldungen ans ZAM-Team, z.B. Ger\u00e4tebedarf (Laptops, Beamer, Laser) oder sonstige Hinweise."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-submission"
+     },
+     {
+      "slug": "moderation-comment",
+      "data_type": "text_long",
+      "sort_order": 49,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Moderation Comment",
+       "de": "Moderationskommentar"
+      },
+      "help_texts": {
+       "en": "Feedback from moderators to the submitter. Editable by moderators only.",
+       "de": "R\u00fcckmeldung der Moderatoren an den Einreicher. Nur von Moderatoren bearbeitbar."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-submission"
+     },
+     {
+      "slug": "requested-reviewer-groups",
+      "data_type": "group_select_multi",
+      "sort_order": 50,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Requested Reviewer Groups",
+       "de": "Angeforderte Bewertungsgruppen"
+      },
+      "help_texts": {
+       "en": "Groups whose members are asked to review this proposal. Editable by moderators only.",
+       "de": "Gruppen, deren Mitglieder gebeten werden, diesen Vorschlag zu bewerten. Nur von Moderatoren bearbeitbar."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-submission"
+     },
+     {
+      "slug": "requested-reviewer-users",
+      "data_type": "user_select_multi",
+      "sort_order": 51,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Requested Reviewer Users",
+       "de": "Angeforderte Bewertende"
+      },
+      "help_texts": {
+       "en": "Individual users asked to review this proposal. Editable by moderators only.",
+       "de": "Einzelne Benutzer*innen, die gebeten werden, diesen Vorschlag zu bewerten. Nur von Moderatoren bearbeitbar."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-submission"
+     },
+     {
+      "slug": "nav-submission",
+      "data_type": "hstack",
+      "sort_order": 52,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "tab-submission"
+     },
+     {
+      "slug": "nav-submission-left",
+      "data_type": "hstack_group",
+      "sort_order": 53,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "left"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-submission"
+     },
+     {
+      "slug": "prev-submission",
+      "data_type": "tab_prev",
+      "sort_order": 54,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "\u2190 Previous"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-submission-left"
+     },
+     {
+      "slug": "nav-submission-right",
+      "data_type": "hstack_group",
+      "sort_order": 55,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "align": "right"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-submission"
+     },
+     {
+      "slug": "save-submission",
+      "data_type": "save_button",
+      "sort_order": 56,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": null,
+      "help_texts": {},
+      "type_config": {
+       "label": "Save / Speichern",
+       "variant": "success"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": "nav-submission-right"
+     },
+     {
+      "slug": "speakers",
+      "data_type": "submodel_list",
+      "sort_order": 57,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Speakers",
+       "de": "Referent*innen"
+      },
+      "help_texts": {
+       "en": "People who will present this session. At least one speaker is required.",
+       "de": "Personen, die diese Veranstaltung pr\u00e4sentieren. Mindestens eine Referent*in ist erforderlich."
+      },
+      "type_config": {
+       "renderer": "list"
+      },
+      "default": null,
+      "submodel_config_version_id": "23b0eb2c-53cf-4e13-b516-416c38937d99",
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "reviews",
+      "data_type": "submodel_list",
+      "sort_order": 58,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Reviews",
+       "de": "Bewertungen"
+      },
+      "help_texts": {},
+      "type_config": {
+       "renderer": "list"
+      },
+      "default": null,
+      "submodel_config_version_id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
+      "workflow_version_id": null,
+      "parent_slug": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "23b0eb2c-53cf-4e13-b516-416c38937d99",
+   "name": "Speaker",
+   "description": "Submodel config for proposal speakers",
+   "languages": [
+    {
+     "code": "en",
+     "label": "English",
+     "is_default": true,
+     "sort_order": 0
+    }
+   ],
+   "draft": {
+    "notes": "",
+    "fields": [
+     {
+      "slug": "display-name",
+      "data_type": "text_short",
+      "sort_order": 0,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Display Name",
+       "de": "Anzeigename"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "email",
+      "data_type": "text_short",
+      "sort_order": 1,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Email",
+       "de": "E-Mail"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "biography",
+      "data_type": "text_long",
+      "sort_order": 2,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Biography",
+       "de": "Biografie"
+      },
+      "help_texts": {
+       "en": "Brief speaker biography (minimum 50 characters recommended).",
+       "de": "Kurze Referent*innenbiografie (mindestens 50 Zeichen empfohlen)."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "use-gravatar",
+      "data_type": "boolean",
+      "sort_order": 3,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Use Gravatar for profile picture",
+       "de": "Gravatar f\u00fcr Profilbild verwenden"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": false,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "photo",
+      "data_type": "image",
+      "sort_order": 4,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Speaker image",
+       "de": "Referent*innenbild"
+      },
+      "help_texts": {
+       "en": "Upload a JPG or PNG image up to 10 MB for this speaker.",
+       "de": "Lade ein JPG- oder PNG-Bild bis zu 10 MB f\u00fcr diese Referent*in hoch."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     }
+    ]
+   }
+  }
+ ],
+ "workflows": [
+  {
+   "id": "10d4a0c3-21cc-470f-b349-73bf11ea95ad",
+   "name": "Review Workflow",
+   "description": "Review vote lifecycle",
+   "states": [
+    {
+     "name": "open",
+     "label": {
+      "en": "Open"
+     },
+     "is_initial": true,
+     "position_x": 0.0,
+     "position_y": 0.0,
+     "background_color": "#a3b8ff",
+     "text_color": "#000000"
     },
     {
-      "id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
-      "name": "Proposal",
-      "description": "",
-      "languages": [
-        {
-          "code": "en",
-          "label": "English",
-          "is_default": true,
-          "sort_order": 0
-        }
-      ],
-      "draft": {
-        "notes": "",
-        "fields": [
-          {
-            "slug": "proposal-id",
-            "data_type": "slug_id",
-            "sort_order": 0,
-            "is_localized": false,
-            "is_preview": true,
-            "labels": {
-              "en": "Proposal ID",
-              "de": "Vorschlags-ID"
-            },
-            "help_texts": {
-              "en": "Auto-generated identifier, starts with \"PROP-\"",
-              "de": "Automatisch generierter Bezeichner, beginnt mit \"PROP-\""
-            },
-            "type_config": {
-              "prefix": "PROP"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "title",
-            "data_type": "text_short",
-            "sort_order": 1,
-            "is_localized": false,
-            "is_preview": true,
-            "labels": {
-              "en": "Title (max 30 characters)",
-              "de": "Titel (max. 30 Zeichen)"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "status",
-            "data_type": "workflow",
-            "sort_order": 2,
-            "is_localized": false,
-            "is_preview": true,
-            "labels": {
-              "en": "Status",
-              "de": "Status"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": "4710ebd1-8b09-4066-8347-ba46c7753326",
-            "parent_slug": null,
-            "workflow_definition_id": "e22b4114-a8d2-42fe-958b-fd366b2fac25"
-          },
-          {
-            "slug": "owner",
-            "data_type": "user_select",
-            "sort_order": 3,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Creator",
-              "de": "Ersteller*in"
-            },
-            "help_texts": {
-              "en": "The creator is automatically set to the user who creates the proposal and cannot be changed.",
-              "de": "Der Ersteller wird automatisch auf den Benutzer festgelegt, der den Vorschlag erstellt, und kann nicht geändert werden."
-            },
-            "type_config": {
-              "default_current_user": true
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "main-tabs",
-            "data_type": "tab_container",
-            "sort_order": 4,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "tab-general",
-            "data_type": "tab",
-            "sort_order": 5,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "title": "General"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "main-tabs"
-          },
-          {
-            "slug": "submission-type",
-            "data_type": "select_single",
-            "sort_order": 6,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Submission Type",
-              "de": "Einreichungstyp"
-            },
-            "help_texts": {
-              "en": "Workshop: Fixed booking, fee required, providers receive a remuneration; Open offer: No booking or fee required; takes place in the main building.",
-              "de": "Workshop: Feste Buchung, Gebühr erforderlich, Anbieter erhalten eine Vergütung; Offenes Angebot: Keine Buchung oder Gebühr erforderlich; findet im Hauptgebäude statt."
-            },
-            "type_config": {
-              "choices": [
-                "workshop",
-                "course",
-                "talk",
-                "lightning-talk",
-                "open-space",
-                "other"
-              ]
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "area",
-            "data_type": "select_single",
-            "sort_order": 7,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Area (optional)",
-              "de": "Bereich (optional)"
-            },
-            "help_texts": {},
-            "type_config": {
-              "choices": [
-                "digital",
-                "creative",
-                "culture",
-                "community",
-                "health",
-                "sport",
-                "science",
-                "other"
-              ]
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "language",
-            "data_type": "select_single",
-            "sort_order": 8,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Language",
-              "de": "Sprache"
-            },
-            "help_texts": {},
-            "type_config": {
-              "choices": [
-                "de",
-                "en"
-              ]
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "abstract",
-            "data_type": "text_long",
-            "sort_order": 9,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Abstract (50–250 characters)",
-              "de": "Zusammenfassung (50–250 Zeichen)"
-            },
-            "help_texts": {
-              "en": "This will be published on our website in the program overview. (50–250 characters)",
-              "de": "Dies wird auf unserer Website in der Programmübersicht veröffentlicht. (50–250 Zeichen)"
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "description",
-            "data_type": "text_markdown",
-            "sort_order": 10,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "de": "Beschreibung (50–1000 Zeichen)",
-              "en": "Description (50–1000 characters)"
-            },
-            "help_texts": {
-              "de": "Dies wird auf unserer Website in der detaillierten Beschreibung veröffentlicht. Bitte Ziel, Voraussetzungen und ob Teilnehmer*innen etwas mitnehmen angeben. (50–1000 Zeichen)",
-              "en": "This will be published on our website in the detailed description. Please include goal, prerequisites and whether participants take something home. (50–1000 characters)"
-            },
-            "type_config": {
-              "renderer": "markdown_preview"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "photo-copyright-consent",
-            "data_type": "boolean",
-            "sort_order": 11,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "I will only upload images that I hold the copyright of and permit the ZAM to use publicly",
-              "de": "Ich lade nur Bilder hoch, an denen ich das Urheberrecht besitze, und erlaube dem ZAM, diese öffentlich zu verwenden"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": false,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "photo",
-            "data_type": "image",
-            "sort_order": 12,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Proposal image",
-              "de": "Vorschlagsbild"
-            },
-            "help_texts": {
-              "en": "Upload a JPG or PNG image up to 10 MB for this proposal. Minimum resolution: 1440×1080 pixels.",
-              "de": "Laden Sie ein JPG- oder PNG-Bild bis zu 10 MB für diesen Vorschlag hoch. Mindestauflösung: 1440×1080 Pixel."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "nav-general",
-            "data_type": "hstack",
-            "sort_order": 13,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-general"
-          },
-          {
-            "slug": "nav-general-right",
-            "data_type": "hstack_group",
-            "sort_order": 14,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "right"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-general"
-          },
-          {
-            "slug": "save-button-4",
-            "data_type": "save_button",
-            "sort_order": 15,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-general-right"
-          },
-          {
-            "slug": "next-general",
-            "data_type": "tab_next",
-            "sort_order": 16,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "Next →"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-general-right"
-          },
-          {
-            "slug": "tab-participants",
-            "data_type": "tab",
-            "sort_order": 17,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "title": "Participants & Cost"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "main-tabs"
-          },
-          {
-            "slug": "is-basic-course",
-            "data_type": "boolean",
-            "sort_order": 18,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "This workshop is a basic course",
-              "de": "Dieser Workshop ist ein Grundlagenkurs"
-            },
-            "help_texts": {
-              "en": "A basic course is one that is mandatory for using certain resources, such as machines or rooms.",
-              "de": "Ein Grundlagenkurs ist ein Kurs, der für die Nutzung bestimmter Maschinen, Räume, etc. verpflichtend ist."
-            },
-            "type_config": {},
-            "default": false,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-participants"
-          },
-          {
-            "slug": "max-participants",
-            "data_type": "integer",
-            "sort_order": 19,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Max. number of participants",
-              "de": "Max. Anzahl der Teilnehmer*innen"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": 0,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-participants"
-          },
-          {
-            "slug": "material-cost-eur",
-            "data_type": "float",
-            "sort_order": 20,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Material cost per participant (EUR)",
-              "de": "Materialkosten pro Teilnehmer*in (EUR)"
-            },
-            "help_texts": {},
-            "type_config": {
-              "decimal_places": 2
-            },
-            "default": "0E-10",
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-participants"
-          },
-          {
-            "slug": "nav-participants",
-            "data_type": "hstack",
-            "sort_order": 21,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-participants"
-          },
-          {
-            "slug": "nav-participants-left",
-            "data_type": "hstack_group",
-            "sort_order": 22,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "left"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-participants"
-          },
-          {
-            "slug": "prev-participants",
-            "data_type": "tab_prev",
-            "sort_order": 23,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "← Previous"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-participants-left"
-          },
-          {
-            "slug": "nav-participants-right",
-            "data_type": "hstack_group",
-            "sort_order": 24,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "right"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-participants"
-          },
-          {
-            "slug": "save-button-3",
-            "data_type": "save_button",
-            "sort_order": 25,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-participants-right"
-          },
-          {
-            "slug": "next-participants",
-            "data_type": "tab_next",
-            "sort_order": 26,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "Next →"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-participants-right"
-          },
-          {
-            "slug": "tab-scheduling",
-            "data_type": "tab",
-            "sort_order": 27,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "title": "Scheduling"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "main-tabs"
-          },
-          {
-            "slug": "duration-days",
-            "data_type": "integer",
-            "sort_order": 28,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Number of Days",
-              "de": "Anzahl der Tage"
-            },
-            "help_texts": {
-              "en": "Number of days for a single occurrence of the event (minimum 1).",
-              "de": "Anzahl der Tage für eine einzelne Durchführung der Veranstaltung (mindestens 1)."
-            },
-            "type_config": {},
-            "default": 1,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-scheduling"
-          },
-          {
-            "slug": "duration-time-per-day",
-            "data_type": "text_short",
-            "sort_order": 29,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Duration per day (HH:MM or minutes)",
-              "de": "Dauer pro Tag (HH:MM oder Minuten)"
-            },
-            "help_texts": {
-              "en": "Duration per day in HH:MM format. The product of days and time must be greater than zero. (Example: 08:30 for 8 hours 30 minutes)",
-              "de": "Dauer pro Tag im HH:MM Format. Produkt aus Tagen und Zeit sollte größer als null sein. (Beispiel: 08:30 für 8 Stunden 30 Minuten)"
-            },
-            "type_config": {},
-            "default": "00:00",
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-scheduling"
-          },
-          {
-            "slug": "occurrence-count",
-            "data_type": "integer",
-            "sort_order": 30,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "How often would you offer this event?",
-              "de": "Wie oft würdest du diese Veranstaltung anbieten?"
-            },
-            "help_texts": {
-              "en": "E.g. 4 = monthly for a trimester call for proposals.",
-              "de": "Z.B. 4 = monatlich bei einem Trimester-Ausschreibungsverfahren."
-            },
-            "type_config": {},
-            "default": 1,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-scheduling"
-          },
-          {
-            "slug": "preferred-dates",
-            "data_type": "text_long",
-            "sort_order": 31,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Preferred Dates, Time of Day and Alternatives",
-              "de": "Bevorzugte Termine, Tageszeit und Alternativen"
-            },
-            "help_texts": {
-              "en": "Please specify dates, preferred time of day (e.g. morning, afternoon, evening) and alternatives.",
-              "de": "Bitte spezifische Daten, bevorzugte Tageszeit (z. B. Vormittag, Nachmittag, Abend) und Alternativen angeben."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-scheduling"
-          },
-          {
-            "slug": "nav-scheduling",
-            "data_type": "hstack",
-            "sort_order": 32,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-scheduling"
-          },
-          {
-            "slug": "nav-scheduling-left",
-            "data_type": "hstack_group",
-            "sort_order": 33,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "left"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-scheduling"
-          },
-          {
-            "slug": "prev-scheduling",
-            "data_type": "tab_prev",
-            "sort_order": 34,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "← Previous"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-scheduling-left"
-          },
-          {
-            "slug": "nav-scheduling-right",
-            "data_type": "hstack_group",
-            "sort_order": 35,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "right"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-scheduling"
-          },
-          {
-            "slug": "save-button-2",
-            "data_type": "save_button",
-            "sort_order": 36,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-scheduling-right"
-          },
-          {
-            "slug": "next-scheduling",
-            "data_type": "tab_next",
-            "sort_order": 37,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "Next →"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-scheduling-right"
-          },
-          {
-            "slug": "tab-people",
-            "data_type": "tab",
-            "sort_order": 38,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "title": "Speakers & Editors"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "main-tabs"
-          },
-          {
-            "slug": "has-building-access",
-            "data_type": "boolean",
-            "sort_order": 39,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "At least one speaker has access to the ZAM building",
-              "de": "Mind. ein Referent hat Zugang zum ZAM-Gebäude"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": false,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-people"
-          },
-          {
-            "slug": "editors",
-            "data_type": "user_select_multi",
-            "sort_order": 40,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Editors",
-              "de": "Mitbearbeiter*innen"
-            },
-            "help_texts": {
-              "en": "If you want to create and edit this proposal together with others, please enter their usernames here. They must have registered an account beforehand.",
-              "de": "Falls du deinen Vorschlag gemeinsam mit anderen Personen erstellen und hier bearbeiten willst, trage die Benutzernamen anderen Personen bitte hier ein. Sie müssen sich vorher hier angemeldet haben."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-people"
-          },
-          {
-            "slug": "nav-people",
-            "data_type": "hstack",
-            "sort_order": 41,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-people"
-          },
-          {
-            "slug": "nav-people-left",
-            "data_type": "hstack_group",
-            "sort_order": 42,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "left"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-people"
-          },
-          {
-            "slug": "prev-people",
-            "data_type": "tab_prev",
-            "sort_order": 43,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "← Previous"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-people-left"
-          },
-          {
-            "slug": "nav-people-right",
-            "data_type": "hstack_group",
-            "sort_order": 44,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "right"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-people"
-          },
-          {
-            "slug": "save-button",
-            "data_type": "save_button",
-            "sort_order": 45,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-people-right"
-          },
-          {
-            "slug": "next-people",
-            "data_type": "tab_next",
-            "sort_order": 46,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "Next →"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-people-right"
-          },
-          {
-            "slug": "tab-submission",
-            "data_type": "tab",
-            "sort_order": 47,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "title": "Submission"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "main-tabs"
-          },
-          {
-            "slug": "internal-notes",
-            "data_type": "text_long",
-            "sort_order": 48,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Additional Information for the ZAM (optional)",
-              "de": "Hinweise an das ZAM (optional)"
-            },
-            "help_texts": {
-              "en": "Not public. Use this to communicate with the ZAM team, e.g. equipment needs (laptops, projector, laser cutter) or other notes.",
-              "de": "Nicht öffentlich. Nutze dieses Feld für Rückmeldungen ans ZAM-Team, z.B. Gerätebedarf (Laptops, Beamer, Laser) oder sonstige Hinweise."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-submission"
-          },
-          {
-            "slug": "moderation-comment",
-            "data_type": "text_long",
-            "sort_order": 49,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Moderation Comment",
-              "de": "Moderationskommentar"
-            },
-            "help_texts": {
-              "en": "Feedback from moderators to the submitter. Editable by moderators only.",
-              "de": "Rückmeldung der Moderatoren an den Einreicher. Nur von Moderatoren bearbeitbar."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-submission"
-          },
-          {
-            "slug": "requested-reviewer-groups",
-            "data_type": "group_select_multi",
-            "sort_order": 50,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Requested Reviewer Groups",
-              "de": "Angeforderte Bewertungsgruppen"
-            },
-            "help_texts": {
-              "en": "Groups whose members are asked to review this proposal. Editable by moderators only.",
-              "de": "Gruppen, deren Mitglieder gebeten werden, diesen Vorschlag zu bewerten. Nur von Moderatoren bearbeitbar."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-submission"
-          },
-          {
-            "slug": "requested-reviewer-users",
-            "data_type": "user_select_multi",
-            "sort_order": 51,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Requested Reviewer Users",
-              "de": "Angeforderte Bewertende"
-            },
-            "help_texts": {
-              "en": "Individual users asked to review this proposal. Editable by moderators only.",
-              "de": "Einzelne Benutzer*innen, die gebeten werden, diesen Vorschlag zu bewerten. Nur von Moderatoren bearbeitbar."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-submission"
-          },
-          {
-            "slug": "nav-submission",
-            "data_type": "hstack",
-            "sort_order": 52,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "tab-submission"
-          },
-          {
-            "slug": "nav-submission-left",
-            "data_type": "hstack_group",
-            "sort_order": 53,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "left"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-submission"
-          },
-          {
-            "slug": "prev-submission",
-            "data_type": "tab_prev",
-            "sort_order": 54,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "← Previous"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-submission-left"
-          },
-          {
-            "slug": "nav-submission-right",
-            "data_type": "hstack_group",
-            "sort_order": 55,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "align": "right"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-submission"
-          },
-          {
-            "slug": "save-submission",
-            "data_type": "save_button",
-            "sort_order": 56,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": null,
-            "help_texts": {},
-            "type_config": {
-              "label": "Save / Speichern",
-              "variant": "success"
-            },
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": "nav-submission-right"
-          },
-          {
-            "slug": "speakers",
-            "data_type": "submodel_list",
-            "sort_order": 57,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Speakers",
-              "de": "Referent*innen"
-            },
-            "help_texts": {
-              "en": "People who will present this session. At least one speaker is required.",
-              "de": "Personen, die diese Veranstaltung präsentieren. Mindestens eine Referent*in ist erforderlich."
-            },
-            "type_config": {
-              "renderer": "list"
-            },
-            "default": null,
-            "submodel_config_version_id": "23b0eb2c-53cf-4e13-b516-416c38937d99",
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "reviews",
-            "data_type": "submodel_list",
-            "sort_order": 58,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Reviews",
-              "de": "Bewertungen"
-            },
-            "help_texts": {},
-            "type_config": {
-              "renderer": "list"
-            },
-            "default": null,
-            "submodel_config_version_id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
-            "workflow_version_id": null,
-            "parent_slug": null
-          }
-        ]
-      }
+     "name": "accept",
+     "label": {
+      "en": "Accept"
+     },
+     "is_initial": false,
+     "position_x": 250.0,
+     "position_y": 0.0,
+     "background_color": "#4dd664",
+     "text_color": "#000000"
     },
     {
-      "id": "23b0eb2c-53cf-4e13-b516-416c38937d99",
-      "name": "Speaker",
-      "description": "Submodel config for proposal speakers",
-      "languages": [
-        {
-          "code": "en",
-          "label": "English",
-          "is_default": true,
-          "sort_order": 0
-        }
-      ],
-      "draft": {
-        "notes": "",
-        "fields": [
-          {
-            "slug": "display-name",
-            "data_type": "text_short",
-            "sort_order": 0,
-            "is_localized": false,
-            "is_preview": true,
-            "labels": {
-              "en": "Display Name",
-              "de": "Anzeigename"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "email",
-            "data_type": "text_short",
-            "sort_order": 1,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Email",
-              "de": "E-Mail"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "biography",
-            "data_type": "text_long",
-            "sort_order": 2,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Biography",
-              "de": "Biografie"
-            },
-            "help_texts": {
-              "en": "Brief speaker biography (minimum 50 characters recommended).",
-              "de": "Kurze Referent*innenbiografie (mindestens 50 Zeichen empfohlen)."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "use-gravatar",
-            "data_type": "boolean",
-            "sort_order": 3,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Use Gravatar for profile picture",
-              "de": "Gravatar für Profilbild verwenden"
-            },
-            "help_texts": {},
-            "type_config": {},
-            "default": false,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          },
-          {
-            "slug": "photo",
-            "data_type": "image",
-            "sort_order": 4,
-            "is_localized": false,
-            "is_preview": false,
-            "labels": {
-              "en": "Speaker image",
-              "de": "Referent*innenbild"
-            },
-            "help_texts": {
-              "en": "Upload a JPG or PNG image up to 10 MB for this speaker.",
-              "de": "Lade ein JPG- oder PNG-Bild bis zu 10 MB für diese Referent*in hoch."
-            },
-            "type_config": {},
-            "default": null,
-            "submodel_config_version_id": null,
-            "workflow_version_id": null,
-            "parent_slug": null
-          }
-        ]
-      }
-    }
-  ],
-  "workflows": [
-    {
-      "id": "10d4a0c3-21cc-470f-b349-73bf11ea95ad",
-      "name": "Review Workflow",
-      "description": "Review vote lifecycle",
-      "states": [
-        {
-          "name": "open",
-          "label": {
-            "en": "Open"
-          },
-          "is_initial": true,
-          "position_x": 0.0,
-          "position_y": 0.0,
-          "background_color": "#a3b8ff",
-          "text_color": "#000000"
-        },
-        {
-          "name": "accept",
-          "label": {
-            "en": "Accept"
-          },
-          "is_initial": false,
-          "position_x": 250.0,
-          "position_y": 0.0,
-          "background_color": "#4dd664",
-          "text_color": "#000000"
-        },
-        {
-          "name": "reject",
-          "label": {
-            "en": "Reject"
-          },
-          "is_initial": false,
-          "position_x": 250.0,
-          "position_y": 180.0,
-          "background_color": "#e65353",
-          "text_color": "#000000"
-        },
-        {
-          "name": "revise",
-          "label": {
-            "en": "Revise"
-          },
-          "is_initial": false,
-          "position_x": 250.0,
-          "position_y": 360.0,
-          "background_color": "#ffc400",
-          "text_color": "#000000"
-        }
-      ],
-      "transitions": [
-        {
-          "name": "reset",
-          "label": {
-            "en": "Reset"
-          },
-          "from_state": null,
-          "from_undefined_only": false,
-          "to_state": "open",
-          "source_handle": "",
-          "target_handle": ""
-        },
-        {
-          "name": "accept",
-          "label": {
-            "en": "Accept"
-          },
-          "from_state": null,
-          "from_undefined_only": false,
-          "to_state": "accept",
-          "source_handle": "",
-          "target_handle": ""
-        },
-        {
-          "name": "reject",
-          "label": {
-            "en": "Reject"
-          },
-          "from_state": null,
-          "from_undefined_only": false,
-          "to_state": "reject",
-          "source_handle": "",
-          "target_handle": ""
-        },
-        {
-          "name": "revise",
-          "label": {
-            "en": "Revise"
-          },
-          "from_state": null,
-          "from_undefined_only": false,
-          "to_state": "revise",
-          "source_handle": "",
-          "target_handle": ""
-        }
-      ],
-      "virtual_node_positions": {
-        "fromAny": {
-          "x": 113.1174625023474,
-          "y": 150.57860114751804
-        }
-      }
+     "name": "reject",
+     "label": {
+      "en": "Reject"
+     },
+     "is_initial": false,
+     "position_x": 250.0,
+     "position_y": 180.0,
+     "background_color": "#e65353",
+     "text_color": "#000000"
     },
     {
-      "id": "e22b4114-a8d2-42fe-958b-fd366b2fac25",
-      "name": "Proposal Workflow",
-      "description": "Workflow for conference talk proposals (from apiv1/flows.py)",
-      "states": [
-        {
-          "name": "draft",
-          "label": {
-            "en": "Draft",
-            "de": "Entwurf"
-          },
-          "is_initial": true,
-          "position_x": 60.0,
-          "position_y": 220.0,
-          "background_color": "#c2c2c2",
-          "text_color": "#000000"
-        },
-        {
-          "name": "submitted",
-          "label": {
-            "en": "Submitted",
-            "de": "Eingereicht"
-          },
-          "is_initial": false,
-          "position_x": 380.0,
-          "position_y": 100.0,
-          "background_color": "#81c1e3",
-          "text_color": "#000000"
-        },
-        {
-          "name": "revise",
-          "label": {
-            "en": "Revise",
-            "de": "Überarbeitung"
-          },
-          "is_initial": false,
-          "position_x": 380.0,
-          "position_y": 340.0,
-          "background_color": "#fce808",
-          "text_color": "#000000"
-        },
-        {
-          "name": "accepted",
-          "label": {
-            "en": "Accepted",
-            "de": "Akzeptiert"
-          },
-          "is_initial": false,
-          "position_x": 700.0,
-          "position_y": 20.0,
-          "background_color": "#6aeb36",
-          "text_color": "#000000"
-        },
-        {
-          "name": "rejected",
-          "label": {
-            "en": "Rejected",
-            "de": "Abgelehnt"
-          },
-          "is_initial": false,
-          "position_x": 694.5086780555433,
-          "position_y": 198.03471222217317,
-          "background_color": "#f54949",
-          "text_color": "#000000"
-        }
-      ],
-      "transitions": [
-        {
-          "name": "submit",
-          "label": {
-            "en": "Submit",
-            "de": "Einreichen"
-          },
-          "from_state": "draft",
-          "from_undefined_only": false,
-          "to_state": "submitted",
-          "source_handle": "right-top",
-          "target_handle": "left-top"
-        },
-        {
-          "name": "allow-revision",
-          "label": {
-            "en": "Allow Revision",
-            "de": "Überarbeitung erlauben"
-          },
-          "from_state": "rejected",
-          "from_undefined_only": false,
-          "to_state": "revise",
-          "source_handle": "bottom-left",
-          "target_handle": "right-bottom"
-        },
-        {
-          "name": "accept",
-          "label": {
-            "en": "Accept",
-            "de": "Akzeptieren"
-          },
-          "from_state": "submitted",
-          "from_undefined_only": false,
-          "to_state": "accepted",
-          "source_handle": "right-top",
-          "target_handle": "left-top"
-        },
-        {
-          "name": "reject",
-          "label": {
-            "en": "Reject",
-            "de": "Ablehnen"
-          },
-          "from_state": "submitted",
-          "from_undefined_only": false,
-          "to_state": "rejected",
-          "source_handle": "right-bottom",
-          "target_handle": "left-top"
-        },
-        {
-          "name": "request-revision",
-          "label": {
-            "en": "Request Revision",
-            "de": "Überarbeitung anfordern"
-          },
-          "from_state": "submitted",
-          "from_undefined_only": false,
-          "to_state": "revise",
-          "source_handle": "bottom-right",
-          "target_handle": "top-right"
-        },
-        {
-          "name": "resubmit",
-          "label": {
-            "en": "Resubmit",
-            "de": "Erneut einreichen"
-          },
-          "from_state": "revise",
-          "from_undefined_only": false,
-          "to_state": "submitted",
-          "source_handle": "top-left",
-          "target_handle": "bottom-left"
-        }
-      ],
-      "virtual_node_positions": {}
+     "name": "revise",
+     "label": {
+      "en": "Revise"
+     },
+     "is_initial": false,
+     "position_x": 250.0,
+     "position_y": 360.0,
+     "background_color": "#ffc400",
+     "text_color": "#000000"
     }
-  ],
-  "policies": [
-    {"slug":"utils"},
-    {"slug":"test_udm"},
-    {"slug":"dashboard"},
-    {"slug":"config"},
-    {"slug":"validation_rules"},
-    {"slug":"view"},
-    {"slug":"transitions"},
-    {"slug":"udm"},
-    {"slug":"roles"},
-    {"slug":"reviews"},
-    {"slug":"save"},
-    {"slug":"timemachine"},
-    {"slug":"workflow"},
-    {"slug":"delete"},
-    {"slug":"sudo"},
-    {"slug":"description"},
-    {"slug":"proposals"},
-    {"slug":"proposals-actions"},
-    {"slug":"proposal_id"},
-    {"slug":"tabs"}
-  ]
+   ],
+   "transitions": [
+    {
+     "name": "reset",
+     "label": {
+      "en": "Reset"
+     },
+     "from_state": null,
+     "from_undefined_only": false,
+     "to_state": "open",
+     "source_handle": "",
+     "target_handle": ""
+    },
+    {
+     "name": "accept",
+     "label": {
+      "en": "Accept"
+     },
+     "from_state": null,
+     "from_undefined_only": false,
+     "to_state": "accept",
+     "source_handle": "",
+     "target_handle": ""
+    },
+    {
+     "name": "reject",
+     "label": {
+      "en": "Reject"
+     },
+     "from_state": null,
+     "from_undefined_only": false,
+     "to_state": "reject",
+     "source_handle": "",
+     "target_handle": ""
+    },
+    {
+     "name": "revise",
+     "label": {
+      "en": "Revise"
+     },
+     "from_state": null,
+     "from_undefined_only": false,
+     "to_state": "revise",
+     "source_handle": "",
+     "target_handle": ""
+    }
+   ],
+   "virtual_node_positions": {
+    "fromAny": {
+     "x": 113.1174625023474,
+     "y": 150.57860114751804
+    }
+   }
+  },
+  {
+   "id": "e22b4114-a8d2-42fe-958b-fd366b2fac25",
+   "name": "Proposal Workflow",
+   "description": "Workflow for conference talk proposals (from apiv1/flows.py)",
+   "states": [
+    {
+     "name": "draft",
+     "label": {
+      "en": "Draft",
+      "de": "Entwurf"
+     },
+     "is_initial": true,
+     "position_x": 60.0,
+     "position_y": 220.0,
+     "background_color": "#c2c2c2",
+     "text_color": "#000000"
+    },
+    {
+     "name": "submitted",
+     "label": {
+      "en": "Submitted",
+      "de": "Eingereicht"
+     },
+     "is_initial": false,
+     "position_x": 380.0,
+     "position_y": 100.0,
+     "background_color": "#81c1e3",
+     "text_color": "#000000"
+    },
+    {
+     "name": "revise",
+     "label": {
+      "en": "Revise",
+      "de": "\u00dcberarbeitung"
+     },
+     "is_initial": false,
+     "position_x": 380.0,
+     "position_y": 340.0,
+     "background_color": "#fce808",
+     "text_color": "#000000"
+    },
+    {
+     "name": "accepted",
+     "label": {
+      "en": "Accepted",
+      "de": "Akzeptiert"
+     },
+     "is_initial": false,
+     "position_x": 700.0,
+     "position_y": 20.0,
+     "background_color": "#6aeb36",
+     "text_color": "#000000"
+    },
+    {
+     "name": "rejected",
+     "label": {
+      "en": "Rejected",
+      "de": "Abgelehnt"
+     },
+     "is_initial": false,
+     "position_x": 694.5086780555433,
+     "position_y": 198.03471222217317,
+     "background_color": "#f54949",
+     "text_color": "#000000"
+    }
+   ],
+   "transitions": [
+    {
+     "name": "submit",
+     "label": {
+      "en": "Submit",
+      "de": "Einreichen"
+     },
+     "from_state": "draft",
+     "from_undefined_only": false,
+     "to_state": "submitted",
+     "source_handle": "right-top",
+     "target_handle": "left-top"
+    },
+    {
+     "name": "allow-revision",
+     "label": {
+      "en": "Allow Revision",
+      "de": "\u00dcberarbeitung erlauben"
+     },
+     "from_state": "rejected",
+     "from_undefined_only": false,
+     "to_state": "revise",
+     "source_handle": "bottom-left",
+     "target_handle": "right-bottom"
+    },
+    {
+     "name": "accept",
+     "label": {
+      "en": "Accept",
+      "de": "Akzeptieren"
+     },
+     "from_state": "submitted",
+     "from_undefined_only": false,
+     "to_state": "accepted",
+     "source_handle": "right-top",
+     "target_handle": "left-top"
+    },
+    {
+     "name": "reject",
+     "label": {
+      "en": "Reject",
+      "de": "Ablehnen"
+     },
+     "from_state": "submitted",
+     "from_undefined_only": false,
+     "to_state": "rejected",
+     "source_handle": "right-bottom",
+     "target_handle": "left-top"
+    },
+    {
+     "name": "request-revision",
+     "label": {
+      "en": "Request Revision",
+      "de": "\u00dcberarbeitung anfordern"
+     },
+     "from_state": "submitted",
+     "from_undefined_only": false,
+     "to_state": "revise",
+     "source_handle": "bottom-right",
+     "target_handle": "top-right"
+    },
+    {
+     "name": "resubmit",
+     "label": {
+      "en": "Resubmit",
+      "de": "Erneut einreichen"
+     },
+     "from_state": "revise",
+     "from_undefined_only": false,
+     "to_state": "submitted",
+     "source_handle": "top-left",
+     "target_handle": "bottom-left"
+    }
+   ],
+   "virtual_node_positions": {}
+  }
+ ],
+ "policies": [
+  {
+   "slug": "utils"
+  },
+  {
+   "slug": "test_udm"
+  },
+  {
+   "slug": "dashboard"
+  },
+  {
+   "slug": "config"
+  },
+  {
+   "slug": "validation_rules"
+  },
+  {
+   "slug": "view"
+  },
+  {
+   "slug": "transitions"
+  },
+  {
+   "slug": "udm"
+  },
+  {
+   "slug": "roles"
+  },
+  {
+   "slug": "reviews"
+  },
+  {
+   "slug": "save"
+  },
+  {
+   "slug": "timemachine"
+  },
+  {
+   "slug": "workflow"
+  },
+  {
+   "slug": "delete"
+  },
+  {
+   "slug": "sudo"
+  },
+  {
+   "slug": "description"
+  },
+  {
+   "slug": "proposals"
+  },
+  {
+   "slug": "proposals-actions"
+  },
+  {
+   "slug": "proposal_id"
+  },
+  {
+   "slug": "tabs"
+  },
+  {
+   "slug": "framework"
+  }
+ ]
 }

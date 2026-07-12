@@ -8,7 +8,7 @@ import data.udm.udmframeworkv1.modules.workflow.current_status
 import data.udm.udmframeworkv1.modules.sudo
 import rego.v1
 
-_is_validation := utils.is_validation
+_is_validation := utils.is_preview
 
 # ─── allow ─────────────────────────────────────────────────────────────────────
 default allow := false
@@ -32,7 +32,7 @@ allow if {
 # Evaluated before allow; critical-level entries block save/transition.
 
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	_can_view
 	input.changed_fields.owner
 	print("[block:owner] user=", input.user.username, "attempted to change owner")
@@ -50,7 +50,7 @@ _reviewer_save_permitted if {
 }
 
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	roles.is_owner_or_editor
 	not roles.is_moderator
 	not _reviewer_save_permitted
@@ -70,16 +70,16 @@ error_messages contains msg if {
 # Uses input.old_entity (pre-write snapshot) so the check works even for
 # delete operations where the review no longer exists in input.entity.
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	_can_view
 	some op in input.changed_fields.reviews.value
 	op.op in {"update", "delete"}
 	some existing in object.get(input.old_entity.children, "reviews", [])
 	existing.id == op.id
-	existing.fields.author.value.id != input.user.id
+	existing.fields.author.value != input.user.id
 	print(
 		"[block:review-modify] user=", input.user.username,
-		"op=", op.op, "review_author=", existing.fields.author.value.id,
+		"op=", op.op, "review_author=", existing.fields.author.value,
 	)
 	msg := {
 		"level": "critical",
@@ -90,7 +90,7 @@ error_messages contains msg if {
 
 # Block changing the author field on an existing review.
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	_can_view
 	some op in input.changed_fields.reviews.value
 	op.op == "update"
@@ -108,7 +108,7 @@ error_messages contains msg if {
 
 # Block creating a review attributed to someone other than the current user.
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	_can_view
 	some op in input.changed_fields.reviews.value
 	op.op == "create"
@@ -127,7 +127,7 @@ error_messages contains msg if {
 
 # Block non-reviewers (including moderators not in the reviewer lists) from creating reviews.
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	_can_view
 	not roles.is_reviewer
 	some op in input.changed_fields.reviews.value
@@ -150,7 +150,7 @@ error_messages contains msg if {
 # state information to someone who has no view access.
 
 error_messages contains msg if {
-	input.action in {"save", "transition"}
+	input.action in {"save", "transition", "preview"}
 	not _can_view
 	print(
 		"[deny:save/transition] no view access user=", input.user.username,
@@ -237,7 +237,7 @@ error_messages contains msg if {
 # Guard used by proposal-level context messages: true for view/save and for
 # transitions on the proposal status field. Suppresses proposal-level noise when
 # the action is a review vote transition on a subfield.
-_proposal_ctx if input.action == "save"
+_proposal_ctx if input.action in {"save", "preview"}
 
 _proposal_ctx if {
 	input.action == "transition"

@@ -1,6 +1,7 @@
 package udm.udmframeworkv1.modules.view
 
-import data.udm
+import data.udmtree
+import data.udm.udmframeworkv1.modules.config
 import data.udm.udmframeworkv1.modules.roles
 import data.udm.udmframeworkv1.modules.workflow
 import rego.v1
@@ -28,11 +29,25 @@ allow if {
 	print("[view:allow] reviewer post-draft")
 }
 
+# ─── viewable_fields (per node — whole tree, one pass) ────────────────────────
+# Default grant: every field of every node in the tree, minus the protected
+# root fields (modules re-grant those explicitly, e.g. reviews.rego).
 
+viewable_fields contains {"node": node.id, "field": f} if {
+	some node in udmtree.tree_nodes
+	some f, _ in node.fields
+	not _protected(node, f)
+}
 
-# ─── viewable_fields ───────────────────────────────────────────────────────────────
+_protected(node, f) if {
+	node.id == input.entity.id
+	f in config.PROTECTED_FIELDS
+}
 
-viewable_fields contains f if {
-	input.entity.fields[f]
-	not f in udm.protected_fields
+# Structural layout fields are ALWAYS viewable, for every node and every user
+# (config.STRUCTURAL_TYPES): they carry no entity data.
+viewable_fields contains {"node": node.id, "field": f} if {
+	some node in udmtree.tree_nodes
+	some f, entry in node.fields
+	entry.data_type in config.STRUCTURAL_TYPES
 }

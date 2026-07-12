@@ -165,6 +165,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/udm/configs/{config_id}/versions/draft/as-input/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Draft As Input
+         * @description Return the draft config version in ConfigDraftIn shape for round-trip editing.
+         */
+        get: operations["userdefinedmodel_api_get_draft_as_input"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/udm/configs/{config_id}/versions/draft/publish/": {
         parameters: {
             query?: never;
@@ -206,7 +226,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Entities
+         * @description List entities for a single UDM type, filtered to those the user may view.
+         *     Field values are reduced to the viewable set per entity (policy-enforced).
+         */
+        get: operations["userdefinedmodel_api_list_entities"];
         put?: never;
         /** Create Entity */
         post: operations["userdefinedmodel_api_create_entity"];
@@ -312,8 +337,37 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Transition Entity */
+        /**
+         * Transition Entity
+         * @description Apply pending edits (if any) and execute the transition ATOMICALLY: the
+         *     policy evaluates the patched, not-yet-committed state against the persisted
+         *     pre-patch snapshot, and a denial rolls back the edits with the transition —
+         *     they are never persisted on their own (review §4, execution semantics).
+         */
         post: operations["userdefinedmodel_api_transition_entity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/entities/{entity_id}/validation-preview/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validation Preview
+         * @description ONE preview request replacing the removed validate_only modes (§4):
+         *     applies the pending edits in a rolled-back transaction, runs a single
+         *     'preview' policy evaluation, and returns the save verdict, all messages,
+         *     and the per-node per-workflow-field valid-transition matrix.
+         */
+        post: operations["userdefinedmodel_api_validation_preview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -337,6 +391,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/udm/export-bundle-zip/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Bundle Zip
+         * @description Export a ZIP bundle: UDM_BUNDLE.json + policies/<slug>.rego for each policy.
+         */
+        post: operations["userdefinedmodel_api_export_bundle_zip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/udm/groups/": {
         parameters: {
             query?: never;
@@ -348,6 +422,49 @@ export interface paths {
         get: operations["userdefinedmodel_api_search_groups"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/import-bundle-zip/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Bundle Zip
+         * @description Import a ZIP bundle (UDM_BUNDLE.json + policies/*.rego).
+         *
+         *     scope_type_ids: comma-separated UUID strings of in-scope UDM Types.
+         *     policy_slug: if set, save each policy rego with its own slug (already done from policies/ dir).
+         */
+        post: operations["userdefinedmodel_api_import_bundle_zip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/parse-bundle-zip/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Bundle Zip
+         * @description Parse a ZIP bundle and return the scope_type_ids and udm_types metadata it declares.
+         */
+        post: operations["userdefinedmodel_api_parse_bundle_zip"];
         delete?: never;
         options?: never;
         head?: never;
@@ -454,7 +571,8 @@ export interface paths {
         get: operations["userdefinedmodel_api_get_udm_type"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Udm Type */
+        delete: operations["userdefinedmodel_api_delete_udm_type"];
         options?: never;
         head?: never;
         /** Update Udm Type */
@@ -538,6 +656,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/udm/types/{type_id}/public-fields/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Type Public Fields
+         * @description Evaluate data.udm.public_type_fields from the type's policies.
+         *
+         *     Runs all policies for this type with a minimal input
+         *     (action=public_type_fields, no entity or user) and returns the resulting
+         *     dict.  Returns an empty dict when no policies are attached or the rule is
+         *     not defined.
+         */
+        get: operations["userdefinedmodel_api_get_type_public_fields"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/udm/users/": {
         parameters: {
             query?: never;
@@ -612,6 +755,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/udm/workflows/{workflow_id}/versions/draft/publish/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Workflow Draft */
+        post: operations["userdefinedmodel_api_publish_workflow_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -671,6 +831,21 @@ export interface components {
          * @enum {string}
          */
         BulkMigrationStatus: "draft" | "running" | "done" | "partial";
+        /** BundleExportIn */
+        BundleExportIn: {
+            /** Scope Type Ids */
+            scope_type_ids: string[];
+        };
+        /**
+         * ConfigDraftExportOut
+         * @description ConfigVersion serialised in ConfigDraftIn shape for round-trip export.
+         */
+        ConfigDraftExportOut: {
+            /** Fields */
+            fields: components["schemas"]["FieldDefinitionDraftOut"][];
+            /** Notes */
+            notes: string;
+        };
         /** ConfigDraftIn */
         ConfigDraftIn: {
             /** Fields */
@@ -726,6 +901,17 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /** DashboardColumnOut */
+        DashboardColumnOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Renderer */
+            renderer: string;
+            /** Value */
+            value?: unknown;
         };
         /**
          * DataType
@@ -795,10 +981,17 @@ export interface components {
             /** Created At */
             created_at: string;
             /**
-             * Editable Fields
+             * Dashboard Columns
              * @default []
              */
-            editable_fields: string[];
+            dashboard_columns: components["schemas"]["DashboardColumnOut"][];
+            /**
+             * Editable Fields
+             * @default {}
+             */
+            editable_fields: {
+                [key: string]: string[];
+            };
             /** Field Values */
             field_values: components["schemas"]["FieldValueOut"][];
             /**
@@ -819,8 +1012,13 @@ export interface components {
             updated_at: string;
             /** User Defined Model Type Id */
             user_defined_model_type_id: string | null;
-            /** Viewable Fields */
-            viewable_fields?: string[] | null;
+            /**
+             * Viewable Fields
+             * @default {}
+             */
+            viewable_fields: {
+                [key: string]: string[];
+            };
         };
         /** EntityPatchIn */
         EntityPatchIn: {
@@ -859,10 +1057,7 @@ export interface components {
             id: string;
             /** Languages */
             languages: components["schemas"]["ConfigLanguageOut"][];
-            /**
-             * Last Published At
-             * Format: date-time
-             */
+            /** Last Published At */
             last_published_at: string | null;
             /** Name */
             name: string;
@@ -881,6 +1076,45 @@ export interface components {
             description?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * FieldDefinitionDraftOut
+         * @description FieldDefinition serialised in the same shape that FieldDefinitionIn accepts,
+         *     so the output can be fed back into PUT .../draft/ without modification.
+         */
+        FieldDefinitionDraftOut: {
+            /** Data Type */
+            data_type: string;
+            /** Default */
+            default?: unknown | null;
+            /** Help Texts */
+            help_texts: {
+                [key: string]: string;
+            };
+            /** Is Localized */
+            is_localized: boolean;
+            /** Is Preview */
+            is_preview: boolean;
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            } | null;
+            /** Parent Slug */
+            parent_slug?: string | null;
+            /** Slug */
+            slug: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Submodel Config Version Id */
+            submodel_config_version_id?: string | null;
+            /** Type Config */
+            type_config: {
+                [key: string]: unknown;
+            };
+            /** Workflow Definition Id */
+            workflow_definition_id?: string | null;
+            /** Workflow Version Id */
+            workflow_version_id?: string | null;
         };
         /** FieldDefinitionIn */
         FieldDefinitionIn: {
@@ -901,10 +1135,12 @@ export interface components {
              * @default false
              */
             is_preview: boolean;
-            /** Labels (null/omit for structural types) */
+            /** Labels */
             labels?: {
                 [key: string]: string;
             } | null;
+            /** Parent Slug */
+            parent_slug?: string | null;
             /** Slug */
             slug: string;
             /**
@@ -920,8 +1156,6 @@ export interface components {
             };
             /** Workflow Version Id */
             workflow_version_id?: string | null;
-            /** Parent Slug (for fields inside tabs, or tabs inside tab_container) */
-            parent_slug?: string | null;
         };
         /** FieldDefinitionOut */
         FieldDefinitionOut: {
@@ -946,6 +1180,8 @@ export interface components {
             label: {
                 [key: string]: string;
             };
+            /** Parent Slug */
+            parent_slug?: string | null;
             /** Slug */
             slug: string;
             /** Sort Order */
@@ -956,8 +1192,6 @@ export interface components {
                 [key: string]: unknown;
             };
             workflow_version?: components["schemas"]["WorkflowVersionOut"] | null;
-            /** Parent Slug (for fields inside tabs, or tabs inside tab_container) */
-            parent_slug?: string | null;
         };
         /** FieldEditOut */
         FieldEditOut: {
@@ -1113,15 +1347,15 @@ export interface components {
                 [key: string]: string;
             }[];
             /**
-             * Rule Errors
-             * @default []
-             */
-            rule_errors: string[];
-            /**
              * Prints
              * @default []
              */
             prints: string[];
+            /**
+             * Rule Errors
+             * @default []
+             */
+            rule_errors: string[];
         };
         /** PolicyOut */
         PolicyOut: {
@@ -1184,10 +1418,20 @@ export interface components {
             /** Transition */
             transition: string;
         };
+        /** TypePublicFieldsOut */
+        TypePublicFieldsOut: {
+            /** Descriptions */
+            descriptions: {
+                [key: string]: string;
+            };
+        };
         /** UDMTypeCreateIn */
         UDMTypeCreateIn: {
-            /** Label */
-            label?: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
             /** Name */
             name: string;
         };
@@ -1204,6 +1448,13 @@ export interface components {
             label: string;
             /** Name */
             name: string;
+        };
+        /** UDMTypeUpdateIn */
+        UDMTypeUpdateIn: {
+            /** Label */
+            label?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /** UserAutocompleteItem */
         UserAutocompleteItem: {
@@ -1243,28 +1494,14 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** WorkflowVersionOut */
-        WorkflowVersionOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Status */
-            status: string;
-            /** States */
-            states: components["schemas"]["WorkflowStateOut"][];
-            /** Transitions */
-            transitions: components["schemas"]["WorkflowTransitionOut"][];
-            /** Virtual Node Positions */
-            virtual_node_positions?: {
-                [key: string]: unknown;
-            };
-        };
         /** WorkflowDefinitionOut */
         WorkflowDefinitionOut: {
+            /** Created At */
+            created_at?: string | null;
             /** Description */
             description: string;
+            /** Draft Version Id */
+            draft_version_id?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1272,8 +1509,14 @@ export interface components {
             id: string;
             /** Initial State */
             initial_state: string | null;
+            /** Last Edited At */
+            last_edited_at?: string | null;
+            /** Last Published At */
+            last_published_at?: string | null;
             /** Name */
             name: string;
+            /** Published Version Id */
+            published_version_id?: string | null;
             /** States */
             states: components["schemas"]["WorkflowStateOut"][];
             /** Transitions */
@@ -1282,10 +1525,6 @@ export interface components {
             virtual_node_positions?: {
                 [key: string]: unknown;
             };
-            /** Draft Version Id */
-            draft_version_id?: string | null;
-            /** Published Version Id */
-            published_version_id?: string | null;
         };
         /**
          * WorkflowFieldStateMappingIn
@@ -1368,6 +1607,10 @@ export interface components {
             };
             /** Name */
             name: string;
+            /** Properties */
+            properties?: {
+                [key: string]: unknown;
+            };
             /**
              * Source Handle
              * @default
@@ -1393,6 +1636,13 @@ export interface components {
             };
             /** Name */
             name: string;
+            /**
+             * Properties
+             * @default {}
+             */
+            properties: {
+                [key: string]: unknown;
+            };
             /** Source Handle */
             source_handle: string;
             /** Target Handle */
@@ -1410,6 +1660,27 @@ export interface components {
             states?: components["schemas"]["WorkflowStateIn"][] | null;
             /** Transitions */
             transitions?: components["schemas"]["WorkflowTransitionIn"][] | null;
+            /** Virtual Node Positions */
+            virtual_node_positions?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * WorkflowVersionOut
+         * @description Workflow version content (states, transitions) with its own id.
+         */
+        WorkflowVersionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** States */
+            states: components["schemas"]["WorkflowStateOut"][];
+            /** Status */
+            status: string;
+            /** Transitions */
+            transitions: components["schemas"]["WorkflowTransitionOut"][];
             /** Virtual Node Positions */
             virtual_node_positions?: {
                 [key: string]: unknown;
@@ -1714,6 +1985,28 @@ export interface operations {
             };
         };
     };
+    userdefinedmodel_api_get_draft_as_input: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDraftExportOut"];
+                };
+            };
+        };
+    };
     userdefinedmodel_api_publish_draft: {
         parameters: {
             query?: never;
@@ -1758,9 +2051,34 @@ export interface operations {
             };
         };
     };
+    userdefinedmodel_api_list_entities: {
+        parameters: {
+            query: {
+                type_id: string;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityOut"][];
+                };
+            };
+        };
+    };
     userdefinedmodel_api_create_entity: {
         parameters: {
-            query?: never;
+            query?: {
+                validate?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1826,9 +2144,7 @@ export interface operations {
     };
     userdefinedmodel_api_patch_entity: {
         parameters: {
-            query?: {
-                validate_only?: boolean;
-            };
+            query?: never;
             header?: never;
             path: {
                 entity_id: string;
@@ -1950,9 +2266,7 @@ export interface operations {
     };
     userdefinedmodel_api_transition_entity: {
         parameters: {
-            query?: {
-                validate_only?: boolean;
-            };
+            query?: never;
             header?: never;
             path: {
                 entity_id: string;
@@ -1973,6 +2287,30 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EntityOut"];
                 };
+            };
+        };
+    };
+    userdefinedmodel_api_validation_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntityPatchIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2000,6 +2338,28 @@ export interface operations {
             };
         };
     };
+    userdefinedmodel_api_export_bundle_zip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleExportIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     userdefinedmodel_api_search_groups: {
         parameters: {
             query?: {
@@ -2020,6 +2380,65 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GroupAutocompleteItem"][];
                 };
+            };
+        };
+    };
+    userdefinedmodel_api_import_bundle_zip: {
+        parameters: {
+            query?: {
+                scope_type_ids?: string;
+                policy_slug?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    userdefinedmodel_api_parse_bundle_zip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2253,6 +2672,26 @@ export interface operations {
             };
         };
     };
+    userdefinedmodel_api_delete_udm_type: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     userdefinedmodel_api_update_udm_type: {
         parameters: {
             query?: {
@@ -2264,7 +2703,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UDMTypeUpdateIn"] | null;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -2392,6 +2835,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    userdefinedmodel_api_get_type_public_fields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TypePublicFieldsOut"];
+                };
             };
         };
     };
@@ -2548,6 +3013,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    userdefinedmodel_api_publish_workflow_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionOut"];
+                };
             };
         };
     };

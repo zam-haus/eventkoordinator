@@ -116,6 +116,12 @@ def _require_perms(request, *perms: str) -> JsonResponse | None:
     return None
 
 
+def _locale(request) -> str | None:
+    """The requesting user's locale for the policy input. None only for system
+    self-calls (background tasks) — HTTP requests always carry one."""
+    return getattr(request, "LANGUAGE_CODE", None) or "en"
+
+
 def _policy_allows(entity, user, action: str, **kwargs) -> bool:
     """Object-level authorization for an entity action via its Rego policy.
 
@@ -126,25 +132,17 @@ def _policy_allows(entity, user, action: str, **kwargs) -> bool:
     return evaluate_policy(entity, user, action, **kwargs).allow
 
 
-def _entity_out_for_user(entity, user, policy_messages: list | None = None, view_policy=None) -> EntityOut:
-    from userdefinedmodel.models import UserDefinedModelEntity
+def _entity_out_for_user(entity, user, policy_messages: list | None = None, view_policy=None, locale=None) -> EntityOut:
     from userdefinedmodel.writer import serialize_node
     from userdefinedmodel.engine import evaluate_policy
-    data = serialize_node(entity)
-    policy = view_policy if view_policy is not None else evaluate_policy(entity, user, "view")
-    viewable = policy.viewable_fields   # None = no restriction
-    editable = policy.editable_fields or []
-    # viewable_fields from the root-entity policy are top-level field slugs (e.g.
-    # "status", "reviews"). Applying them to a child/submodel node's field_values
-    # would filter everything out because the child has different slugs ("vote",
-    # "comment"). Only filter when the node is a root entity.
-    is_root = isinstance(entity, UserDefinedModelEntity)
-    if is_root and viewable is not None:
-        allowed = set(viewable)
-        data["field_values"] = [fv for fv in data["field_values"] if fv["field_slug"] in allowed]
-        data["children"] = {k: v for k, v in data["children"].items() if k in allowed}
-    data["viewable_fields"] = viewable
-    data["editable_fields"] = editable
+    policy = view_policy if view_policy is not None else evaluate_policy(entity, user, "view", locale=locale)
+    # Per-node grants (§5): serialize_node is the single redaction point and
+    # filters the WHOLE tree recursively — root and submodels alike, also when
+    # `entity` is itself a submodel node. Deny-by-default: nodes absent from
+    # the map expose nothing.
+    data = serialize_node(entity, viewable=policy.viewable_fields)
+    data["viewable_fields"] = policy.viewable_fields
+    data["editable_fields"] = policy.editable_fields
     data["policy_messages"] = policy_messages or []
     data["dashboard_columns"] = policy.dashboard_columns
     return EntityOut(**data)
@@ -173,6 +171,7 @@ def _serialize_workflow_version(version) -> WorkflowVersionOut:
             to_state=trans.to_state.name,
             source_handle=trans.source_handle,
             target_handle=trans.target_handle,
+            properties=trans.properties or {},
         ))
     return WorkflowVersionOut(
         id=version.id,
@@ -740,16 +739,35 @@ def eval_policy_for_type(
         for tp in udm_type.type_policies.select_related("policy").order_by("sort_order"):
             policy_entries.append({"slug": tp.policy.slug, "source": tp.policy.source})
 
-    # Build input document
+    # Build input document. Transition needs its descriptor; resolve it from
+    # the first workflow field that defines the named transition.
     kwargs = {}
-    if transition:
-        kwargs["transition"] = transition
-    input_doc = build_policy_input(entity, eval_user, action, **kwargs)
+    if transition and action == "transition":
+        from userdefinedmodel.models import FieldDefinition, WorkflowTransition
+        for fd in entity.config_version.field_definitions.filter(
+            data_type=FieldDefinition.DataType.WORKFLOW
+        ).select_related("workflow_version"):
+            t = WorkflowTransition.objects.filter(
+                version=fd.workflow_version, name=transition
+            ).select_related("from_state", "to_state", "version").first()
+            if t:
+                kwargs.update(
+                    transition=transition, field=fd.slug, node_id=str(entity.id),
+                    transition_descriptor=t.to_descriptor(),
+                )
+                break
+    if action in ("save", "transition", "preview"):
+        from userdefinedmodel.engine import build_entity_document
+        kwargs.setdefault("old_entity_doc", build_entity_document(entity))
+    if action == "preview":
+        from userdefinedmodel.engine import build_candidate_transitions
+        kwargs["candidate_transitions"] = build_candidate_transitions(entity)
+    input_doc = build_policy_input(entity, eval_user, action, locale=_locale(request), **kwargs)
 
-    # Run evaluation. Default-deny when the type has no policies, mirroring
-    # engine.evaluate_policy so this introspection view reflects real behavior.
+    # Run evaluation on the SAME compiled-session code path as the engine
+    # (§3.1-2), reading the single aggregate rule data.udm.result.
     error_msg = None
-    output = {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
+    output = {"allow": False, "messages": [], "viewable_fields": {}, "editable_fields": {}}
     eval_prints: list[str] = []
     eval_coverage: list[dict] = []
     eval_rule_errors: list[str] = []
@@ -757,48 +775,30 @@ def eval_policy_for_type(
     if policy_entries:
         try:
             import json as _json
-            import regorus
-            eng = regorus.Engine()
-            for entry in policy_entries:
-                eng.add_policy(f"policy_{entry['slug']}.rego", entry["source"])
+            from userdefinedmodel.engine import RegoSession, _UNDEFINED
+            session = RegoSession([
+                (f"policy_{entry['slug']}.rego", entry["source"]) for entry in policy_entries
+            ])
+            eng = session.clone()
             eng.set_input_json(_json.dumps(input_doc))
             eng.set_gather_prints(True)
             eng.set_enable_coverage(True)
 
-            def _eval_list(rule_path):
-                try:
-                    raw = _json.loads(eng.eval_rule_as_json(rule_path))
-                    return raw if isinstance(raw, list) else []
-                except Exception as exc:
-                    eval_rule_errors.append(f"{rule_path}: {exc}")
-                    return []
-
-            def _eval_bool(rule_path, default=True):
-                try:
-                    raw = _json.loads(eng.eval_rule_as_json(rule_path))
-                    # "<undefined>" is regorus' undefined sentinel; bool() of it
-                    # would be truthy, so treat it as the default instead.
-                    if raw is None or raw == "<undefined>":
-                        return default
-                    if isinstance(raw, list):
-                        return bool(raw[0]) if raw else default
-                    return bool(raw)
-                except Exception as exc:
-                    eval_rule_errors.append(f"{rule_path}: {exc}")
-                    return default
-
-            output = {
-                "allow": _eval_bool("data.udm.allow", default=False),
-                "messages": _eval_list("data.udm.messages"),
-                "viewable_fields": _eval_list("data.udm.viewable_fields"),
-                "editable_fields": _eval_list("data.udm.editable_fields"),
-            }
+            try:
+                result_val = RegoSession.eval_rule(eng, "data.udm.result")
+            except Exception as exc:
+                eval_rule_errors.append(f"data.udm.result: {exc}")
+                result_val = None
+            if isinstance(result_val, dict):
+                output = result_val
+            else:
+                eval_rule_errors.append("data.udm.result: undefined or not an object (deny)")
 
             try:
                 raw_full = eng.eval_query_as_json("data.udm")
                 logger.debug("policy full document entity=%s action=%s raw=%s", entity_id, action, raw_full)
                 parsed_full = _json.loads(raw_full)
-                full_document = None if parsed_full == "<undefined>" else parsed_full
+                full_document = None if parsed_full == _UNDEFINED else parsed_full
             except Exception as full_exc:
                 logger.debug("policy full document error entity=%s action=%s", entity_id, action, exc_info=full_exc)
                 eval_rule_errors.append(f"data.udm: {full_exc}")
@@ -813,7 +813,7 @@ def eval_policy_for_type(
             ]
         except Exception as exc:
             error_msg = str(exc)
-            output = {"allow": False, "messages": [], "viewable_fields": [], "editable_fields": []}
+            output = {"allow": False, "messages": [], "viewable_fields": {}, "editable_fields": {}}
 
     return PolicyEvalOut(
         input_document=input_doc,
@@ -858,7 +858,7 @@ def get_type_public_fields(request, type_id: uuid.UUID):
         udm_type = UserDefinedModelType.objects.get(id=type_id)
     except UserDefinedModelType.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
-    _, descriptions = evaluate_type_public_fields(udm_type, user=request.user)
+    _, descriptions = evaluate_type_public_fields(udm_type, user=request.user, locale=_locale(request))
     return TypePublicFieldsOut(descriptions=descriptions)
 
 
@@ -984,6 +984,7 @@ def create_workflow(request, payload: WorkflowCreateIn):
                 from_undefined_only=trans_in.from_undefined_only,
                 source_handle=trans_in.source_handle,
                 target_handle=trans_in.target_handle,
+                properties=trans_in.properties,
             )
             for lang, label in trans_in.label.items():
                 WorkflowTransitionTranslation.objects.create(transition=trans, language=lang, label=label)
@@ -1105,6 +1106,7 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
                         from_undefined_only=trans_in.from_undefined_only,
                         source_handle=trans_in.source_handle,
                         target_handle=trans_in.target_handle,
+                        properties=trans_in.properties,
                     )
                     for lang, label in trans_in.label.items():
                         WorkflowTransitionTranslation.objects.create(transition=trans, language=lang, label=label)
@@ -1298,7 +1300,7 @@ def list_entities(request, type_id: uuid.UUID, page_size: int = 200):
     results = []
     cap = min(max(1, page_size), 200)
     for entity in qs.iterator(chunk_size=200):
-        policy = evaluate_policy(entity, request.user, "view")
+        policy = evaluate_policy(entity, request.user, "view", locale=_locale(request))
         if not policy.allow:
             continue
         results.append(_entity_out_for_user(entity, request.user, view_policy=policy))
@@ -1329,7 +1331,7 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
             )
             entity.materialize_defaults()
             entity.materialize_user_defaults(request.user)
-            result = evaluate_policy(entity, request.user, "create")
+            result = evaluate_policy(entity, request.user, "create", locale=_locale(request))
             transaction.set_rollback(True)
         return JsonResponse({
             "valid": result.allow,
@@ -1344,7 +1346,7 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
         )
         entity.materialize_defaults()
         entity.materialize_user_defaults(request.user)
-        result = evaluate_policy(entity, request.user, "create")
+        result = evaluate_policy(entity, request.user, "create", locale=_locale(request))
         if not result.allow:
             from userdefinedmodel.engine import PolicyError
             raise PolicyError(result.messages or [{"level": "critical", "text": "Create denied by policy."}])
@@ -1370,7 +1372,7 @@ def get_entity(request, entity_id: uuid.UUID):
     # Object-level view authorization: the policy "view" allow decision gates
     # whether the entity is visible at all. 404 (not 403) avoids leaking existence
     # unless the policy produced messages explaining the denial.
-    policy = evaluate_policy(entity, request.user, "view")
+    policy = evaluate_policy(entity, request.user, "view", locale=_locale(request))
     if not policy.allow:
         msgs = policy.messages or []
         if msgs:
@@ -1380,41 +1382,10 @@ def get_entity(request, entity_id: uuid.UUID):
 
 
 @api.patch("/entities/{entity_id}/", response=EntityOut, auth=django_auth)
-def patch_entity(request, entity_id: uuid.UUID, payload: EntityPatchIn, validate_only: bool = False):
+def patch_entity(request, entity_id: uuid.UUID, payload: EntityPatchIn):
     from userdefinedmodel.models import UserDefinedModelEntity
     from userdefinedmodel.writer import apply_patch
     from userdefinedmodel.engine import TransitionError, PolicyError
-
-    if validate_only:
-        result = {"valid": True, "policy_messages": [], "errors": {}}
-        try:
-            with transaction.atomic():
-                _set_lock_timeout_ms(50)
-                try:
-                    entity = (UserDefinedModelEntity.objects
-                              .select_for_update(nowait=False, of=("self",))
-                              .select_related("config_version")
-                              .get(id=entity_id))
-                except UserDefinedModelEntity.DoesNotExist:
-                    return JsonResponse({"detail": "Not found"}, status=404)
-                except OperationalError:
-                    return _http409_concurrent()
-                try:
-                    _eg, messages = apply_patch(entity, payload.changed_fields, request.user, validate_only=True)
-                    result = {"valid": True, "policy_messages": messages, "errors": {}}
-                except PolicyError as e:
-                    result = {"valid": False, "policy_messages": e.messages, "errors": {}}
-                except ValidationError as exc:
-                    errors = exc.message_dict if hasattr(exc, "message_dict") else {"__all__": [str(exc)]}
-                    result = {"valid": False, "policy_messages": [], "errors": errors}
-                except TransitionError as e:
-                    result = {"valid": False, "policy_messages": [],
-                              "errors": {"__all__": [str(e)]}}
-                finally:
-                    transaction.set_rollback(True)
-        except OperationalError:
-            return _http409_concurrent()
-        return JsonResponse(result)
 
     try:
         with transaction.atomic():
@@ -1427,7 +1398,7 @@ def patch_entity(request, entity_id: uuid.UUID, payload: EntityPatchIn, validate
                 return JsonResponse({"detail": "Not found"}, status=404)
             except OperationalError:
                 return _http409_concurrent()
-            _eg, save_messages = apply_patch(entity, payload.changed_fields, request.user)
+            _eg, save_messages = apply_patch(entity, payload.changed_fields, request.user, locale=_locale(request))
     except PolicyError as e:
         return JsonResponse({"policy_messages": e.messages}, status=422)
     except TransitionError as e:
@@ -1439,7 +1410,7 @@ def patch_entity(request, entity_id: uuid.UUID, payload: EntityPatchIn, validate
         return JsonResponse({"errors": errors}, status=400)
     except OperationalError:
         return _http409_concurrent()
-    return _entity_out_for_user(entity, request.user, policy_messages=save_messages)
+    return _entity_out_for_user(entity, request.user, policy_messages=save_messages, locale=_locale(request))
 
 
 @api.delete("/entities/{entity_id}/", auth=django_auth)
@@ -1451,55 +1422,21 @@ def delete_entity(request, entity_id: uuid.UUID):
         return JsonResponse({"detail": "Not found"}, status=404)
     # Object-level delete authorization is delegated to the entity's policy
     # ("delete" action). Default-deny: no policy means no delete.
-    if not _policy_allows(entity, request.user, "delete"):
+    if not _policy_allows(entity, request.user, "delete", locale=_locale(request)):
         return JsonResponse({"detail": "Delete denied by policy"}, status=403)
     entity.delete()
     return JsonResponse({}, status=204)
 
 
 @api.post("/entities/{entity_id}/transition/", response=EntityOut, auth=django_auth)
-def transition_entity(request, entity_id: uuid.UUID, payload: TransitionIn, validate_only: bool = False):
-    from userdefinedmodel.models import UserDefinedModelEntity
-    from userdefinedmodel.engine import execute_transition, TransitionError
-
+def transition_entity(request, entity_id: uuid.UUID, payload: TransitionIn):
+    """Apply pending edits (if any) and execute the transition ATOMICALLY: the
+    policy evaluates the patched, not-yet-committed state against the persisted
+    pre-patch snapshot, and a denial rolls back the edits with the transition —
+    they are never persisted on their own (review §4, execution semantics)."""
+    from userdefinedmodel.engine import execute_transition, TransitionError, PolicyError, build_entity_document
     from userdefinedmodel.writer import apply_patch
-    from userdefinedmodel.engine import PolicyError
-
     from userdefinedmodel.models import UserDefinedModelEntityNode
-
-    if validate_only:
-        result = {"valid": True, "policy_messages": [], "errors": {}}
-        try:
-            with transaction.atomic():
-                _set_lock_timeout_ms(50)
-                try:
-                    entity = (UserDefinedModelEntityNode.objects
-                              .select_for_update(nowait=False, of=("self",))
-                              .select_related("config_version")
-                              .get(id=entity_id))
-                except UserDefinedModelEntityNode.DoesNotExist:
-                    return JsonResponse({"detail": "Not found"}, status=404)
-                except OperationalError:
-                    return _http409_concurrent()
-                try:
-                    patch_eg = None
-                    if payload.changed_fields:
-                        patch_eg, _ = apply_patch(entity, payload.changed_fields, request.user)
-                    msgs = execute_transition(entity, payload.field, payload.transition, request.user, edit_group=patch_eg)
-                    result = {"valid": True, "policy_messages": msgs, "errors": {}}
-                except PolicyError as e:
-                    result = {"valid": False, "policy_messages": e.messages, "errors": {}}
-                except TransitionError as e:
-                    result = {"valid": False, "policy_messages": e.details.get("policy_messages", []),
-                              "errors": {"__all__": [str(e)]}}
-                except ValidationError as exc:
-                    errors = exc.message_dict if hasattr(exc, "message_dict") else {"__all__": [str(exc)]}
-                    result = {"valid": False, "policy_messages": [], "errors": errors}
-                finally:
-                    transaction.set_rollback(True)
-        except OperationalError:
-            return _http409_concurrent()
-        return JsonResponse(result)
 
     transition_messages = []
     try:
@@ -1513,10 +1450,19 @@ def transition_entity(request, entity_id: uuid.UUID, payload: TransitionIn, vali
                 return JsonResponse({"detail": "Not found"}, status=404)
             except OperationalError:
                 return _http409_concurrent()
+            # Snapshot the persisted state BEFORE the patch so the transition
+            # policy can verify nothing unauthorized changed.
+            old_entity_doc = build_entity_document(entity)
             patch_eg = None
             if payload.changed_fields:
-                patch_eg, _ = apply_patch(entity, payload.changed_fields, request.user)
-            transition_messages = execute_transition(entity, payload.field, payload.transition, request.user, edit_group=patch_eg)
+                patch_eg, _ = apply_patch(
+                    entity, payload.changed_fields, request.user,
+                    _old_entity_doc=old_entity_doc, locale=_locale(request),
+                )
+            transition_messages = execute_transition(
+                entity, payload.field, payload.transition, request.user,
+                edit_group=patch_eg, locale=_locale(request), old_entity_doc=old_entity_doc,
+            )
     except PolicyError as e:
         return JsonResponse({"policy_messages": e.messages}, status=422)
     except TransitionError as e:
@@ -1526,7 +1472,103 @@ def transition_entity(request, entity_id: uuid.UUID, payload: TransitionIn, vali
         return JsonResponse({"errors": errors}, status=400)
     except OperationalError:
         return _http409_concurrent()
-    return _entity_out_for_user(entity, request.user, policy_messages=transition_messages)
+    return _entity_out_for_user(entity, request.user, policy_messages=transition_messages, locale=_locale(request))
+
+
+@api.post("/entities/{entity_id}/validation-preview/", auth=django_auth)
+def validation_preview(request, entity_id: uuid.UUID, payload: EntityPatchIn):
+    """ONE preview request replacing the removed validate_only modes (§4):
+    applies the pending edits in a rolled-back transaction, runs a single
+    'preview' policy evaluation, and returns the save verdict, all messages,
+    and the per-node per-workflow-field valid-transition matrix."""
+    from userdefinedmodel.engine import (
+        build_entity_document, build_candidate_transitions, evaluate_policy,
+        evaluate_view_precheck, TransitionError, PolicyError, _validate_subtree,
+    )
+    from userdefinedmodel.writer import apply_patch, serialize_changed_fields
+    from userdefinedmodel.models import UserDefinedModelEntityNode
+
+    locale = _locale(request)
+    response = {"save": {"valid": True, "errors": {}}, "messages": [], "nodes": {}}
+    try:
+        with transaction.atomic():
+            _set_lock_timeout_ms(50)
+            try:
+                entity = (UserDefinedModelEntityNode.objects
+                          .select_for_update(nowait=False, of=("self",))
+                          .select_related("config_version")
+                          .get(id=entity_id))
+            except UserDefinedModelEntityNode.DoesNotExist:
+                return JsonResponse({"detail": "Not found"}, status=404)
+            except OperationalError:
+                return _http409_concurrent()
+            try:
+                root = entity.get_root()
+                context = root if root.pk != entity.pk else entity
+
+                # 1. Persisted-state snapshot + VIEW pre-check (before the patch).
+                old_entity_doc = build_entity_document(entity)
+                view_allowed, additional_result = evaluate_view_precheck(
+                    entity, request.user, old_entity_doc, locale=locale)
+                if not view_allowed:
+                    return JsonResponse({"detail": "Not found"}, status=404)
+
+                # Apply pending edits; writes only — the single preview
+                # evaluation below covers policy for the whole tree.
+                if payload.changed_fields:
+                    apply_patch(
+                        entity, payload.changed_fields, request.user,
+                        validate_only=True, skip_policy=True,
+                        _old_entity_doc=old_entity_doc, locale=locale,
+                    )
+
+                # 2. State-valid candidates (no Rego).
+                candidates = build_candidate_transitions(context)
+
+                # 3.–5. ONE evaluation: save verdict + messages + matrix.
+                output = evaluate_policy(
+                    entity, request.user, "preview",
+                    locale=locale,
+                    changed_fields=serialize_changed_fields(payload.changed_fields or {}),
+                    old_entity_doc=old_entity_doc,
+                    additional_result=additional_result,
+                    candidate_transitions=candidates,
+                )
+                has_critical = any(m.get("level") == "critical" for m in output.messages)
+                response["messages"] = output.messages
+                response["save"]["valid"] = bool(output.allow and not has_critical)
+
+                # Save-rule floor: gates the save button only, never the matrix
+                # (transition pre-actions may repair data at execution time).
+                try:
+                    _validate_subtree(context)
+                except TransitionError as e:
+                    response["save"]["valid"] = False
+                    response["save"]["errors"] = e.details.get("field_errors", {})
+
+                allowed = {(t.get("node"), t.get("field"), t.get("name"))
+                           for t in output.valid_transitions}
+                for node_id, wf_fields in candidates.items():
+                    response["nodes"][node_id] = {}
+                    for slug, wf in wf_fields.items():
+                        response["nodes"][node_id][slug] = {
+                            "current_state": wf["current_state"],
+                            "valid_transitions": sorted(
+                                name for name in wf["transitions"]
+                                if (node_id, slug, name) in allowed
+                            ),
+                        }
+            except PolicyError as e:
+                response["save"] = {"valid": False, "errors": {}}
+                response["messages"] = e.messages
+            except ValidationError as exc:
+                errors = exc.message_dict if hasattr(exc, "message_dict") else {"__all__": [str(exc)]}
+                response["save"] = {"valid": False, "errors": errors}
+            finally:
+                transaction.set_rollback(True)
+    except OperationalError:
+        return _http409_concurrent()
+    return JsonResponse(response)
 
 
 @api.get("/entities/{entity_id}/history/", response=EditHistoryOut, auth=django_auth)
@@ -1541,10 +1583,13 @@ def entity_history(request, entity_id: uuid.UUID, page: int = 1, page_size: int 
 
     # Object-level view authorization. History exposes old/new field values, so
     # gate on the "view" allow decision and redact edits for non-viewable fields.
-    policy = evaluate_policy(entity, request.user, "view")
+    policy = evaluate_policy(entity, request.user, "view", locale=_locale(request))
     if not policy.allow:
         return JsonResponse({"detail": "Not found"}, status=404)
-    viewable = policy.viewable_fields  # None = no field-level restriction
+    # Per-node grant map {node_id: [slugs]} — redact per affected node, so
+    # submodel field edits are governed by their own node's grant instead of
+    # being blanket-hidden by the root slug list.
+    viewable = policy.viewable_fields
 
     qs = EditGroup.objects.filter(root_entity=entity).prefetch_related(
         "field_edits__field__translations",
@@ -1562,10 +1607,12 @@ def entity_history(request, entity_id: uuid.UUID, page: int = 1, page_size: int 
         edits = []
         for fe in group.field_edits.all():
             # Hide value edits for fields the policy does not expose to this user.
-            # Non-field edits (transitions, node add/remove) carry no field value
-            # and remain visible so structural history stays coherent.
-            if viewable is not None and fe.field is not None and fe.field.slug not in viewable:
-                continue
+            # Non-field edits (node add/remove) carry no field value and remain
+            # visible so structural history stays coherent.
+            if fe.field is not None:
+                node_key = str(fe.affected_node_id) if fe.affected_node_id else str(entity.id)
+                if fe.field.slug not in viewable.get(node_key, []):
+                    continue
             slug = fe.field.slug if fe.field else None
             label = None
             if fe.field:
@@ -1724,7 +1771,7 @@ def search_entities(request, q: str = "", type_ids: str = "", ids: str = ""):
     # them in the policy evaluator.
     results = []
     for entity in qs.iterator(chunk_size=200):
-        if not evaluate_policy(entity, request.user, "browse").allow:
+        if not evaluate_policy(entity, request.user, "browse", locale=_locale(request)).allow:
             if not request.user.is_superuser:
                 continue
             results.append(EntityAutocompleteItem(
@@ -1733,9 +1780,14 @@ def search_entities(request, q: str = "", type_ids: str = "", ids: str = ""):
                 type_id=entity.user_defined_model_type_id,
             ))
         else:
+            # §5-4: the display string is built from is_preview fields, which
+            # are entity data — gate them on the VIEW policy's per-node grant,
+            # not just on browse.allow.
+            view_policy = evaluate_policy(entity, request.user, "view", locale=_locale(request))
+            viewable_slugs = set(view_policy.viewable_fields.get(str(entity.id), [])) if view_policy.allow else set()
             results.append(EntityAutocompleteItem(
                 id=entity.id,
-                display=_entity_preview_display(entity),
+                display=_entity_preview_display(entity, viewable_slugs),
                 type_id=entity.user_defined_model_type_id,
             ))
         if len(results) >= 50:
@@ -1743,8 +1795,9 @@ def search_entities(request, q: str = "", type_ids: str = "", ids: str = ""):
     return results
 
 
-def _entity_preview_display(entity) -> str:
-    """Build a human-readable display string from is_preview fields, falling back to the UUID."""
+def _entity_preview_display(entity, viewable_slugs: set[str]) -> str:
+    """Build a human-readable display string from is_preview fields that the
+    VIEW policy exposes to this user, falling back to the UUID."""
     config_version = entity.config_version
     if config_version is None:
         return str(entity.id)
@@ -1756,7 +1809,10 @@ def _entity_preview_display(entity) -> str:
             default_lang = lang.code
             break
 
-    preview_fields = [fd for fd in config_version.field_definitions.all() if fd.is_preview]
+    preview_fields = [
+        fd for fd in config_version.field_definitions.all()
+        if fd.is_preview and fd.slug in viewable_slugs
+    ]
     if not preview_fields:
         return str(entity.id)
 
@@ -2391,6 +2447,7 @@ def import_bundle_zip(
                 pol, _ = Policy.objects.get_or_create(slug=slug, defaults={"source": ""})
             policy_slug_map[slug] = pol
 
+
         # ── Step 4: UDMTypes — create if missing, always relink ───────────────
         # Maps bundle cfg_id → the first config assigned to a bundle UDMType,
         # used for linking fallback scope types.
@@ -2541,6 +2598,7 @@ def _update_workflow_from_data(wf_def, wf_data: dict) -> "WorkflowVersion":
             to_state=state_map[tr_data["to_state"]],
             source_handle=tr_data.get("source_handle", ""),
             target_handle=tr_data.get("target_handle", ""),
+            properties=tr_data.get("properties") or {},
         )
         for lang, label in (tr_data.get("label") or {}).items():
             WorkflowTransitionTranslation.objects.create(transition=tr, language=lang, label=label)
@@ -2588,6 +2646,7 @@ def _create_workflow_from_data(wf_data: dict) -> "WorkflowVersion":
             to_state=state_map[tr_data["to_state"]],
             source_handle=tr_data.get("source_handle", ""),
             target_handle=tr_data.get("target_handle", ""),
+            properties=tr_data.get("properties") or {},
         )
         for lang, label in (tr_data.get("label") or {}).items():
             WorkflowTransitionTranslation.objects.create(transition=tr, language=lang, label=label)

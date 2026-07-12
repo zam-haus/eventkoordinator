@@ -6,7 +6,32 @@ and the reference doc `backend/userdefinedmodel/POLICY_ENGINE.md`.
 
 ---
 
-## 1. Current layout (as implemented)
+## 0. Implementation status (updated while working)
+
+| Item | Status | Notes / caveats |
+|---|---|---|
+| §3.1-1 aggregate `result` / `type_result` rules | Done | engine reads only result/type_result; udm.rego aggregator builds both; per-node grant maps; additional_result carry-over |
+| §3.1-2 shared `RegoSession` eval helper | Done | RegoSession in engine.py; introspection endpoint uses it |
+| §3.1-3 typed input, `input_version`, `locale` | Done | build_policy_input validates via policy_input.validate_policy_input; locale threaded from requests |
+| §3.1-4 message normalization via Pydantic | Done | PolicyMessage in engine.py; malformed messages logged + dropped |
+| §3.1-5 per-type compiled-engine cache | Done | thread-LOCAL cache (PyO3 regorus engines are unsendable — a shared cache panics under the threaded server); still one entry per type per thread, hash-validated, clone() per eval |
+| §3.1-6 browse via cache + light input | Done (partial) | cache covers compile cost; input doc still full — caveat: no light browse doc yet |
+| §3.2-7 `users`/`groups` lookup maps, drop `_expand_fields` | Done | _expand_fields removed; build_lookup_maps; groups carry member_ids |
+| §3.2-8 full-tree expansion; `linked_entities` depth-1 | Done | LINKED_ENTITY_DEPTH=1 constant; linked docs' user/group refs included |
+| §3.3-9 framework rego stays in DB | Done | decision only, nothing to implement |
+| §3.3-10 `_template.rego` module contract | Done | rewritten to match implementation (udmtree walker, per-node grants, shared transition predicates, regorus constraints) |
+| §3.3-11 `_input_schema.rego` + example generator + check script | Done | committed; keep in lockstep with engine changes |
+| §3.3-12 `schema_id` per node + `schemas` map + validators registry | Done | caveat: regorus cannot dispatch functions via a dynamic registry ref — validators are ordinary modules iterating data.udmtree.tree_nodes_with_path and gating on node.schema_id |
+| §3.3-13 `PROTECT` on entity→type FK | Done | migration 0025 committed |
+| §4 `POST /validation-preview/`, remove `validate_only` | Done | endpoint + candidate enumeration + properties column (migration 0026); PATCH/transition validate_only removed; frontend: udmValidationPreview replaces per-button calls, editor + WorkflowFieldWidget rewired, save button gated on save.valid |
+| §5 recursive redaction in `serialize_node` (per-node maps) | Done | serialize_node filters whole tree; history per affected node; search preview gated on view grant |
+| Framework/instance `.rego` rewrite to new contract | Done | udm.rego aggregator, framework.rego (package udmtree walker), all modules ported to PK+lookup-map contract, per-node grants, shared transition predicates. Caveats: (1) modules must NEVER reference data.udm.* — cycles; protected fields became the static config.PROTECTED_FIELDS constant; (2) cross-module function calls don't resolve in regorus — helpers are defined locally per module; (3) test_udm.rego NOT ported (opa test file; could not run under this regorus wheel before either); (4) policies load from the DB — re-import the bundle for changes to take effect |
+| POLICY_ENGINE.md regeneration | Done | rewritten against the implemented contract; defers to _input_schema.rego as the executable source of truth |
+| Tests updated & passing | Done | 129 tests (5 new ValidationPreviewTests), only the pre-existing draft-roundtrip failure remains; factories wrap fixtures with a shared result-aggregation suffix (wrap_policy); frontend typechecks (pre-existing errors untouched) |
+
+---
+
+## 1. Layout BEFORE the refactor (historical — superseded by the implementation; see POLICY_ENGINE.md for the current contract)
 
 ### Input document (`engine.build_policy_input`, engine.py:136)
 

@@ -177,17 +177,81 @@ class MinValueRuleFactory(DjangoModelFactory):
 
 # ─── Policy ───────────────────────────────────────────────────────────────────
 
+# Shared result aggregation appended to every test policy: the engine reads
+# ONLY data.udm.result (contract §3.1-1). Test policies define plain `allow`
+# (and optionally `messages` / `valid_transitions` / `actions` partial sets);
+# this suffix assembles the fixed-schema result object, granting every field of
+# every node when allowed (per-node maps, deny-by-default when not).
+RESULT_SUFFIX = """
+# ── test-framework result aggregation (appended by factories.RESULT_SUFFIX) ──
+messages contains {"level": "debug", "text": "-"} if false
+
+valid_transitions contains {"node": "-", "field": "-", "name": "-"} if false
+
+actions contains {} if false
+
+dashboard_columns contains {} if false
+
+_tf_nodes := {n |
+    walk(input.entity, [_, n])
+    is_object(n)
+    object.get(n, "schema_id", null) != null
+}
+
+_tf_grant_all[node_id] := slugs if {
+    some n in _tf_nodes
+    node_id := n.id
+    slugs := sort([s | some s, _ in n.fields])
+}
+
+default _tf_allow := false
+
+_tf_allow := allow
+
+_tf_fields := _tf_grant_all if _tf_allow
+
+else := {}
+
+# Preview matrix: an allowing test policy enables every state-valid candidate.
+valid_transitions contains {"node": n, "field": f, "name": name} if {
+    _tf_allow
+    some n, wfs in input.candidate_transitions
+    some f, wf in wfs
+    some name, _ in wf.transitions
+}
+
+result := {
+    "allow": _tf_allow,
+    "messages": [m | some m in messages],
+    "viewable_fields": _tf_fields,
+    "editable_fields": _tf_fields,
+    "valid_transitions": [t | some t in valid_transitions],
+    "actions": [a | some a in actions],
+    "dashboard_columns": [c | some c in dashboard_columns],
+    "additional_result": {
+        "view_allowed": _tf_allow,
+        "editable": [{"node": nid, "field": fs} | some nid, slugs in _tf_fields; some fs in slugs],
+    },
+}
+"""
+
+
+def wrap_policy(body: str) -> str:
+    """Append the shared result aggregation to a test policy body."""
+    return body + RESULT_SUFFIX
+
+
 # Minimal allow-all policy for tests that need auth but don't care about rules
-ALLOW_ALL_POLICY = """
+ALLOW_ALL_POLICY = wrap_policy("""
 package udm
 
 import rego.v1
 
 allow := true
-"""
+""")
 
 # Staff-only edit policy
-STAFF_EDIT_POLICY = """
+STAFF_EDIT_POLICY = wrap_policy("""
 package udm
 
 import rego.v1
@@ -200,7 +264,7 @@ allow if {
     input.action in {"edit", "save", "create", "delete"}
     input.user.is_staff
 }
-"""
+""")
 
 
 class PolicyFactory(DjangoModelFactory):
@@ -388,22 +452,22 @@ def make_entity_with_type(policy_source=ALLOW_ALL_POLICY):
 
 REGO_ALLOW_ALL = ALLOW_ALL_POLICY
 
-REGO_DENY_ALL = """
+REGO_DENY_ALL = wrap_policy("""
 package udm
 import rego.v1
 allow := false
-"""
+""")
 
-REGO_STAFF_ONLY = """
+REGO_STAFF_ONLY = wrap_policy("""
 package udm
 import rego.v1
 
 allow if {
     input.user.is_staff
 }
-"""
+""")
 
-REGO_OWNER_EDIT = """
+REGO_OWNER_EDIT = wrap_policy("""
 package udm
 import rego.v1
 
@@ -415,9 +479,9 @@ allow if {
     input.action in {"edit", "save", "create", "delete"}
     input.user.is_staff
 }
-"""
+""")
 
-REGO_BLOCK_SUBMIT_IF_TITLE_EMPTY = """
+REGO_BLOCK_SUBMIT_IF_TITLE_EMPTY = wrap_policy("""
 package udm
 import rego.v1
 
@@ -438,4 +502,4 @@ messages contains msg if {
         "field_slug": "title",
     }
 }
-"""
+""")

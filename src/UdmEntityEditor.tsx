@@ -5,8 +5,7 @@ import { Tooltip } from 'primereact/tooltip'
 import {
   udmGetEntity,
   udmGetConfigVersion,
-  udmValidateEntity,
-  udmValidateTransition,
+  udmValidationPreview,
   udmPatchEntity,
   udmTransitionEntity,
   udmEntityHistory,
@@ -21,7 +20,7 @@ import {
   type WorkflowVersionOut,
   type EditHistoryOut,
   type PolicyMessage,
-  type ValidationResult,
+  type ValidationPreview,
   type UDMTypeOut,
   type EntityAutocompleteItem,
 } from './apiUdm'
@@ -107,6 +106,8 @@ function SeverityIndicator({ severity, messages, fieldSlug }: SeverityIndicatorP
 // ── Workflow field widget ─────────────────────────────────────────────────────
 
 interface WorkflowFieldWidgetProps {
+  /** Valid transition names from the validation-preview matrix; null = unknown. */
+  validTransitions?: string[] | null
   fd: FieldDefinitionOut
   entity: EntityOut
   uiLang: string
@@ -118,7 +119,7 @@ interface WorkflowFieldWidgetProps {
   fieldLabelMap?: Record<string, string>
 }
 
-function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap }: WorkflowFieldWidgetProps) {
+function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap, validTransitions }: WorkflowFieldWidgetProps) {
   const wfDef = (fd as FieldDefinitionOut & { workflow_version?: WorkflowVersionOut | null }).workflow_version
   const fv = entity.field_values.find(v => v.field_slug === fd.slug)
   const currentStateName = (fv?.value as string | null) ?? null
@@ -138,26 +139,10 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
     return true // from_state null, not from_undefined_only → always available
   })
 
-  const [transitionValidations, setTransitionValidations] = useState<Record<string, ValidationResult>>({})
-
-  useEffect(() => {
-    if (availableTransitions.length === 0) { setTransitionValidations({}); return }
-    let cancelled = false
-    Promise.all(
-      availableTransitions.map(t =>
-        udmValidateTransition(entity.id, fd.slug, t.name)
-          .then(result => ({ name: t.name, result }))
-          .catch(() => ({ name: t.name, result: { valid: true, policy_messages: [], errors: {} } as ValidationResult }))
-      )
-    ).then(results => {
-      if (cancelled) return
-      const map: Record<string, ValidationResult> = {}
-      for (const { name, result } of results) map[name] = result
-      setTransitionValidations(map)
-    })
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity.id, entity.updated_at, fd.slug])
+  // Button states come from the single validation-preview call made by the
+  // parent editor (per-node matrix); null = no preview available yet.
+  const isTransitionBlocked = (name: string) =>
+    validTransitions != null && !validTransitions.includes(name)
 
 
   if (compact) {
@@ -192,9 +177,10 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
           </span>
           {availableTransitions.map(t => {
             const tLabel = getLang(t.label as Record<string, string>, uiLang) || t.name
-            const validation = transitionValidations[t.name]
-            const isBlocked = validation?.valid === false
-            const blockMsgs = isBlocked ? (validation.policy_messages ?? []) : []
+            const isBlocked = isTransitionBlocked(t.name)
+            const blockMsgs = isBlocked
+              ? (messages ?? []).filter(m => m.level === 'error' || m.level === 'warning')
+              : []
             const spanId = `wf-trans-${fd.slug.replace(/[^a-z0-9]/gi, '-')}-${t.name.replace(/[^a-z0-9]/gi, '-')}`
             return (
               <span key={t.name} id={spanId} style={{ display: 'inline-block' }}>
@@ -242,9 +228,10 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
         </span>
         {availableTransitions.map(t => {
           const tLabel = getLang(t.label as Record<string, string>, uiLang) || t.name
-          const validation = transitionValidations[t.name]
-          const isBlocked = validation?.valid === false
-          const blockMsgs = isBlocked ? (validation.policy_messages ?? []) : []
+          const isBlocked = isTransitionBlocked(t.name)
+          const blockMsgs = isBlocked
+            ? (messages ?? []).filter(m => m.level === 'error' || m.level === 'warning')
+            : []
           const spanId = `wf-trans-${fd.slug.replace(/[^a-z0-9]/gi, '-')}-${t.name.replace(/[^a-z0-9]/gi, '-')}`
           return (
             <span key={t.name} id={spanId} style={{ display: 'inline-block' }}>
@@ -272,6 +259,9 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
   )
 }
 
+// Structural layout fields carry no entity data and are always rendered.
+const STRUCTURAL = new Set(['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next'])
+
 // ── Field row ─────────────────────────────────────────────────────────────────
 
 interface FieldRowProps {
@@ -293,16 +283,17 @@ interface FieldRowProps {
   onEntityRefresh?: (policyMessages?: PolicyMessage[]) => void | Promise<void>
   compact?: boolean
   fieldLabelMap?: Record<string, string>
+  validTransitions?: string[] | null
 }
 
-function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, uiLang, severity, messages, subFieldSeverities, subFieldMessages, onTransition, transitioning, resetKey, onEntityRefresh, compact, fieldLabelMap }: FieldRowProps) {
+function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, uiLang, severity, messages, subFieldSeverities, subFieldMessages, onTransition, transitioning, resetKey, onEntityRefresh, compact, fieldLabelMap, validTransitions }: FieldRowProps) {
   const [activeLang, setActiveLang] = useState(languages[0] ?? '')
   const isDirty = fd.slug in dirty
   const isSubmodel = fd.data_type === 'submodel_list' || fd.data_type === 'submodel_select'
 
   // Workflow fields are fully managed by WorkflowFieldWidget — no dirty/value editing
   if (fd.data_type === 'workflow') {
-    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} fieldLabelMap={fieldLabelMap} />
+    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} fieldLabelMap={fieldLabelMap} validTransitions={validTransitions} />
   }
   const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
   const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
@@ -658,6 +649,9 @@ export function UdmEntityEditor() {
   const [success, setSuccess] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [policyMessages, setPolicyMessages] = useState<PolicyMessage[]>([])
+  // Validation-preview matrix: node id → workflow field slug → preview.
+  const [previewNodes, setPreviewNodes] = useState<ValidationPreview['nodes']>({})
+  const [savePreviewValid, setSavePreviewValid] = useState<boolean>(true)
   const [transitionPopup, setTransitionPopup] = useState<PolicyMessage[]>([])
   const [compact, setCompact] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
@@ -743,8 +737,10 @@ export function UdmEntityEditor() {
       // Run save policy with no pending changes to surface ambient warnings
       // (rules that inspect input.entity.fields rather than input.changed_fields).
       try {
-        const validation = await udmValidateEntity(entityId, {})
-        setPolicyMessages(validation.policy_messages ?? [])
+        const preview = await udmValidationPreview(entityId, {})
+        setPolicyMessages(preview.messages ?? [])
+        setPreviewNodes(preview.nodes ?? {})
+        setSavePreviewValid(preview.save?.valid ?? true)
       } catch { /* validation is best-effort */ }
     } catch (err) {
       if (err instanceof UdmApiError && err.policyMessages.length > 0) {
@@ -768,8 +764,12 @@ export function UdmEntityEditor() {
         return  // keep server-response messages after save/transition
       }
       // Re-run ambient validation to keep messages current (e.g. after discard)
-      void udmValidateEntity(entityId, {})
-        .then(r => setPolicyMessages(r.policy_messages ?? []))
+      void udmValidationPreview(entityId, {})
+        .then(r => {
+          setPolicyMessages(r.messages ?? [])
+          setPreviewNodes(r.nodes ?? {})
+          setSavePreviewValid(r.save?.valid ?? true)
+        })
         .catch(() => {})
       return
     }
@@ -777,8 +777,10 @@ export function UdmEntityEditor() {
     setValidationPending(true)
     pendingValidation.current = setTimeout(async () => {
       try {
-        const result = await udmValidateEntity(entityId, dirty)
-        setPolicyMessages(result.policy_messages ?? [])
+        const result = await udmValidationPreview(entityId, dirty)
+        setPolicyMessages(result.messages ?? [])
+        setPreviewNodes(result.nodes ?? {})
+        setSavePreviewValid(result.save?.valid ?? true)
       } catch {
         // Validation is best-effort — ignore lock conflicts and network errors
       } finally {
@@ -814,17 +816,18 @@ export function UdmEntityEditor() {
   // Determine editability: archived overrides everything; otherwise defer to
   // the per-field editable_fields list returned by the policy.
   const editable = !isArchived
-  const editableFieldSlugs: Set<string> | null =
-    entity.editable_fields != null ? new Set(entity.editable_fields) : null
+  // Per-node grant maps {node_id: [slugs]} (deny-by-default)
+  const editableFieldSlugs: Set<string> =
+    new Set((entity.editable_fields as unknown as Record<string, string[]>)?.[entity.id] ?? [])
 
   const languages = (config?.languages ?? []).map(l => l.code)
   if (languages.length === 0) languages.push('')
 
   const allFields = config?.fields ?? []
-  const viewableFieldSlugs = entity.viewable_fields ? new Set(entity.viewable_fields) : null
-  const fields = viewableFieldSlugs
-    ? allFields.filter(fd => viewableFieldSlugs.has(fd.slug))
-    : allFields
+  const viewableFieldSlugs = new Set((entity.viewable_fields as unknown as Record<string, string[]>)?.[entity.id] ?? [])
+  // Visibility is the policy's decision: structural fields are only shown when
+  // granted (view.rego grants them unconditionally; a policy may still revoke).
+  const fields = allFields.filter(fd => viewableFieldSlugs.has(fd.slug))
 
   function handleDirty(slug: string, val: unknown) {
     setDirty(prev => ({ ...prev, [slug]: val }))
@@ -919,10 +922,9 @@ export function UdmEntityEditor() {
 
   const dirtyCount = Object.keys(dirty).length
   const hasBlockingMessages = policyMessages.some(m => m.level === 'error' || m.level === 'critical')
-  const saveDisabled = saving || dirtyCount === 0 || !editable || validationPending || hasBlockingMessages
+  const saveDisabled = saving || dirtyCount === 0 || !editable || validationPending || hasBlockingMessages || !savePreviewValid
 
   // ── Layout parsing ──────────────────────────────────────────────────────────
-  const STRUCTURAL = new Set(['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next'])
   const sortedFields = [...fields].sort((a, b) => a.sort_order - b.sort_order)
   const tabContainerField = sortedFields.find(f => f.data_type === 'tab_container') ?? null
   const tabFields = sortedFields.filter(f => f.data_type === 'tab')
@@ -969,7 +971,7 @@ export function UdmEntityEditor() {
         dirty={dirty}
         onDirty={handleDirty}
         onReset={handleReset}
-        editable={editable && (editableFieldSlugs == null || editableFieldSlugs.has(fd.slug))}
+        editable={editable && editableFieldSlugs.has(fd.slug)}
         languages={fd.is_localized ? languages.filter(Boolean) : ['']}
         uiLang={uiLang}
         severity={fieldSeverities[fd.slug]}
@@ -982,6 +984,7 @@ export function UdmEntityEditor() {
         resetKey={discardCount}
         compact={compact}
         onEntityRefresh={onEntityRefreshCb}
+        validTransitions={previewNodes[entity!.id]?.[fd.slug]?.valid_transitions ?? null}
       />
     )
   }

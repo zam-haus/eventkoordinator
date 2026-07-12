@@ -195,10 +195,14 @@ class UserDefinedModelEntityNode(MetaBase):
 
         doc = {
             "id": str(self.id),
-            "type": "entity",
+            # Model schema annotation (contract §3.3-12): every node — root and
+            # submodels alike — carries the UUID of its config version; the full
+            # schema definition is provided once in input.schemas.
+            "schema_id": str(self.config_version_id),
             "config_version_id": str(self.config_version_id),
             "config_id": str(self.config_version.config_id),
             "type_id": None,
+            "parent_field_slug": self.parent_field.slug if self.parent_field_id else None,
             "fields": fields_data,
             "children": children_data,
             "overflow_data": self.overflow_data,
@@ -211,11 +215,33 @@ class UserDefinedModelEntityNode(MetaBase):
             entity = self.userdefinedmodelentity
             doc["type_id"] = str(entity.user_defined_model_type_id) if entity.user_defined_model_type_id else None
         except UserDefinedModelEntity.DoesNotExist:
-            # Submodel — label with parent field slug
-            if self.parent_field:
-                doc["type"] = f"submodel:{self.parent_field.slug}"
+            pass
 
         return doc
+
+    def to_schema_document(self) -> dict:
+        """SchemaDocument for input.schemas (contract §3.3-12)."""
+        return {
+            "slug": self.config_version.config.name,
+            "fields": {
+                fd.slug: {
+                    "data_type": fd.data_type,
+                    "localized": fd.is_localized,
+                }
+                for fd in self.config_version.field_definitions.all()
+            },
+            "properties": {},
+        }
+
+    def collect_schema_documents(self, into: dict | None = None) -> dict:
+        """Collect {schema_id: SchemaDocument} for this node's whole subtree."""
+        schemas = into if into is not None else {}
+        sid = str(self.config_version_id)
+        if sid not in schemas:
+            schemas[sid] = self.to_schema_document()
+        for child in self.children.all():
+            child.collect_schema_documents(schemas)
+        return schemas
 
     def materialize_user_defaults(self, user) -> None:
         """Set user_select / user_select_multi fields that have default_current_user=true in type_config."""

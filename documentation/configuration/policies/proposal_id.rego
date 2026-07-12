@@ -1,29 +1,29 @@
 package udm.udmframeworkv1.modules.proposal_id
 
 import data.udm.udmframeworkv1.modules.roles
+import data.udm.udmframeworkv1.modules.sudo
 import rego.v1
 
 protected_fields := ["proposal-id", "owner", "editors"]
 
-viewable_fields := protected_fields
+viewable_fields contains {"node": input.entity.id, "field": f} if {
+	some f in protected_fields
+}
 
-editable_fields contains field_slug if {
-	field_slug := "editors"
+editable_fields contains {"node": input.entity.id, "field": "editors"} if {
 	roles.is_owner_or_editor
 }
 
-editable_fields contains field_slug if {
-	field_slug := "owner"
-	roles.superuser_sudo
+editable_fields contains {"node": input.entity.id, "field": "owner"} if {
+	sudo.is_superuser_sudo
 }
 
-editable_fields contains field_slug if {
-	field_slug := "proposal-id"
-	roles.superuser_sudo
+editable_fields contains {"node": input.entity.id, "field": "proposal-id"} if {
+	sudo.is_superuser_sudo
 }
 
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	input.changed_fields["proposal-id"]
 	print("[block:proposal-id] user=", input.user.username, "attempted to change proposal-id")
 	msg := {
@@ -34,7 +34,7 @@ error_messages contains msg if {
 }
 
 error_messages contains msg if {
-	input.action == "save"
+	input.action in {"save", "preview"}
 	input.changed_fields.owner
 	print("[block:proposal-id] user=", input.user.username, "attempted to change proposal-id")
 	msg := {

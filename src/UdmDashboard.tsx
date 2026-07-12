@@ -273,7 +273,7 @@ export function UdmDashboard() {
       // Dashboard column: find matching entry from this entity's dashboard_columns
       const dashCol = (d.entity.dashboard_columns ?? []).find(c => c.key === col.key)
       if (!dashCol) return null
-      return <DashboardCell col={dashCol} entity={d.entity} />
+      return <DashboardCell col={dashCol as DashboardColumnOut} entity={d.entity} />
     }
   }
 

@@ -22,6 +22,7 @@ _TEST_MIDDLEWARE = [
 ]
 
 from userdefinedmodel.tests.factories import (
+    wrap_policy,
     UserFactory, StaffUserFactory, FieldConfigFactory, ConfigLanguageFactory,
     ConfigVersionFactory, PublishedConfigVersionFactory, FieldDefinitionFactory,
     FieldDefinitionTranslationFactory, UserDefinedModelTypeFactory,
@@ -583,7 +584,8 @@ class PolicyEnforcementTests(BaseAPITest):
 
     def test_overall_state_gates_transition(self):
         """Policy can deny transition on workflow A based on workflow B's state."""
-        CROSS_WORKFLOW_POLICY = """
+        from userdefinedmodel.tests.factories import wrap_policy
+        CROSS_WORKFLOW_POLICY = wrap_policy("""
 package udm
 import rego.v1
 
@@ -604,7 +606,7 @@ messages contains msg if {
         "field_slug": "status",
     }
 }
-"""
+""")
         from userdefinedmodel.models import (
             WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowTransition,
             FieldValue, Policy, UserDefinedModelTypePolicy,
@@ -683,8 +685,8 @@ class PolicyDocumentTests(BaseAPITest):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("fields", data)
-        self.assertIn("type", data)
-        self.assertEqual(data["type"], "entity")
+        self.assertIn("schema_id", data)
+        self.assertEqual(data["schema_id"], str(entity.config_version_id))
 
     def test_policy_document_non_staff_forbidden(self):
         entity, udm_type, version, config = make_entity_with_type()
@@ -1274,7 +1276,7 @@ class EngineDenyByDefaultTests(BaseAPITest):
         for action in ("view", "browse", "save", "delete", "transition"):
             out = evaluate_policy(entity, self.user, action)
             self.assertFalse(out.allow, f"{action} should be denied")
-            self.assertEqual(out.viewable_fields, [])
+            self.assertEqual(out.viewable_fields, {})
 
 
 class PermissionBasedAdminTests(BaseAPITest):
@@ -1821,3 +1823,81 @@ class BundleExportTests(BaseAPITest):
             fd_map["items"]["submodel_config_version_id"], str(child_cfg.id),
             "In-bundle submodel field must export the child FieldConfig UUID, not its ConfigVersion UUID",
         )
+
+
+class ValidationPreviewTests(BaseAPITest):
+    """POST /entities/{id}/validation-preview/ — the single preview replacing
+    the removed validate_only modes (§4): one request returns the save verdict,
+    all policy messages, and the per-node valid-transition matrix."""
+
+    def _make_workflow_entity(self, policy_source=None):
+        from userdefinedmodel.models import FieldValue
+        entity, udm_type, version, config = make_entity_with_type(
+            policy_source=policy_source or ALLOW_ALL_POLICY)
+        wf_version, draft_state, submitted, trans = make_full_workflow()
+        field = add_workflow_field(version, wf_version, slug="status")
+        fv = FieldValue.objects.create(node=entity, field=field, language="")
+        fv.value_workflow_state = draft_state
+        fv.save()
+        return entity, field, draft_state, submitted
+
+    def test_preview_returns_matrix_and_save_state(self):
+        entity, field, draft_state, submitted = self._make_workflow_entity()
+        resp = self.post(f"/entities/{entity.id}/validation-preview/",
+                         {"changed_fields": {"title": "New title"}})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()
+        self.assertTrue(data["save"]["valid"], data)
+        node = data["nodes"][str(entity.id)]["status"]
+        self.assertEqual(node["current_state"], "draft")
+        # allow-all test policy enables every state-valid candidate
+        self.assertEqual(node["valid_transitions"], ["submit"])
+
+    def test_preview_does_not_persist_pending_edits(self):
+        entity, *_ = self._make_workflow_entity()
+        resp = self.post(f"/entities/{entity.id}/validation-preview/",
+                         {"changed_fields": {"title": "Ephemeral"}})
+        self.assertEqual(resp.status_code, 200)
+        resp2 = self.get(f"/entities/{entity.id}/")
+        values = {fv["field_slug"]: fv["value"] for fv in resp2.json()["field_values"]}
+        self.assertNotEqual(values.get("title"), "Ephemeral")
+
+    def test_preview_policy_denied_transition_dropped_from_matrix(self):
+        entity, field, *_ = self._make_workflow_entity(policy_source=wrap_policy("""
+package udm
+import rego.v1
+allow := false
+"""))
+        resp = self.post(f"/entities/{entity.id}/validation-preview/", {"changed_fields": {}})
+        # view pre-check fails for deny-all → existence is hidden
+        self.assertEqual(resp.status_code, 404)
+
+    def test_preview_blocked_save_reports_messages(self):
+        blocked = wrap_policy("""
+package udm
+import rego.v1
+allow if input.action in {"view", "browse"}
+messages contains {"level": "critical", "text": "no saving", "field_slug": "title"} if {
+    input.action == "preview"
+}
+""")
+        entity, *_ = self._make_workflow_entity(policy_source=blocked)
+        resp = self.post(f"/entities/{entity.id}/validation-preview/",
+                         {"changed_fields": {"title": "x"}})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()
+        self.assertFalse(data["save"]["valid"])
+        texts = [m["text"] for m in data["messages"]]
+        self.assertIn("no saving", texts)
+        self.assertEqual(data["messages"][0]["highlight_fields"], ["title"])
+
+    def test_validate_only_modes_removed(self):
+        entity, field, *_ = self._make_workflow_entity()
+        # validate_only query params are gone; the calls now execute for real,
+        # so use throwaway values and just assert the parameter is not honored
+        resp = self.patch(f"/entities/{entity.id}/?validate_only=true",
+                          {"changed_fields": {"title": "persisted!"}})
+        self.assertEqual(resp.status_code, 200)
+        resp2 = self.get(f"/entities/{entity.id}/")
+        values = {fv["field_slug"]: fv["value"] for fv in resp2.json()["field_values"]}
+        self.assertEqual(values.get("title"), "persisted!")

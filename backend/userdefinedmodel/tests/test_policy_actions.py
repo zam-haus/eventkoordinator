@@ -139,10 +139,12 @@ class PolicyEvaluationOutputSchemaTests(TestCase):
     def test_defaults(self):
         out = PolicyEvaluationOutput(allow=False)
         self.assertEqual(out.messages, [])
-        self.assertIsNone(out.viewable_fields)
-        self.assertEqual(out.editable_fields, [])
+        self.assertEqual(out.viewable_fields, {})
+        self.assertEqual(out.editable_fields, {})
+        self.assertEqual(out.valid_transitions, [])
         self.assertEqual(out.dashboard_columns, [])
         self.assertEqual(out.actions, [])
+        self.assertEqual(out.additional_result, {})
 
 
 # ─── ActionContext tests ───────────────────────────────────────────────────────
@@ -399,13 +401,16 @@ class SaveLifecycleActionTests(TestCase):
         ConfigLanguageFactory(config=config, code="en", is_default=True)
         version = PublishedConfigVersionFactory(config=config)
         FieldDefinitionFactory(version=version, slug="title", data_type="text_short")
-        rego = f"""
+        from userdefinedmodel.tests.factories import wrap_policy
+        # rego_actions arrives as 'actions := [ ... ]'; convert to the partial-set
+        # form so it composes with the RESULT_SUFFIX aggregation.
+        action_list = rego_actions.split(":=", 1)[1].strip()
+        rego = wrap_policy(f"""
 package udm
 import rego.v1
 allow := true
-editable_fields := ["title"]
-{rego_actions}
-"""
+actions contains a if {{ some a in {action_list} }}
+""")
         udm_type = UserDefinedModelTypeFactory(field_config=config, policy=rego)
         entity = UserDefinedModelEntityFactory(
             config_version=version, user_defined_model_type=udm_type,
