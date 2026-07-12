@@ -20,7 +20,6 @@
     "roles",
     "reviews",
     "save",
-    "timemachine",
     "workflow",
     "delete",
     "sudo",
@@ -29,7 +28,8 @@
     "proposals-actions",
     "proposal_id",
     "tabs",
-    "framework"
+    "framework",
+    "structural"
    ]
   }
  ],
@@ -1581,6 +1581,9 @@
   },
   {
    "slug": "framework"
+  },
+  {
+   "slug": "structural"
   }
  ]
 }

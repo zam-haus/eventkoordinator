@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Tooltip } from 'primereact/tooltip'
 import {
@@ -655,6 +655,25 @@ export function UdmEntityEditor() {
   const [transitionPopup, setTransitionPopup] = useState<PolicyMessage[]>([])
   const [compact, setCompact] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
+  // URL carries the tab bar (container slug) and selected tab (tab slug):
+  // ?<tab_container_slug>=<tab_slug>. URL navigation may select ANY tab,
+  // including tabs the user cannot click.
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // URL ↔ tab selection sync (?<containerSlug>=<tabSlug>). The URL may select
+  // ANY tab, including unclickable ones; clicking cannot. Registered before the
+  // early return so the hook order is stable across loading states.
+  useEffect(() => {
+    const cfgFields = config?.fields ?? []
+    const container = cfgFields.find(f => f.data_type === 'tab_container')
+    if (!container) return
+    const wanted = searchParams.get(container.slug)
+    if (!wanted) return
+    const tabs = cfgFields.filter(f => f.data_type === 'tab').sort((a, b) => a.sort_order - b.sort_order)
+    const idx = tabs.findIndex(t => t.slug === wanted)
+    if (idx >= 0) setActiveTab(prev => (prev === idx ? prev : idx))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, config])
   const [validationPending, setValidationPending] = useState(false)
 
   const fieldSeverities = useMemo(() => {
@@ -946,6 +965,32 @@ export function UdmEntityEditor() {
     ? sortedFields.filter(f => !f.parent_slug && f.sort_order > tabContainerField!.sort_order && f.data_type !== 'tab_container' && f.data_type !== 'tab')
     : []
 
+  // A structural control (tab, prev/next, save button) is clickable only when
+  // the policy grants it as editable; visibility is governed by viewable_fields.
+  const isTabClickable = (slug: string) => editableFieldSlugs.has(slug)
+
+  function selectTab(idx: number, viaClick: boolean) {
+    const entry = tabsWithFields[idx]
+    if (!entry) return
+    if (viaClick && !isTabClickable(entry.tab.slug)) return  // unclickable except by URL
+    setActiveTab(idx)
+    if (tabContainerField) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.set(tabContainerField.slug, entry.tab.slug)
+        return next
+      }, { replace: true })
+    }
+  }
+
+  // prev/next skip unclickable tabs.
+  function nextClickableTab(from: number, dir: 1 | -1): number | null {
+    for (let i = from + dir; i >= 0 && i < tabsWithFields.length; i += dir) {
+      if (isTabClickable(tabsWithFields[i].tab.slug)) return i
+    }
+    return null
+  }
+
   // Check if any save button exists in the config (inline save buttons suppress the toolbar save)
   const hasSaveInConfig = sortedFields.some(f => f.data_type === 'save_button')
 
@@ -1005,7 +1050,7 @@ export function UdmEntityEditor() {
     )
   }
 
-  function renderSaveButton(label?: string, variant?: string) {
+  function renderSaveButton(label?: string, variant?: string, slug?: string) {
     const isSuccess = variant === 'success'
     const blockingMsgs = policyMessages.filter(m => m.level === 'error' || m.level === 'critical')
     const showTooltip = hasBlockingMessages && blockingMsgs.length > 0
@@ -1018,7 +1063,7 @@ export function UdmEntityEditor() {
           type="button"
           className={`${styles.inlineBtn} ${isSuccess ? styles.inlineBtnSuccess : styles.inlineBtnPrimary}`}
           onClick={() => void handleSave()}
-          disabled={saveDisabled}
+          disabled={saveDisabled || (slug != null && !isTabClickable(slug))}
         >
           {saving ? 'Saving…' : (label || 'Save')}
         </button>
@@ -1037,13 +1082,14 @@ export function UdmEntityEditor() {
   function renderHstackGroupButton(fd: (typeof sortedFields)[0]) {
     if (fd.data_type === 'save_button') {
       const tc = fd.type_config as { label?: string; variant?: string } | undefined
-      return <span key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant)}</span>
+      return <span key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant, fd.slug)}</span>
     }
     if (fd.data_type === 'tab_prev') {
       const tc = fd.type_config as { label?: string } | undefined
       return (
         <button key={fd.slug} type="button" className={styles.tabNavButton}
-          disabled={activeTab === 0} onClick={() => setActiveTab(t => Math.max(0, t - 1))}>
+          disabled={!isTabClickable(fd.slug) || nextClickableTab(activeTab, -1) === null}
+          onClick={() => { const i = nextClickableTab(activeTab, -1); if (i !== null) selectTab(i, true) }}>
           {tc?.label || '← Previous'}
         </button>
       )
@@ -1052,8 +1098,8 @@ export function UdmEntityEditor() {
       const tc = fd.type_config as { label?: string } | undefined
       return (
         <button key={fd.slug} type="button" className={styles.tabNavButton}
-          disabled={activeTab >= tabsWithFields.length - 1}
-          onClick={() => setActiveTab(t => Math.min(tabsWithFields.length - 1, t + 1))}>
+          disabled={!isTabClickable(fd.slug) || nextClickableTab(activeTab, 1) === null}
+          onClick={() => { const i = nextClickableTab(activeTab, 1); if (i !== null) selectTab(i, true) }}>
           {tc?.label || 'Next →'}
         </button>
       )
@@ -1064,14 +1110,15 @@ export function UdmEntityEditor() {
   function renderStructuralField(fd: (typeof sortedFields)[0]) {
     if (fd.data_type === 'save_button') {
       const tc = fd.type_config as { label?: string; variant?: string } | undefined
-      return <div key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant)}</div>
+      return <div key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant, fd.slug)}</div>
     }
     if (fd.data_type === 'tab_prev') {
       const tc = fd.type_config as { label?: string } | undefined
       return (
         <div key={fd.slug}>
           <button type="button" className={styles.tabNavButton}
-            disabled={activeTab === 0} onClick={() => setActiveTab(t => Math.max(0, t - 1))}>
+            disabled={!isTabClickable(fd.slug) || nextClickableTab(activeTab, -1) === null}
+            onClick={() => { const i = nextClickableTab(activeTab, -1); if (i !== null) selectTab(i, true) }}>
             {tc?.label || '← Previous'}
           </button>
         </div>
@@ -1082,8 +1129,8 @@ export function UdmEntityEditor() {
       return (
         <div key={fd.slug}>
           <button type="button" className={styles.tabNavButton}
-            disabled={activeTab >= tabsWithFields.length - 1}
-            onClick={() => setActiveTab(t => Math.min(tabsWithFields.length - 1, t + 1))}>
+            disabled={!isTabClickable(fd.slug) || nextClickableTab(activeTab, 1) === null}
+            onClick={() => { const i = nextClickableTab(activeTab, 1); if (i !== null) selectTab(i, true) }}>
             {tc?.label || 'Next →'}
           </button>
         </div>
@@ -1199,8 +1246,8 @@ export function UdmEntityEditor() {
                   role="tab"
                   aria-selected={activeTab === idx}
                   className={`${styles.tabButton} ${activeTab === idx ? styles.tabButtonActive : ''}`}
-                  onClick={() => setActiveTab(idx)}
-                  disabled={saving || transitioning}
+                  onClick={() => selectTab(idx, true)}
+                  disabled={saving || transitioning || !isTabClickable(tab.slug)}
                 >
                   <span className={styles.tabNumberContainer}>
                     {tabSeverity && tabMsgs.length > 0 ? (
@@ -1228,11 +1275,11 @@ export function UdmEntityEditor() {
           <div className={styles.tabNavigationDropdown}>
             <select
               value={activeTab}
-              onChange={e => setActiveTab(parseInt(e.target.value, 10))}
+              onChange={e => selectTab(parseInt(e.target.value, 10), true)}
               disabled={saving || transitioning}
             >
               {tabsWithFields.map(({ tab }, idx) => (
-                <option key={tab.slug} value={idx}>
+                <option key={tab.slug} value={idx} disabled={!isTabClickable(tab.slug)}>
                   {idx + 1}. {getTabTitle(tab)}
                 </option>
               ))}

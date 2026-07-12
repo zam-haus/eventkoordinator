@@ -1492,7 +1492,9 @@ def validation_preview(request, entity_id: uuid.UUID, payload: EntityPatchIn):
     response = {"save": {"valid": True, "errors": {}}, "messages": [], "nodes": {}}
     try:
         with transaction.atomic():
-            _set_lock_timeout_ms(50)
+            # One consolidated preview per debounce — worth waiting briefly for
+            # the root lock instead of 409ing when a save/GET is in flight.
+            _set_lock_timeout_ms(500)
             try:
                 entity = (UserDefinedModelEntityNode.objects
                           .select_for_update(nowait=False, of=("self",))

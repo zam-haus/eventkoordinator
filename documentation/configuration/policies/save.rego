@@ -16,7 +16,8 @@ editable_fields contains {"node": node.id, "field": f} if {
 	roles.is_owner_or_editor
 	workflow.is_status_editable
 	some node in udmtree.tree_nodes
-	some f, _ in node.fields
+	some f, entry in node.fields
+	not entry.data_type in config.STRUCTURAL_TYPES # clickability: structural.rego
 	not _protected(node, f)
 }
 

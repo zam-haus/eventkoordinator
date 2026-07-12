@@ -43,11 +43,3 @@ _protected(node, f) if {
 	node.id == input.entity.id
 	f in config.PROTECTED_FIELDS
 }
-
-# Structural layout fields are ALWAYS viewable, for every node and every user
-# (config.STRUCTURAL_TYPES): they carry no entity data.
-viewable_fields contains {"node": node.id, "field": f} if {
-	some node in udmtree.tree_nodes
-	some f, entry in node.fields
-	entry.data_type in config.STRUCTURAL_TYPES
-}
