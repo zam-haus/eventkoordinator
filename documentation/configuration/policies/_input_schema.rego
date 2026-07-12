@@ -56,6 +56,10 @@ ACTIONS := {
 #                                             # (deny-by-default)
 #     "editable_fields":   {"<node_id>": ["<slug>"]},  # per node, same shape
 #     "valid_transitions": [{"node","field","name"}],
+#     "deletable_nodes":   ["<child_node_id>"],          # §6: delete buttons
+#     "creatable_submodels": {"<parent_id>": {"<slug>":  # §6: key present =
+#         {"viewable": [..], "editable": [..]}}},        # may create; value =
+#                                                        # new-item field grant
 #     "actions":           [<ActionObject>],
 #     "dashboard_columns": [<ColumnObject>],
 #     "additional_result": <object>,          # policy-defined carry-over: the

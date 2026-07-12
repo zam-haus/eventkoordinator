@@ -143,6 +143,8 @@ def _entity_out_for_user(entity, user, policy_messages: list | None = None, view
     data = serialize_node(entity, viewable=policy.viewable_fields)
     data["viewable_fields"] = policy.viewable_fields
     data["editable_fields"] = policy.editable_fields
+    data["deletable_nodes"] = policy.deletable_nodes
+    data["creatable_submodels"] = policy.creatable_submodels
     data["policy_messages"] = policy_messages or []
     data["dashboard_columns"] = policy.dashboard_columns
     return EntityOut(**data)
@@ -1539,6 +1541,9 @@ def validation_preview(request, entity_id: uuid.UUID, payload: EntityPatchIn):
                 has_critical = any(m.get("level") == "critical" for m in output.messages)
                 response["messages"] = output.messages
                 response["save"]["valid"] = bool(output.allow and not has_critical)
+                # §6: list-button grants ride along in the same single evaluation
+                response["deletable_nodes"] = output.deletable_nodes
+                response["creatable_submodels"] = output.creatable_submodels
 
                 # Save-rule floor: gates the save button only, never the matrix
                 # (transition pre-actions may repair data at execution time).

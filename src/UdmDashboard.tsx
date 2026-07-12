@@ -24,8 +24,6 @@ const SKIP_DATA_TYPES = new Set([
 
 const DASH_PREFIX = '__dash__:'
 function dashId(key: string) { return `${DASH_PREFIX}${key}` }
-function isDashId(id: string) { return id.startsWith(DASH_PREFIX) }
-function dashKey(id: string) { return id.slice(DASH_PREFIX.length) }
 
 // ── Row types ──────────────────────────────────────────────────────────────────
 
@@ -79,7 +77,7 @@ function MeterCell({ value }: { value: unknown }) {
   )
 }
 
-function DashboardCell({ col, entity }: { col: DashboardColumnOut; entity: EntityOut }) {
+function DashboardCell({ col }: { col: DashboardColumnOut; entity: EntityOut }) {
   switch (col.renderer) {
     case 'progress_bar': return <ProgressBarCell value={col.value} />
     case 'meter':        return <MeterCell value={col.value} />

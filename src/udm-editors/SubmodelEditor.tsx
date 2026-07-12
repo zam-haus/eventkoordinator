@@ -10,6 +10,7 @@ import { getLang } from './types'
 import { fieldEditorRegistry } from './registry'
 import { PolicyMessageList } from './shared'
 import { FieldInput } from './FieldInput'
+import { useUdmGrants, type NewItemGrant } from './grants'
 import { FieldPreview } from './FieldPreview'
 import { PreviewTable, type PreviewRow } from './PreviewTable'
 import styles from '../UdmEntityEditor.module.css'
@@ -179,9 +180,18 @@ interface SubmodelChildCardProps {
   compact?: boolean
   expanded: boolean
   onToggleExpanded: () => void
+  /** §6: whether the delete/restore buttons are enabled (policy grant). */
+  deleteAllowed?: boolean
+  /** §6: for NEW items — visible field slugs of the unsaved-item form; null = all. */
+  visibleSlugs?: string[] | null
+  /** §6: field slugs the user may edit on this item; null = all (legacy). */
+  editableSlugs?: string[] | null
 }
 
-function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, onChange, onDelete, subFieldSeverities, subFieldMessages, nameMap = {}, onEntityRefresh, compact, expanded, onToggleExpanded }: SubmodelChildCardProps) {
+function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, onChange, onDelete, subFieldSeverities, subFieldMessages, nameMap = {}, onEntityRefresh, compact, expanded, onToggleExpanded, deleteAllowed, visibleSlugs, editableSlugs }: SubmodelChildCardProps) {
+  const canDelete = deleteAllowed ?? !disabled
+  const shownFields = visibleSlugs != null ? subFields.filter(f => visibleSlugs.includes(f.slug)) : subFields
+  const fieldEditable = (slug: string) => editableSlugs == null || editableSlugs.includes(slug)
   const hasHighlightedFields = Object.keys(subFieldSeverities ?? {}).length > 0
   const [activeLang, setActiveLang] = useState(subLanguages[0] ?? '')
   const fallbackLabel = item.id ? item.id.slice(0, 8) + '…' : 'New (unsaved)'
@@ -239,7 +249,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                 onClick={onToggleExpanded}>
                 {expanded ? 'Collapse' : 'Edit'}
               </button>
-              {!disabled && (
+              {canDelete && (
                 <button type="button"
                   style={{ fontSize: '0.78rem', padding: '0.2rem 0.5rem', border: '1px solid #dc2626', borderRadius: '4px', cursor: 'pointer', background: '#fff', color: '#dc2626' }}
                   onClick={onDelete}>
@@ -248,7 +258,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
               )}
             </>
           )}
-          {item.deleted && !disabled && (
+          {item.deleted && canDelete && (
             <button type="button"
               style={{ fontSize: '0.78rem', padding: '0.2rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}
               onClick={() => onChange({ ...item.dirty, _undelete: true })}>
@@ -285,7 +295,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
               ))}
             </div>
           )}
-          {subFields.map(subFd => {
+          {shownFields.map(subFd => {
             const subLabel = getLang(subFd.label as Record<string, string>, uiLang) || subFd.slug
             const langs = subFd.is_localized ? subLanguages.filter(Boolean) : ['']
             const sev = subFieldSeverities?.[subFd.slug]
@@ -312,7 +322,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                     <FieldInput key={lang || 'nolang'} fd={subFd}
                       value={getChildFieldValue(item, subFd.slug, lang)}
                       onChange={val => handleFieldChange(subFd.slug, lang, val)}
-                      disabled={disabled || !!(subFd.type_config as Record<string, unknown>)?.default_current_user}
+                      disabled={disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user}
                       lang={lang} entityChildren={item.saved?.children} nodeId={item.id}
                       onEntityRefresh={onEntityRefresh} />
                   ))}
@@ -333,7 +343,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                     fd={subFd}
                     value={getChildFieldValue(item, subFd.slug, lang)}
                     onChange={val => handleFieldChange(subFd.slug, lang, val)}
-                    disabled={disabled || !!(subFd.type_config as Record<string, unknown>)?.default_current_user}
+                    disabled={disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user}
                     lang={lang}
                     entityChildren={item.saved?.children}
                     nodeId={item.id}
@@ -352,12 +362,13 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
 
 // ── SubmodelEditor ────────────────────────────────────────────────────────────
 
-function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled, uiLang, onChange, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact }: {
+function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled, uiLang, onChange, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact, nodeId }: {
   fd: FieldDefinitionOut
   existingChildren: unknown[]
   existingValue: unknown
   disabled: boolean
   uiLang: string
+  nodeId?: string | null
   onChange: (ops: SubmodelOp[] | { op: string; fields?: Record<string, unknown> } | null) => void
   subFieldSeverities?: Record<string, string>
   subFieldMessages?: Record<string, PolicyMessage[]>
@@ -366,6 +377,23 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
   compact?: boolean
 }) {
   const isList = fd.data_type === 'submodel_list'
+  // §6 grants: null context (admin previews etc.) keeps legacy `disabled` behavior.
+  const grants = useUdmGrants()
+  const createGrant: NewItemGrant | null | undefined =
+    grants == null ? undefined
+    : nodeId != null ? (grants.creatableSubmodels[nodeId]?.[fd.slug] ?? null)
+    : null
+  const canCreate = createGrant === undefined ? !disabled : createGrant != null
+  const itemDeleteAllowed = (itemId: string | null) => {
+    if (itemId == null) return true // unsaved item: removing it is a no-op server-side
+    if (grants == null) return !disabled
+    return grants.deletableNodes.includes(itemId)
+  }
+  const itemEditableSlugs = (itemId: string | null): string[] | null => {
+    if (itemId == null) return createGrant === undefined ? null : (createGrant?.editable ?? [])
+    if (grants == null) return null
+    return grants.editableFields[itemId] ?? []
+  }
   const subConfig = fd.submodel_config as ConfigVersionOut | null | undefined
   const subFields = subConfig?.fields ?? []
   const subLanguages = (subConfig?.languages ?? []).map(l => l.code)
@@ -584,9 +612,12 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
             subFields={subFields}
             subLanguages={subLanguages}
             uiLang={uiLang}
-            disabled={disabled}
+            disabled={disabled || (item.id != null && (itemEditableSlugs(item.id)?.length ?? 1) === 0)}
             onChange={dirty => updateItem(item.key, dirty)}
             onDelete={() => deleteItem(item.key)}
+            deleteAllowed={!disabled && itemDeleteAllowed(item.id)}
+            visibleSlugs={item.id == null && createGrant !== undefined ? (createGrant?.viewable ?? []) : null}
+            editableSlugs={itemEditableSlugs(item.id)}
             subFieldSeverities={subFieldSeverities}
             subFieldMessages={subFieldMessages}
             nameMap={previewNameMap}
@@ -601,7 +632,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
             })}
           />
         ))}
-        {!disabled && (
+        {!disabled && canCreate && (
           <button type="button"
             style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem', border: '1px dashed #aaa', borderRadius: '4px', cursor: 'pointer', background: '#fff', color: '#555', marginTop: '0.25rem' }}
             onClick={addItem}>
@@ -677,7 +708,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
           {!disabled && subConfig && (
             <button type="button"
               style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem', border: '1px dashed #aaa', borderRadius: '4px', cursor: 'pointer', background: '#fff', color: '#555' }}
-              onClick={handleCreate}>
+              onClick={handleCreate} disabled={!canCreate}>
               + Create new submodel
             </button>
           )}
@@ -844,10 +875,11 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
 // ── FieldInputProps adapter ───────────────────────────────────────────────────
 // SubmodelEditor wraps SubmodelEditorComponent to match the FieldInputProps interface.
 
-function SubmodelEditorAdapter({ fd, value, onChange, disabled, lang = 'en', entityChildren, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact }: FieldInputProps) {
+function SubmodelEditorAdapter({ fd, value, onChange, disabled, lang = 'en', entityChildren, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact, nodeId }: FieldInputProps) {
   return (
     <SubmodelEditorComponent
       fd={fd}
+      nodeId={nodeId}
       existingChildren={(entityChildren?.[fd.slug] ?? []) as unknown[]}
       existingValue={value}
       disabled={disabled}

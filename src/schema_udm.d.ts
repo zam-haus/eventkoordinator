@@ -978,6 +978,15 @@ export interface components {
              * Format: uuid
              */
             config_version_id: string;
+            /**
+             * Creatable Submodels
+             * @default {}
+             */
+            creatable_submodels: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
             /** Created At */
             created_at: string;
             /**
@@ -985,6 +994,11 @@ export interface components {
              * @default []
              */
             dashboard_columns: components["schemas"]["DashboardColumnOut"][];
+            /**
+             * Deletable Nodes
+             * @default []
+             */
+            deletable_nodes: string[];
             /**
              * Editable Fields
              * @default {}

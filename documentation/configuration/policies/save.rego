@@ -71,3 +71,28 @@ allow if {
 	every_field_changed_was_editable
 	print("[save:allow] preview user=", input.user.username)
 }
+
+# ─── Submodel operation grants (§6) — default for owner/editor ───────────────
+
+# Create: any non-protected submodel_list; the new-item form gets every field
+# of the prospective child schema (input.schemas[...].submodel_schema_id).
+creatable_submodels contains {"node": node.id, "field": f, "viewable": slugs, "editable": slugs} if {
+	roles.is_owner_or_editor
+	workflow.is_status_editable
+	some node in udmtree.tree_nodes
+	some f, entry in node.fields
+	entry.data_type == "submodel_list"
+	not _protected(node, f)
+	child_sid := input.schemas[node.schema_id].fields[f].submodel_schema_id
+	slugs := sort([cs | some cs, _ in input.schemas[child_sid].fields])
+}
+
+# Delete: any child whose parent list is not protected.
+deletable_nodes contains node.id if {
+	roles.is_owner_or_editor
+	workflow.is_status_editable
+	some node in udmtree.tree_nodes
+	node.id != input.entity.id
+	node.parent_field_slug != null
+	not node.parent_field_slug in config.PROTECTED_FIELDS
+}

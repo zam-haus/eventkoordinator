@@ -26,6 +26,7 @@ import {
 } from './apiUdm'
 import { MigrationAssistant } from './UdmMigration'
 import { FieldInput, getLang, PolicyMessageList } from './udm-editors'
+import { UdmGrantsContext, type UdmGrants } from './udm-editors/grants'
 import styles from './UdmEntityEditor.module.css'
 import dsStyles from './DefaultScreen.module.css'
 
@@ -380,7 +381,7 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
           <FieldInput fd={fd} value={getFieldValue(entity, fd.slug, '')} onChange={val => handleChange('', val)}
             disabled={!editable} lang={uiLang} entityChildren={entity.children as Record<string, unknown[]>}
             subFieldSeverities={subFieldSeverities} subFieldMessages={subFieldMessages}
-            resetKey={resetKey} onEntityRefresh={onEntityRefresh} compact={compact} />
+            resetKey={resetKey} onEntityRefresh={onEntityRefresh} compact={compact} nodeId={entity.id} />
         ) : fd.is_localized ? (
           <FieldInput fd={fd} value={getVal(activeLang)} onChange={val => handleChange(activeLang, val)}
             disabled={!editable} lang={activeLang} />
@@ -843,6 +844,13 @@ export function UdmEntityEditor() {
   if (languages.length === 0) languages.push('')
 
   const allFields = config?.fields ?? []
+  // §6 grants for submodel list buttons + unsaved-item forms
+  const udmGrants: UdmGrants = {
+    deletableNodes: ((entity as unknown as { deletable_nodes?: string[] }).deletable_nodes) ?? [],
+    creatableSubmodels: ((entity as unknown as { creatable_submodels?: UdmGrants['creatableSubmodels'] }).creatable_submodels) ?? {},
+    editableFields: (entity.editable_fields as unknown as Record<string, string[]>) ?? {},
+  }
+
   const viewableFieldSlugs = new Set((entity.viewable_fields as unknown as Record<string, string[]>)?.[entity.id] ?? [])
   // Visibility is the policy's decision: structural fields are only shown when
   // granted (view.rego grants them unconditionally; a policy may still revoke).
@@ -1181,6 +1189,7 @@ export function UdmEntityEditor() {
   }
 
   return (
+    <UdmGrantsContext.Provider value={udmGrants}>
     <div className={styles.page}>
       {transitionPopup.length > 0 && (
         <TransitionMessagePopup messages={transitionPopup} onClose={() => setTransitionPopup([])} />
@@ -1355,6 +1364,7 @@ export function UdmEntityEditor() {
         </div>
       )}
     </div>
+    </UdmGrantsContext.Provider>
   )
 }
 

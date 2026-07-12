@@ -69,7 +69,7 @@ function ExportPanel({ types }: { types: UDMTypeOut[] }) {
               style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
             />
             <span style={{ fontWeight: 500 }}>{t.name}</span>
-            {t.description && <span style={{ color: '#777', fontSize: '0.8rem' }}>— {t.description}</span>}
+            {t.label && t.label !== t.name && <span style={{ color: '#777', fontSize: '0.8rem' }}>— {t.label}</span>}
           </label>
         ))}
       </div>

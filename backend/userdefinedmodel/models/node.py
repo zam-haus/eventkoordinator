@@ -221,24 +221,15 @@ class UserDefinedModelEntityNode(MetaBase):
 
     def to_schema_document(self) -> dict:
         """SchemaDocument for input.schemas (contract §3.3-12)."""
-        return {
-            "slug": self.config_version.config.name,
-            "fields": {
-                fd.slug: {
-                    "data_type": fd.data_type,
-                    "localized": fd.is_localized,
-                }
-                for fd in self.config_version.field_definitions.all()
-            },
-            "properties": {},
-        }
+        return schema_document_for_version(self.config_version)
 
     def collect_schema_documents(self, into: dict | None = None) -> dict:
-        """Collect {schema_id: SchemaDocument} for this node's whole subtree."""
+        """Collect {schema_id: SchemaDocument} for this node's whole subtree,
+        INCLUDING prospective submodel schemas referenced by submodel_list /
+        submodel_select field definitions — policies need them to grant
+        new-item field sets (§6) even when a list has no items yet."""
         schemas = into if into is not None else {}
-        sid = str(self.config_version_id)
-        if sid not in schemas:
-            schemas[sid] = self.to_schema_document()
+        collect_version_schema_documents(self.config_version, schemas)
         for child in self.children.all():
             child.collect_schema_documents(schemas)
         return schemas
@@ -358,3 +349,37 @@ class FieldValue(TypedValue, MetaBase):
 
     def __str__(self):
         return f"FieldValue({self.field.slug}, node={self.node_id})"
+
+
+def schema_document_for_version(version) -> dict:
+    """SchemaDocument for a config version. Field entries carry the
+    prospective child schema id for submodel fields, so policies can grant
+    new-item fields without an existing child node (§6)."""
+    fields = {}
+    for fd in version.field_definitions.all():
+        entry = {
+            "data_type": fd.data_type,
+            "localized": fd.is_localized,
+        }
+        if fd.submodel_config_id:
+            entry["submodel_schema_id"] = str(fd.submodel_config_id)
+        fields[fd.slug] = entry
+    return {
+        "slug": version.config.name,
+        "fields": fields,
+        "properties": {},
+    }
+
+
+def collect_version_schema_documents(version, schemas: dict) -> dict:
+    """Add a version's schema document plus, recursively, the schemas of all
+    submodel config versions its field definitions reference."""
+    sid = str(version.id)
+    if sid in schemas:
+        return schemas
+    schemas[sid] = schema_document_for_version(version)
+    for fd in version.field_definitions.filter(submodel_config__isnull=False).select_related(
+        "submodel_config__config"
+    ):
+        collect_version_schema_documents(fd.submodel_config, schemas)
+    return schemas

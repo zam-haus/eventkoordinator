@@ -1848,6 +1848,9 @@ class ValidationPreviewTests(BaseAPITest):
         self.assertEqual(resp.status_code, 200, resp.content)
         data = resp.json()
         self.assertTrue(data["save"]["valid"], data)
+        # §6 keys ride along in the same response (empty defaults here)
+        self.assertIn("deletable_nodes", data)
+        self.assertIn("creatable_submodels", data)
         node = data["nodes"][str(entity.id)]["status"]
         self.assertEqual(node["current_state"], "draft")
         # allow-all test policy enables every state-valid candidate

@@ -216,6 +216,12 @@ class PolicyEvaluationOutput(BaseModel):
     viewable_fields: dict[str, list[str]] = {}
     editable_fields: dict[str, list[str]] = {}
     valid_transitions: list[dict] = []
+    # §6 submodel operation grants (deny-by-default, like the field maps):
+    # creatable_submodels: {parent_id: {field_slug: {"viewable": [...], "editable": [...]}}}
+    # — a present field-slug key grants creation; its value is the field grant
+    # for the not-yet-saved item form.
+    deletable_nodes: list[str] = []
+    creatable_submodels: dict[str, dict[str, dict]] = {}
     dashboard_columns: list[dict] = []
     actions: list[dict] = []
     additional_result: dict = {}

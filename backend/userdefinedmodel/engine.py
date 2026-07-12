@@ -420,6 +420,8 @@ def evaluate_policy(
             viewable_fields=_as_field_map(raw_result.get("viewable_fields")),
             editable_fields=_as_field_map(raw_result.get("editable_fields")),
             valid_transitions=[t for t in (raw_result.get("valid_transitions") or []) if isinstance(t, dict)],
+            deletable_nodes=[n for n in (raw_result.get("deletable_nodes") or []) if isinstance(n, str)],
+            creatable_submodels=_as_creatable_map(raw_result.get("creatable_submodels")),
             actions=[a for a in (raw_result.get("actions") or []) if isinstance(a, dict)],
             dashboard_columns=[c for c in (raw_result.get("dashboard_columns") or []) if isinstance(c, dict)],
             additional_result=raw_result.get("additional_result") if isinstance(raw_result.get("additional_result"), dict) else {},
@@ -433,6 +435,28 @@ def evaluate_policy(
     except Exception as exc:
         logger.exception("Policy evaluation failed: %s", exc)
         return deny
+
+
+def _as_creatable_map(value) -> dict[str, dict[str, dict]]:
+    """Coerce {parent_id: {field_slug: {"viewable": [...], "editable": [...]}}}.
+    A present field-slug key grants creation of an item in that list."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, dict[str, dict]] = {}
+    for parent_id, fields in value.items():
+        if not isinstance(fields, dict):
+            continue
+        entry: dict[str, dict] = {}
+        for slug, grants in fields.items():
+            if not isinstance(grants, dict):
+                continue
+            entry[str(slug)] = {
+                "viewable": [f for f in (grants.get("viewable") or []) if isinstance(f, str)],
+                "editable": [f for f in (grants.get("editable") or []) if isinstance(f, str)],
+            }
+        if entry:
+            out[str(parent_id)] = entry
+    return out
 
 
 def _as_field_map(value) -> dict[str, list[str]]:

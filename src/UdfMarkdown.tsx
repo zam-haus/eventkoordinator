@@ -61,7 +61,7 @@ export function UdfMarkdown({ content, className }: UdfMarkdownProps) {
       <ReactMarkdown
         rehypePlugins={[rehypeRaw, [rehypeComponents, { components: rehypeComponentMap }]]}
         components={{
-          'pill-badge': ({ node, children }) => {
+          'pill-badge': ({ node, children }: { node?: unknown; children?: React.ReactNode }) => {
             const color = String((node as Element | undefined)?.properties?.['data-color'] ?? 'blue')
             return <Pill color={color}>{children}</Pill>
           },

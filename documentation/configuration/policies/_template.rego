@@ -133,6 +133,19 @@ error_messages contains msg if {
 	}
 }
 
+# ── deletable_nodes / creatable_submodels (§6 submodel operations) ───────────
+# deletable_nodes: set of child node ids the user may delete (list buttons).
+# creatable_submodels: set of {"node": parent_id, "field": slug,
+#   "viewable": [...], "editable": [...]} — a grant's PRESENCE allows creating
+#   an item in that list; the lists drive the not-yet-saved item form. The
+#   prospective child schema id is input.schemas[parent.schema_id]
+#   .fields[slug].submodel_schema_id. The framework turns unauthorized
+#   create/update/delete ops in changed_fields into critical errors using the
+#   additional_result carry-over.
+# deletable_nodes contains child.id if { ... }
+# creatable_submodels contains {"node": input.entity.id, "field": "reviews",
+# 	"viewable": ["vote"], "editable": ["vote"]} if { ... }
+
 # ── actions (side effects, dispatched by the engine on save/transition) ─────
 # Set of action objects; "type" selects the registered Python handler
 # (actions.py registry). Each object is validated against the handler's

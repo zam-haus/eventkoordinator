@@ -54,7 +54,8 @@ error_messages contains msg if {
 	roles.is_owner_or_editor
 	not roles.is_moderator
 	not _reviewer_save_permitted
-	workflow.is_status_editable
+	# pre-existing inversion fixed: block when the status is NOT editable
+	not workflow.is_status_editable
 	print(
 		"[block:status-edit] user=", input.user.username,
 		"status=", current_status, "not in editable statuses",
@@ -66,27 +67,6 @@ error_messages contains msg if {
 	}
 }
 
-# Block modifying or deleting another user's review.
-# Uses input.old_entity (pre-write snapshot) so the check works even for
-# delete operations where the review no longer exists in input.entity.
-error_messages contains msg if {
-	input.action in {"save", "preview"}
-	_can_view
-	some op in input.changed_fields.reviews.value
-	op.op in {"update", "delete"}
-	some existing in object.get(input.old_entity.children, "reviews", [])
-	existing.id == op.id
-	existing.fields.author.value != input.user.id
-	print(
-		"[block:review-modify] user=", input.user.username,
-		"op=", op.op, "review_author=", existing.fields.author.value,
-	)
-	msg := {
-		"level": "critical",
-		"text": "You can only modify your own reviews.",
-		"field_slug": "reviews",
-	}
-}
 
 # Block changing the author field on an existing review.
 error_messages contains msg if {
@@ -125,23 +105,6 @@ error_messages contains msg if {
 	}
 }
 
-# Block non-reviewers (including moderators not in the reviewer lists) from creating reviews.
-error_messages contains msg if {
-	input.action in {"save", "preview"}
-	_can_view
-	not roles.is_reviewer
-	some op in input.changed_fields.reviews.value
-	op.op == "create"
-	print(
-		"[block:review-not-reviewer] user=", input.user.username,
-		"is not a designated reviewer, status=", current_status,
-	)
-	msg := {
-		"level": "critical",
-		"text": "Only designated reviewers may add reviews.",
-		"field_slug": "reviews",
-	}
-}
 
 # ─── save/transition denial for non-viewers ────────────────────────────────────
 # Produces a single generic critical message when the user cannot view the entity
@@ -434,3 +397,7 @@ success_messages contains msg if {
 		"field_slug": null,
 	}
 }
+# NOTE: "modify/delete another user's review" and "only designated reviewers
+# may add reviews" are now enforced generically by the framework (§6):
+# update ops require the carried-over per-item editable grant, delete ops the
+# deletable_nodes grant, create ops the creatable_submodels grant.

@@ -806,8 +806,8 @@ export async function udmParseBundleZip(
     body: form,
     credentials: 'include',
   })
-  if (!resp.ok) return { scope_type_ids: [], error: 'Parse failed' }
-  return resp.json() as Promise<{ scope_type_ids: string[]; error?: string }>
+  if (!resp.ok) return { scope_type_ids: [], udm_types: [], error: 'Parse failed' }
+  return resp.json() as Promise<{ scope_type_ids: string[]; udm_types: Array<{ id: string; name: string; description: string }>; error?: string }>
 }
 
 export async function udmImportBundleZip(

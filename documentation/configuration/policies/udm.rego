@@ -122,6 +122,98 @@ actions contains a if {
 	some a in udmframeworkv1.modules[name].actions
 }
 
+# ─── Submodel operation grants (§6) ───────────────────────────────────────────
+
+deletable_nodes contains n if {
+	some n in udmframeworkv1.modules[name].deletable_nodes
+	print("[udm:deletable] ", n, " due to module: ", name)
+}
+
+# Module export: {"node": parent_id, "field": slug, "viewable": [...], "editable": [...]}
+# A grant's PRESENCE allows creating an item in that list; the lists are the
+# field grants for the not-yet-saved item form. Grants from multiple modules
+# for the same (parent, field) merge by union.
+creatable_submodels contains g if {
+	some g in udmframeworkv1.modules[name].creatable_submodels
+	print("[udm:creatable] ", g, " due to module: ", name)
+}
+
+_creatable_entry(node_id, slug) := {
+	"viewable": sort({v | some g in creatable_submodels; g.node == node_id; g.field == slug; some v in g.viewable}),
+	"editable": sort({e | some g in creatable_submodels; g.node == node_id; g.field == slug; some e in g.editable}),
+}
+
+creatable_submodels_map[node_id] := fields_map if {
+	some node_id in {g.node | some g in creatable_submodels}
+	fields_map := {slug: _creatable_entry(node_id, slug) |
+		some slug in {g.field | some g in creatable_submodels; g.node == node_id}
+	}
+}
+
+# ─── Submodel op enforcement (§6.2) — not only cosmetics ─────────────────────
+# The VIEW pre-check carried these grants over (additional_result); ops in the
+# submitted payload that lack a grant become critical errors.
+
+_submodel_ops[slug] := ops if {
+	input.action in {"save", "preview"}
+	some slug, entry in input.changed_fields
+	is_array(entry.value)
+	ops := [op | some op in entry.value; is_object(op); op.op]
+	count(ops) > 0
+}
+
+error_messages contains msg if {
+	some slug, ops in _submodel_ops
+	some op in ops
+	op.op == "create"
+	not slug in object.keys(object.get(object.get(input.additional_result, "creatable_submodels", {}), input.entity.id, {}))
+	msg := {
+		"level": "critical",
+		"text": sprintf("You may not add items to '%v'.", [slug]),
+		"field_slug": slug,
+	}
+}
+
+error_messages contains msg if {
+	some slug, ops in _submodel_ops
+	some op in ops
+	op.op == "delete"
+	not op.id in object.get(input.additional_result, "deletable_nodes", [])
+	msg := {
+		"level": "critical",
+		"text": sprintf("You may not delete this item from '%v'.", [slug]),
+		"field_slug": slug,
+	}
+}
+
+error_messages contains msg if {
+	some slug, ops in _submodel_ops
+	some op in ops
+	op.op == "update"
+	some f, _ in object.get(op, "fields", {})
+	not {"node": op.id, "field": f} in object.get(input.additional_result, "editable", [])
+	msg := {
+		"level": "critical",
+		"text": sprintf("You may not change '%v' on this '%v' item.", [f, slug]),
+		"field_slug": slug,
+	}
+}
+
+error_messages contains msg if {
+	some slug, ops in _submodel_ops
+	some op in ops
+	op.op == "create"
+	grants := object.get(object.get(input.additional_result, "creatable_submodels", {}), input.entity.id, {})
+	slug in object.keys(grants)
+	some f, _ in object.get(op, "fields", {})
+	not f in object.get(grants[slug], "editable", [])
+	msg := {
+		"level": "critical",
+		"text": sprintf("Field '%v' may not be set when creating a '%v' item.", [f, slug]),
+		"field_slug": slug,
+	}
+}
+
 dashboard_columns contains c if {
 	some c in udmframeworkv1.modules[name].dashboard_columns
 }
@@ -136,6 +228,10 @@ additional_result["view_allowed"] := allow
 
 additional_result["editable"] := [g | some g in editable_fields]
 
+additional_result["deletable_nodes"] := [n | some n in deletable_nodes]
+
+additional_result["creatable_submodels"] := creatable_submodels_map
+
 additional_result[k] := v if {
 	some name
 	some k, v in udmframeworkv1.modules[name].additional_result
@@ -149,6 +245,8 @@ result := {
 	"viewable_fields": viewable_fields_map,
 	"editable_fields": editable_fields_map,
 	"valid_transitions": [t | some t in valid_transitions],
+	"deletable_nodes": [n | some n in deletable_nodes],
+	"creatable_submodels": creatable_submodels_map,
 	"actions": [a | some a in actions],
 	"dashboard_columns": [c | some c in dashboard_columns],
 	"additional_result": additional_result,

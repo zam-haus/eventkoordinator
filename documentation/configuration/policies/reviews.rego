@@ -271,3 +271,23 @@ viewable_fields contains {"node": _root, "field": "requested-reviewer-users"} if
 	roles.is_moderator
 	input.entity.fields["requested-reviewer-users"]
 }
+
+# ─── Submodel operation grants (§6) for the protected "reviews" list ─────────
+
+# Reviewers may add their review while the proposal is submitted. The author
+# field stays editable in the new-item form because the client submits it;
+# proposals.rego enforces that it can only be set to yourself.
+creatable_submodels contains {
+	"node": _root, "field": "reviews",
+	"viewable": ["author", "comment", "vote"],
+	"editable": ["author", "comment", "vote"],
+} if {
+	_reviews_editable
+}
+
+# A reviewer may delete only their own review while voting is open.
+deletable_nodes contains r.id if {
+	_reviews_editable
+	some r in _reviews
+	r.fields.author.value == input.user.id
+}

@@ -27,6 +27,7 @@ and the reference doc `backend/userdefinedmodel/POLICY_ENGINE.md`.
 | §5 recursive redaction in `serialize_node` (per-node maps) | Done | serialize_node filters whole tree; history per affected node; search preview gated on view grant |
 | Framework/instance `.rego` rewrite to new contract | Done | udm.rego aggregator, framework.rego (package udmtree walker), all modules ported to PK+lookup-map contract, per-node grants, shared transition predicates. Caveats: (1) modules must NEVER reference data.udm.* — cycles; protected fields became the static config.PROTECTED_FIELDS constant; (2) cross-module function calls don't resolve in regorus — helpers are defined locally per module; (3) test_udm.rego NOT ported (opa test file; could not run under this regorus wheel before either); (4) policies load from the DB — re-import the bundle for changes to take effect |
 | POLICY_ENGINE.md regeneration | Done | rewritten against the implemented contract; defers to _input_schema.rego as the executable source of truth |
+| §6 submodel operation grants (create/edit/delete per parent/field/item; new-item field grants) | Done | result keys deletable_nodes / creatable_submodels (field-slug key = may create; value = new-item field grants); per-item edit derives from editable_fields; framework enforcement rules in udm.rego via additional_result carry-over; schema docs carry submodel_schema_id + prospective child schemas; default grants in save.rego, reviews grants in reviews.rego; GUI (SubmodelEditor + grants context) wired. Caveats: (1) author stays EDITABLE in the review new-item grant (client submits it; proposals.rego still enforces attribution=self) — deviation from §6.3's visible-only wording; (2) fixed a pre-existing inversion in proposals.rego (blocked editing when status WAS editable); (3) proposals.rego kept the attribution + author-change blocks (not covered by generic rules) |
 | Tests updated & passing | Done | 129 tests (5 new ValidationPreviewTests), only the pre-existing draft-roundtrip failure remains; factories wrap fixtures with a shared result-aggregation suffix (wrap_policy); frontend typechecks (pre-existing errors untouched) |
 
 ---
@@ -459,3 +460,79 @@ tree (§3.3-12) — `viewable_fields` entries as dotted paths or per-schema fiel
 sets — and apply it in `serialize_node` itself so every caller (view, save,
 transition, search preview, history) goes through one redaction point instead
 of each endpoint reimplementing it.
+
+## 6. Submodel operation grants (planned — extends the contract)
+
+Requirement: control **per parent model, per submodel_list field, per submodel
+item** who may edit or delete an existing item (the buttons in the list) and
+who may create a new one (the button below the list) — and, for a **newly
+created, not-yet-saved item**, which of its fields are visible/editable in the
+client-side form.
+
+### 6.1 Output extension (`data.udm.result`)
+
+No separate per-item *edit* grant: the existing per-node `editable_fields`
+map already expresses it — an item is editable iff its node id has a
+non-empty entry; non-editable nodes simply have **no key** (never an empty
+`{}` placeholder). The list's edit button enables when
+`editable_fields[child_id]` is non-empty.
+
+Two new fixed keys, present for every entity action with empty defaults:
+
+```json
+"deletable_nodes": ["<child_node_id>"],
+"creatable_submodels": {
+  "<parent_node_id>": {
+    "<submodel_list_slug>": { "viewable": ["<slug>"], "editable": ["<slug>"] }
+  }
+}
+```
+
+The PRESENCE of a field-slug key grants creation; its value is the field
+grant for the not-yet-saved item form (visible fields / enabled inputs).
+
+Module exports (unioned by the aggregator like the other grants; all
+deny-by-default):
+
+```rego
+deletable_nodes     contains child_id if { ... }
+creatable_submodels contains {"node": parent_id, "field": slug,
+                              "viewable": [...], "editable": [...]} if { ... }
+```
+
+Keying still allows per-parent-model (via `input.schemas[parent.schema_id]`),
+per-field, and per-item decisions ("reviewers may delete only their own
+review" iterates the child nodes when granting `deletable_nodes`). The
+prospective child schema is known statically from the field definition, so
+modules can grant per target schema without a node id existing yet; multiple
+modules granting the same (parent, field) merge by unioning their lists.
+
+### 6.2 Enforcement (not only cosmetics)
+
+- **GUI**: per-item edit button ⇐ `editable_fields[child_id]` non-empty;
+  per-item delete button ⇐ `child_id in deletable_nodes`; create button below
+  the list ⇐ field-slug key present in `creatable_submodels[parent_id]`; the
+  unsaved-item form builds its field set from that entry's `viewable` list and
+  enables inputs from its `editable` list.
+- **Writer**: the framework carries these keys in `additional_result`
+  (computed by the VIEW pre-check on the persisted state). A
+  framework-provided save rule turns unauthorized ops in
+  `input.changed_fields[<slug>].value` into critical errors:
+  `create` requires the creatable grant, `delete` requires the child in
+  `deletable_nodes`, `update` requires the changed child fields ⊆ the
+  carried-over `editable_fields[child_id]`. This replaces today's
+  hand-written per-bundle denial blocks in proposals.rego (review-modify /
+  review-attribution / not-reviewer) with instance-specific *grants*.
+- **Preview**: the keys ride along in the §4 preview response so all list
+  buttons come from the same single evaluation.
+
+### 6.3 Migration of the demo bundle
+
+reviews.rego expresses its current rules as grants:
+- `creatable_submodels`: reviewers while `submitted`.
+- `deletable_nodes`: the review's author only (per item).
+- per-item edit: already covered — reviews.rego grants `editable_fields`
+  only on the author's own review node.
+- `creatable_submodels` entry grants: `vote`/`comment` editable, `author`
+  visible-only (it is auto-set server-side).
+proposals.rego's critical-message blocks are then redundant and removed.

@@ -528,6 +528,10 @@ class EntityOut(Schema):
     # Per-node grant maps {node_id: [slugs]} covering the whole tree (§3.1-1).
     viewable_fields: dict[str, list[str]] = {}
     editable_fields: dict[str, list[str]] = {}
+    # §6 submodel operation grants: delete buttons, plus create buttons with
+    # the new-item form's field grants (field-slug key present = may create).
+    deletable_nodes: list[str] = []
+    creatable_submodels: dict[str, dict[str, Any]] = {}
     policy_messages: list[Any] = []
     dashboard_columns: list[DashboardColumnOut] = []
 
