@@ -13,6 +13,7 @@ from ninja import File, Router, UploadedFile
 from ninja.security import django_auth
 
 from userdefinedmodel.api_helpers import (
+    ApiError,
     _create_field_default,
     _require_perms,
     _serialize_version_as_draft_in,
@@ -939,14 +940,11 @@ def create_bulk_migration(request, payload: BulkMigrationCreateIn):
         for sm in payload.submodel_mappings:
             src_field = src_fields.get(sm.source_parent_field_slug)
             if not src_field or not src_field.submodel_config:
-                return JsonResponse(
-                    {"detail": f"Source submodel field '{sm.source_parent_field_slug}' not found or has no submodel config"},
-                    status=400,
-                )
+                raise ApiError(400, {"detail": f"Source submodel field '{sm.source_parent_field_slug}' not found or has no submodel config"})
             try:
                 tgt_submodel_version = ConfigVersion.objects.get(id=sm.target_submodel_version_id)
             except ConfigVersion.DoesNotExist:
-                return JsonResponse({"detail": "Target submodel version not found"}, status=404)
+                raise ApiError(404, {"detail": "Target submodel version not found"})
             submodel_mapping = BulkMigrationSubmodelMapping.objects.create(
                 plan=plan,
                 source_parent_field=src_field,

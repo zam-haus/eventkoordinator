@@ -208,6 +208,9 @@ class FieldDefinitionIn(Schema):
     default: Optional[Any] = None
     submodel_config_version_id: Optional[uuid.UUID] = None
     workflow_version_id: Optional[uuid.UUID] = None
+    # Present in the as-input/bundle export shape (ConfigDraftExportOut) so the
+    # round-trip is accepted; replace_draft resolves by workflow_version_id.
+    workflow_definition_id: Optional[uuid.UUID] = None
     parent_slug: Optional[Annotated[str, Field(max_length=_MAX_SLUG_LEN, pattern=r"^[a-z][a-z0-9_-]*$")]] = None
     model_config = {"extra": "forbid"}
 
@@ -274,6 +277,9 @@ class FieldConfigCreateIn(Schema):
     def exactly_one_default(cls, langs: list[ConfigLanguageIn]) -> list[ConfigLanguageIn]:
         if sum(1 for l in langs if l.is_default) != 1:
             raise ValueError("exactly one language must have is_default=True")
+        codes = [l.code for l in langs]
+        if len(codes) != len(set(codes)):
+            raise ValueError("duplicate language codes")
         return langs
 
 
@@ -577,10 +583,20 @@ class MigrationFieldMappingIn(Schema):
 
 
 class MigrationExecuteIn(Schema):
-    migration_id: uuid.UUID
+    # Target selection mirrors the preview endpoint: either an explicit config
+    # version, or a UDM type whose published config version is used. The
+    # migration record is created at execute time (previews are side-effect free).
+    target_user_defined_model_type_id: Optional[uuid.UUID] = None
+    target_version_id: Optional[uuid.UUID] = None
     confirmed: Literal[True]
     field_mappings: list[MigrationFieldMappingIn] = Field(..., max_length=_MAX_MAPPING_ENTRIES)
     model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def target_required(self) -> "MigrationExecuteIn":
+        if not self.target_user_defined_model_type_id and not self.target_version_id:
+            raise ValueError("Either target_user_defined_model_type_id or target_version_id is required")
+        return self
 
 
 class MigrationPreviewFieldOut(Schema):
@@ -591,7 +607,6 @@ class MigrationPreviewFieldOut(Schema):
 
 
 class MigrationPreviewOut(Schema):
-    migration_id: uuid.UUID
     source_version_id: uuid.UUID; target_version_id: uuid.UUID
     field_previews: list[MigrationPreviewFieldOut]
 

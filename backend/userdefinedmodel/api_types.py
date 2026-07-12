@@ -5,7 +5,7 @@ import logging
 import uuid
 from typing import Optional
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from ninja import Router
 from ninja.security import django_auth
 
@@ -37,9 +37,8 @@ def _udmtype_out(t) -> UDMTypeOut:
 @router.get("/types/", response=list[UDMTypeOut], auth=django_auth)
 def list_udm_types(request):
     from userdefinedmodel.models import UserDefinedModelType
-    # TODO evaluate whether we need a permission check
-    #if denied := _require_perms(request, "userdefinedmodel.view_userdefinedmodeltype"):
-    #    return denied
+    # Intentionally no model-permission gate: type metadata (name/label/config id)
+    # is visible to every authenticated user; entity data stays policy-gated.
     types = UserDefinedModelType.objects.select_related("field_config").all()
     return [_udmtype_out(t) for t in types]
 
@@ -355,7 +354,7 @@ def delete_udm_type(request, type_id: uuid.UUID):
     if UserDefinedModelEntity.objects.filter(user_defined_model_type=udm_type).exists():
         return JsonResponse({"detail": "UDMType still has entities and cannot be deleted"}, status=400)
     udm_type.delete()
-    return JsonResponse({}, status=204)
+    return HttpResponse(status=204)
 
 
 @router.get("/types/{type_id}/policies/", response=list[PolicyOut], auth=django_auth)
@@ -371,7 +370,7 @@ def list_type_policies(request, type_id: uuid.UUID):
             for tp in udm_type.type_policies.select_related("policy").order_by("sort_order")]
 
 
-@router.post("/types/{type_id}/policies/", response={201: PolicyOut}, auth=django_auth)
+@router.post("/types/{type_id}/policies/", response={200: PolicyOut, 201: PolicyOut}, auth=django_auth)
 def assign_policy(request, type_id: uuid.UUID, payload: PolicyAssignIn):
     from userdefinedmodel.models import UserDefinedModelType, Policy, UserDefinedModelTypePolicy
     if denied := _require_perms(request, "userdefinedmodel.change_userdefinedmodeltype"):
@@ -384,11 +383,11 @@ def assign_policy(request, type_id: uuid.UUID, payload: PolicyAssignIn):
         policy = Policy.objects.get(slug=payload.policy_slug)
     except Policy.DoesNotExist:
         return JsonResponse({"detail": "Policy not found"}, status=404)
-    UserDefinedModelTypePolicy.objects.get_or_create(
+    _, created = UserDefinedModelTypePolicy.objects.update_or_create(
         user_defined_model_type=udm_type, policy=policy,
         defaults={"sort_order": payload.sort_order},
     )
-    return 201, PolicyOut(slug=policy.slug, source=policy.source)
+    return (201 if created else 200), PolicyOut(slug=policy.slug, source=policy.source)
 
 
 @router.delete("/types/{type_id}/policies/{slug}/", auth=django_auth)
@@ -401,4 +400,4 @@ def remove_policy(request, type_id: uuid.UUID, slug: str):
     except UserDefinedModelType.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
     UserDefinedModelTypePolicy.objects.filter(user_defined_model_type=udm_type, policy__slug=slug).delete()
-    return JsonResponse({}, status=204)
+    return HttpResponse(status=204)

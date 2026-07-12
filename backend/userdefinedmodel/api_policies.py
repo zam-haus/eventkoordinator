@@ -1,7 +1,7 @@
 """Top-level policy routes: /policies/..."""
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from ninja import Router
 from ninja.security import django_auth
 
@@ -66,4 +66,4 @@ def delete_policy(request, slug: str):
     if p.type_assignments.exists():
         return JsonResponse({"detail": "Policy is assigned to UDMTypes"}, status=400)
     p.delete()
-    return JsonResponse({}, status=204)
+    return HttpResponse(status=204)

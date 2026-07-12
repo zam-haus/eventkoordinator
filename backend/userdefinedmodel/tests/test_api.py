@@ -886,6 +886,12 @@ class SubmodelTests(BaseAPITest):
 # ─── Migration tests ──────────────────────────────────────────────────────────
 
 class MigrationTests(BaseAPITest):
+    def setUp(self):
+        super().setUp()
+        # Entity migration endpoints are superuser-only.
+        self.superuser = UserFactory(is_superuser=True)
+        self.client.force_login(self.superuser)
+
     def test_migration_preview(self):
         config, version, field, lang = make_simple_config()
         udm_type = UserDefinedModelTypeFactory(field_config=config)
@@ -902,7 +908,10 @@ class MigrationTests(BaseAPITest):
         resp = self.get(f"/entities/{entity.id}/migration-preview/?target_version={v2.id}")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertIn("migration_id", data)
+        # Preview is side-effect free and returns no migration_id.
+        self.assertNotIn("migration_id", data)
+        from userdefinedmodel.models import UserDefinedModelEntityMigration
+        self.assertEqual(UserDefinedModelEntityMigration.objects.count(), 0)
         self.assertEqual(len(data["field_previews"]), 1)
         self.assertEqual(data["field_previews"][0]["source_slug"], "content")
         self.assertEqual(data["field_previews"][0]["suggested_action"], "map")
@@ -932,9 +941,8 @@ class MigrationTests(BaseAPITest):
         from userdefinedmodel.models import UserDefinedModelEntity
         config, v_old, v_pub, udm_type, entity = self._make_renamed_versions()
 
-        prev = self.get(f"/entities/{entity.id}/migration-preview/?target_version={v_pub.id}").json()
         resp = self.post(f"/entities/{entity.id}/migrate/", {
-            "migration_id": prev["migration_id"],
+            "target_version_id": str(v_pub.id),
             "confirmed": True,
             "field_mappings": [
                 {"source_field_slug": "old_name", "action": "map", "target_field_slug": "new_name"},
@@ -1247,7 +1255,7 @@ class EntityViewPolicyTests(BaseAPITest):
         visible, vis_type, *_ = make_entity_with_type(policy_source=REGO_OWNER_EDIT)
         hidden, hid_type, *_ = make_entity_with_type(policy_source=REGO_DENY_ALL)
         resp = self.get(
-            f"/entity-search/?type_ids={vis_type.id},{hid_type.id}", user=self.user
+            f"/entity-search/?type_ids={vis_type.id}&type_ids={hid_type.id}", user=self.user
         )
         self.assertEqual(resp.status_code, 200)
         ids = {e["id"] for e in resp.json()}

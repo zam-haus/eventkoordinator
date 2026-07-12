@@ -5,7 +5,7 @@ import uuid
 from datetime import timedelta
 from typing import Optional
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils.timezone import now
 from ninja import File, Router, UploadedFile
 from ninja.security import django_auth
@@ -22,6 +22,9 @@ def upload_staging_file(
     intended_field_id: Optional[uuid.UUID] = None,
 ):
     from userdefinedmodel.models.node import StagingFile
+    from userdefinedmodel.models import FieldDefinition
+    if intended_field_id is not None and not FieldDefinition.objects.filter(id=intended_field_id).exists():
+        return JsonResponse({"detail": "intended_field_id does not exist"}, status=400)
     staging = StagingFile.objects.create(
         uploader=request.user,
         file=file,
@@ -49,4 +52,4 @@ def delete_staging_file(request, staging_id: uuid.UUID):
         return JsonResponse({"detail": "Not found"}, status=404)
     staging.file.delete(save=False)
     staging.delete()
-    return JsonResponse({}, status=204)
+    return HttpResponse(status=204)

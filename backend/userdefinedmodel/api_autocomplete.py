@@ -1,7 +1,10 @@
 """Autocomplete routes: /users/, /groups/, /entity-search/"""
 from __future__ import annotations
 
-from ninja import Router
+import uuid
+from typing import Optional
+
+from ninja import Query, Router
 from ninja.security import django_auth
 
 from userdefinedmodel.api_helpers import _locale
@@ -11,35 +14,46 @@ router = Router(auth=django_auth)
 
 
 @router.get("/users/", response=list[UserAutocompleteItem], auth=django_auth)
-def search_users(request, q: str = "", group_ids: str = "", ids: str = ""):
+def search_users(
+    request,
+    q: str = "",
+    group_ids: Optional[list[int]] = Query(None),
+    ids: Optional[list[uuid.UUID]] = Query(None),
+):
     from openid_user_management.models import OpenIDUser
     from django.db.models import Q as DQ
     qs = OpenIDUser.objects.filter(is_active=True)
     if group_ids:
-        gids = [int(x) for x in group_ids.split(",") if x.strip().isdigit()]
-        qs = qs.filter(groups__id__in=gids)
+        qs = qs.filter(groups__id__in=group_ids).distinct()
     if q:
         qs = qs.filter(DQ(username__icontains=q) | DQ(email__icontains=q))
     if ids:
-        uid_list = [x.strip() for x in ids.split(",") if x.strip()]
-        qs = OpenIDUser.objects.filter(id__in=uid_list)
+        qs = qs.filter(id__in=ids)
     return [UserAutocompleteItem(id=u.id, display_name=u.username) for u in qs[:50]]
 
 
 @router.get("/groups/", response=list[GroupAutocompleteItem], auth=django_auth)
-def search_groups(request, q: str = "", ids: str = ""):
+def search_groups(
+    request,
+    q: str = "",
+    ids: Optional[list[int]] = Query(None),
+):
     from django.contrib.auth.models import Group
     qs = Group.objects.all()
     if q:
         qs = qs.filter(name__icontains=q)
     if ids:
-        id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
-        qs = Group.objects.filter(id__in=id_list)
+        qs = qs.filter(id__in=ids)
     return [GroupAutocompleteItem(id=g.id, name=g.name) for g in qs[:50]]
 
 
 @router.get("/entity-search/", response=list[EntityAutocompleteItem], auth=django_auth)
-def search_entities(request, q: str = "", type_ids: str = "", ids: str = ""):
+def search_entities(
+    request,
+    q: str = "",
+    type_ids: Optional[list[uuid.UUID]] = Query(None),
+    ids: Optional[list[uuid.UUID]] = Query(None),
+):
     from userdefinedmodel.models import UserDefinedModelEntity
     from userdefinedmodel.engine import evaluate_policy
     _entity_prefetch = [
@@ -52,13 +66,9 @@ def search_entities(request, q: str = "", type_ids: str = "", ids: str = ""):
         "config_version__config", "user_defined_model_type"
     ).prefetch_related(*_entity_prefetch)
     if type_ids:
-        tid_list = [x.strip() for x in type_ids.split(",") if x.strip()]
-        qs = qs.filter(user_defined_model_type_id__in=tid_list)
+        qs = qs.filter(user_defined_model_type_id__in=type_ids)
     if ids:
-        id_list = [x.strip() for x in ids.split(",") if x.strip()]
-        qs = UserDefinedModelEntity.objects.select_related(
-            "config_version__config", "user_defined_model_type"
-        ).filter(id__in=id_list).prefetch_related(*_entity_prefetch)
+        qs = qs.filter(id__in=ids)
     # Object-level filter: only surface entities the user may browse/view. We
     # scan past non-viewable rows rather than slicing first, so the result can
     # still reach the cap of 50 visible entities. Superusers also get entities

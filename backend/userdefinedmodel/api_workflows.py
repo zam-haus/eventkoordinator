@@ -4,11 +4,11 @@ from __future__ import annotations
 import uuid
 
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from ninja import Router
 from ninja.security import django_auth
 
-from userdefinedmodel.api_helpers import _require_perms, _serialize_workflow
+from userdefinedmodel.api_helpers import ApiError, _require_perms, _serialize_workflow
 from userdefinedmodel.schemas import WorkflowCreateIn, WorkflowDefinitionOut, WorkflowUpdateIn
 
 router = Router(auth=django_auth)
@@ -145,7 +145,7 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
 
         if payload.states is not None:
             if sum(1 for s in payload.states if s.is_initial) != 1:
-                return JsonResponse({"detail": "exactly one state must have is_initial=True"}, status=400)
+                raise ApiError(400, {"detail": "exactly one state must have is_initial=True"})
 
             incoming_names = {s.name for s in payload.states}
             existing_states = {s.name: s for s in draft.states.all()}
@@ -155,10 +155,7 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
                 prev = state_in.previous_name
                 if prev and prev != state_in.name and prev in existing_states:
                     if state_in.name in existing_states:
-                        return JsonResponse(
-                            {"detail": f"State name '{state_in.name}' is already in use"},
-                            status=400,
-                        )
+                        raise ApiError(400, {"detail": f"State name '{state_in.name}' is already in use"})
                     old_state = existing_states.pop(prev)
                     old_state.name = state_in.name
                     old_state.save()
@@ -240,7 +237,7 @@ def delete_workflow(request, workflow_id: uuid.UUID):
         wf.delete()
     except Exception:
         return JsonResponse({"detail": "Workflow is in use and cannot be deleted"}, status=409)
-    return JsonResponse({}, status=204)
+    return HttpResponse(status=204)
 
 
 @router.get("/workflows/{workflow_id}/state-counts/", auth=django_auth)
