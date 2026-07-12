@@ -31,8 +31,8 @@ changed_fields := input.changed_fields
 
 some_field_changed if {
 	changed_fields
-	some field in changed_fields
-	print("[save:some_field_changed] field=", field)
+	field := changed_fields[idx]
+	print("[save:some_field_changed] field=", field, "idx=", idx)
 }
 
 # input.additional_result is the VIEW pre-check carry-over computed by the

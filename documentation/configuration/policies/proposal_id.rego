@@ -2,6 +2,7 @@ package udm.udmframeworkv1.modules.proposal_id
 
 import data.udm.udmframeworkv1.modules.roles
 import data.udm.udmframeworkv1.modules.sudo
+import data.udm.udmframeworkv1.modules.view
 import rego.v1
 
 protected_fields := ["proposal-id", "owner", "editors"]
@@ -33,13 +34,16 @@ error_messages contains msg if {
 	}
 }
 
+# Gated on can_view so no field-level detail leaks to users without view
+# access (view.rego already emits the generic "Access denied." for them).
 error_messages contains msg if {
 	input.action in {"save", "preview"}
+	view.can_view
 	input.changed_fields.owner
-	print("[block:proposal-id] user=", input.user.username, "attempted to change proposal-id")
+	print("[block:owner] user=", input.user.username, "attempted to change owner")
 	msg := {
 		"level": "critical",
-		"text": "The proposal owner cannot be changed.",
+		"text": "The owner cannot be changed.",
 		"field_slug": "owner",
 	}
 }

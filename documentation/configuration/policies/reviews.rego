@@ -1,7 +1,8 @@
 package udm.udmframeworkv1.modules.reviews
 
-import data.udm.udmframeworkv1.modules.proposals._can_view
-import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
+import data.udm.udmframeworkv1.modules.utils
+import data.udm.udmframeworkv1.modules.utils._proposal_ctx
+import data.udm.udmframeworkv1.modules.view.can_view
 import data.udm.udmframeworkv1.modules.workflow.current_status
 import data.udm.udmframeworkv1.modules.roles.is_moderator
 import data.udm.udmframeworkv1.modules.roles.is_owner_or_editor
@@ -147,20 +148,91 @@ success_messages contains msg if {
 	}
 }
 
+# ── Save confirmations for moderators and reviewers ───────────────────────────
+success_messages contains msg if {
+	input.action == "save"
+	not utils.is_preview
+	is_moderator
+	msg := {
+		"level": "info",
+		"text": "Reviewer assignments updated.",
+		"field_slug": null,
+	}
+}
+
+success_messages contains msg if {
+	input.action == "save"
+	not utils.is_preview
+	is_reviewer
+	current_status == "submitted"
+	msg := {
+		"level": "info",
+		"text": "Your review has been saved.",
+		"field_slug": null,
+	}
+}
+
 # ── tab-submission: reviewer assignment ────────────────────────────────────────
 # The source message in proposals uses field_slug: null, so it cannot be relayed
 # through _field_to_tabs.
-error_messages contains msg if {
-	input.action in {"save", "preview"}
-	_can_view
-	not is_moderator
-	_changing_reviewer_assignments
-	msg := {"level": "critical", "text": "Only moderators may change reviewer assignments.", "field_slug": "tab-submission"}
-}
+
+
 
 error_messages contains msg if {
 	input.action in {"save", "preview"}
-	_can_view
+	can_view
+	not is_moderator
+	_changing_reviewer_assignments
+	msg := {
+        "level": "critical",
+        "text": "Only moderators may change reviewer assignments.",
+        "field_slug": "tab-submission"
+    }
+    print("[block:reviewer-change] user=", input.user.username, "changed_fields=", input.changed_fields)
+}
+
+
+# Block changing the author field on an existing review.
+error_messages contains msg if {
+	input.action in {"save", "preview"}
+	can_view
+	msg := {
+		"level": "critical",
+		"text": "The review author cannot be changed after creation.",
+		"field_slug": "reviews",
+	}
+	some op in input.changed_fields.reviews.value
+	op.op == "update"
+	op.fields.author
+	print(
+		"[block:review-author-change] user=", input.user.username,
+		"attempted to change author on review op=", op,
+	)
+}
+
+# Block creating a review attributed to someone other than the current user.
+error_messages contains msg if {
+	input.action in {"save", "preview"}
+	can_view
+	msg := {
+		"level": "critical",
+		"text": "You can only create reviews as yourself.",
+		"field_slug": "reviews",
+	}
+	some op in input.changed_fields.reviews.value
+	op.op == "create"
+	op.fields.author != null
+	op.fields.author != input.user.id
+	print(
+		"[block:review-attribution] user=", input.user.username,
+		"tried to create review as=", op.fields.author,
+	)
+}
+
+
+error_messages contains msg if {
+	input.action in {"save", "preview"}
+	can_view
 	not is_moderator
 	_changing_reviewer_assignments
 	print(
@@ -271,6 +343,12 @@ viewable_fields contains {"node": _root, "field": "requested-reviewer-users"} if
 	roles.is_moderator
 	input.entity.fields["requested-reviewer-users"]
 }
+
+
+
+
+
+
 
 # ─── Submodel operation grants (§6) for the protected "reviews" list ─────────
 

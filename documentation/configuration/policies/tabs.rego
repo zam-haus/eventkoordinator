@@ -1,9 +1,5 @@
 package udm.udmframeworkv1.modules.tabs
 
-import data.udm.udmframeworkv1.modules.proposals._can_view
-import data.udm.udmframeworkv1.modules.proposals._changing_reviewer_assignments
-import data.udm.udmframeworkv1.modules.proposals.is_moderator
-import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
 import data.udm.udmframeworkv1.modules.validation_rules
 import rego.v1
 

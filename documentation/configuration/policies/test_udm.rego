@@ -98,12 +98,25 @@ _clear(slug) := _field(slug, null)
 _changed(f) := [{"op": "replace", "path": "/changed_fields", "value": f}]
 
 # Simulates the Python view pre-check: the engine evaluates the VIEW policy
-# against the pre-write entity and injects the result into the save/transition
-# input as view_was_allowed / old_editable_fields.
+# against the pre-write entity and feeds its additional_result back into the
+# save/transition/preview input as input.additional_result (see udm.rego).
 _precheck(fields) := [
-	{"op": "replace", "path": "/view_was_allowed", "value": true},
-	{"op": "replace", "path": "/old_editable_fields", "value": fields},
+	{"op": "replace", "path": "/additional_result", "value": {
+		"view_allowed": true,
+		"editable": [{"node": BASE_DOCUMENT.entity.id, "field": f} | some f in fields],
+	}},
 ]
+# Like _precheck, but takes explicit {"node": id, "field": slug} grants so
+# per-submodel-item editability (framework §6) can be simulated.
+_precheck_grants(grants) := [
+	{"op": "replace", "path": "/additional_result", "value": {
+		"view_allowed": true,
+		"editable": grants,
+	}},
+]
+
+_grant(node_id, f) := {"node": node_id, "field": f}
+
 _children(k, v) := [{"op": "replace", "path": sprintf("/entity/children/%v", [k]), "value": v}]
 
 # ─── Document factory ───────────────────────────────────────────────────────────
@@ -152,6 +165,7 @@ test_owner_can_save_draft if {
 
 test_non_moderator_blocked_from_reviewer_assignment if {
 	ev := udm with input as _mk([
+		_precheck([]),
 		_action("save"),
 		_as_user(USER_PHI1010),
 		_changed({"requested-reviewer-groups": true}),
@@ -166,6 +180,7 @@ test_non_moderator_blocked_from_reviewer_assignment if {
 test_submit_blocked_when_checklist_incomplete if {
 	# BASE_DOCUMENT has a speaker with biography: null — checklist is incomplete.
 	ev := udm with input as _mk([
+		_precheck([]),
 		_action("transition"),
 		_transition("submit"),
 		_field_path("status"),
@@ -177,6 +192,7 @@ test_submit_blocked_when_checklist_incomplete if {
 
 test_submit_allowed_when_checklist_complete if {
 	ev := udm with input as _mk([
+		_precheck([]),
 		_action("transition"),
 		_transition("submit"),
 		_field_path("status"),
@@ -253,7 +269,7 @@ _review(rid, author, vote) := {
 	"config_id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
 	"type_id": null,
 	"fields": {
-		"author": {"data_type": "user_select", "localized": false, "value": author},
+		"author": {"data_type": "user_select", "localized": false, "value": author.id},
 		"vote": {"data_type": "workflow", "localized": false, "value": vote},
 		"comment": {"data_type": "text_long", "localized": false, "value": null},
 	},
@@ -262,13 +278,14 @@ _review(rid, author, vote) := {
 }
 
 _accept_with(reviews) := _mk([
+	_precheck([]),
 	_action("transition"),
 	_transition("accept"),
 	_field_path("status"),
 	_status("submitted"),
 	_as_user(USER_MODERATOR),
-	_field("requested-reviewer-groups", [_ACCEPT_GROUP_A]),
-	_field("requested-reviewer-users", [_ACCEPT_USER_X]),
+	_field("requested-reviewer-groups", [_ACCEPT_GROUP_A.id]),
+	_field("requested-reviewer-users", [_ACCEPT_USER_X.id]),
 	_children("reviews", reviews),
 ])
 
@@ -416,6 +433,7 @@ test_accept_allowed_combo_d_all_accept if {
 
 test_moderator_can_reject if {
 	ev := udm with input as _mk([
+		_precheck([]),
 		_action("transition"),
 		_transition("reject"),
 		_field_path("status"),
@@ -426,6 +444,7 @@ test_moderator_can_reject if {
 
 test_moderator_can_request_revision if {
 	ev := udm with input as _mk([
+		_precheck([]),
 		_action("transition"),
 		_transition("request-revision"),
 		_field_path("status"),
@@ -437,6 +456,7 @@ test_moderator_can_request_revision if {
 # allow-revision is typically applied to a rejected proposal.
 test_moderator_can_allow_revision if {
 	ev := udm with input as _mk([
+		_precheck([]),
 		_action("transition"),
 		_transition("allow-revision"),
 		_field_path("status"),
@@ -482,8 +502,8 @@ test_non_moderator_cannot_allow_revision if {
 # ─── Tests: review editing (save) and voting (transition) ───────────────────────
 #
 # Rules under test:
-#   allow (save)   — proposals.rego: is_reviewer + current_status=="submitted" + no_critical_errors
-#   error (save)   — proposals.rego: op targets another author's review  →  critical block
+#   allow (save)   — save.rego: view pre-check + every changed field editable
+#   error (save)   — udm.rego (§6): update op without a per-item editable grant → critical block
 #   allow (vote)   — transitions.rego: field=="vote" + node matches review + author==user
 #
 # Actor: USER_PHI1010 — direct reviewer, not moderator, not owner.
@@ -520,7 +540,7 @@ test_reviewer_can_save_own_review if {
 		_children("reviews", [_REVIEW_PHI]),
 		_old_reviews([_REVIEW_PHI]),
 		_review_change([_update_op(_REVIEW_PHI_ID)]),
-		_precheck(["reviews"]),
+		_precheck_grants([_grant(BASE_DOCUMENT.entity.id, "reviews"), _grant(_REVIEW_PHI_ID, "comment")]),
 	])
 	ev.allow
 }
@@ -532,7 +552,11 @@ test_reviewer_can_save_multiple_own_reviews if {
 		_children("reviews", [_REVIEW_PHI, _REVIEW_PHI_2]),
 		_old_reviews([_REVIEW_PHI, _REVIEW_PHI_2]),
 		_review_change([_update_op(_REVIEW_PHI_ID), _update_op(_REVIEW_PHI_2_ID)]),
-		_precheck(["reviews"]),
+		_precheck_grants([
+			_grant(BASE_DOCUMENT.entity.id, "reviews"),
+			_grant(_REVIEW_PHI_ID, "comment"),
+			_grant(_REVIEW_PHI_2_ID, "comment"),
+		]),
 	])
 	ev.allow
 }
@@ -546,12 +570,12 @@ test_reviewer_blocked_editing_only_other_users_review if {
 		_children("reviews", [_REVIEW_OTHER]),
 		_old_reviews([_REVIEW_OTHER]),
 		_review_change([_update_op(_REVIEW_OTHER_ID)]),
-		_precheck(["reviews"]),
+		_precheck_grants([_grant(BASE_DOCUMENT.entity.id, "reviews")]),
 	])
 	not ev.allow
 	some m in ev.error_messages
 	m.level == "critical"
-	m.text == "You can only modify your own reviews."
+	m.text == "You may not change 'comment' on this 'reviews' item."
 }
 
 # Mixing own + another's review in the same save is blocked by the other's update.
@@ -562,18 +586,19 @@ test_reviewer_blocked_editing_own_and_other_review_simultaneously if {
 		_children("reviews", [_REVIEW_PHI, _REVIEW_OTHER]),
 		_old_reviews([_REVIEW_PHI, _REVIEW_OTHER]),
 		_review_change([_update_op(_REVIEW_PHI_ID), _update_op(_REVIEW_OTHER_ID)]),
-		_precheck(["reviews"]),
+		_precheck_grants([_grant(BASE_DOCUMENT.entity.id, "reviews"), _grant(_REVIEW_PHI_ID, "comment")]),
 	])
 	not ev.allow
 	some m in ev.error_messages
 	m.level == "critical"
-	m.text == "You can only modify your own reviews."
+	m.text == "You may not change 'comment' on this 'reviews' item."
 }
 
 # ── Vote: transitioning own vs. another user's review node ───────────────────────
 
 test_reviewer_can_vote_on_own_review if {
 	ev := udm with input as _mk([
+		_precheck([]),
 		_action("transition"),
 		_field_path("vote"),
 		_transition("accept"),
@@ -598,8 +623,33 @@ test_reviewer_cannot_vote_on_other_users_review if {
 }
 
 # ─── Base document ──────────────────────────────────────────────────────────────
+# INPUT_DOCUMENT below is a captured legacy payload that still embeds full user
+# and group objects as field values. The current contract (§3.2-7) serializes
+# raw PKs and provides input.users / input.groups lookup maps, and always sends
+# node_id / transition_descriptor / candidate_transitions. BASE_DOCUMENT
+# normalizes the capture to that contract.
 
-BASE_DOCUMENT := INPUT_DOCUMENT
+_USERS_MAP[u.id] := u if {
+	some u in [USER_OWNER, USER_PHI1010, USER_MODERATOR, USER_NONE, _ACCEPT_MEMBER_A, _ACCEPT_MEMBER_B, _ACCEPT_USER_X]
+}
+
+_GROUPS_MAP := {
+	"1": {"id": 1, "name": "Authenticated Users", "member_ids": [USER_OWNER.id, USER_PHI1010.id]},
+	"2": {"id": 2, "name": "moderators", "member_ids": [USER_OWNER.id]},
+	"10": {"id": 10, "name": "Group A", "member_ids": [_ACCEPT_MEMBER_A.id, _ACCEPT_MEMBER_B.id]},
+}
+
+BASE_DOCUMENT := json.patch(INPUT_DOCUMENT, [
+	{"op": "replace", "path": "/entity/fields/owner/value", "value": USER_OWNER.id},
+	{"op": "replace", "path": "/entity/fields/requested-reviewer-groups/value", "value": [1, 2]},
+	{"op": "replace", "path": "/entity/fields/requested-reviewer-users/value", "value": [USER_OWNER.id, USER_PHI1010.id]},
+	{"op": "replace", "path": "/user", "value": USER_OWNER},
+	{"op": "add", "path": "/node_id", "value": INPUT_DOCUMENT.entity.id},
+	{"op": "add", "path": "/transition_descriptor", "value": {}},
+	{"op": "add", "path": "/candidate_transitions", "value": {}},
+	{"op": "add", "path": "/users", "value": _USERS_MAP},
+	{"op": "add", "path": "/groups", "value": _GROUPS_MAP},
+])
 
 INPUT_DOCUMENT := {
 	"action": "view",
@@ -1361,6 +1411,5 @@ INPUT_DOCUMENT := {
 	"changed_fields": {},
 	"transition": null,
 	"field": null,
-	"view_was_allowed": false,
-	"old_editable_fields": [],
+	"additional_result": {},
 }

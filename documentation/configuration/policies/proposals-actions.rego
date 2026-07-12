@@ -1,4 +1,4 @@
-package udm.udmframeworkv1.modules.proposals.actions
+package udm.udmframeworkv1.modules.proposals_actions
 import rego.v1
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,12 +1,10 @@
 package udm.udmframeworkv1.modules.validation_rules
 
 import data.udm.udmframeworkv1.modules.config._deadline
-import data.udm.udmframeworkv1.modules.proposals._can_view
-import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
-import data.udm.udmframeworkv1.modules.proposals.current_status
-import data.udm.udmframeworkv1.modules.proposals.is_moderator
-import data.udm.udmframeworkv1.modules.proposals.is_owner_or_editor
-import data.udm.udmframeworkv1.modules.proposals.is_superuser_sudo
+import data.udm.udmframeworkv1.modules.roles.is_owner_or_editor
+import data.udm.udmframeworkv1.modules.sudo.is_superuser_sudo
+import data.udm.udmframeworkv1.modules.utils._proposal_ctx
+import data.udm.udmframeworkv1.modules.workflow.current_status
 import rego.v1
 
 # ─── Submission checklist ───────────────────────────────────────────────────────

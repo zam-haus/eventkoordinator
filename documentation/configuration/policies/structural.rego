@@ -1,7 +1,7 @@
 package udm.udmframeworkv1.modules.structural
 
 import data.udm.udmframeworkv1.modules.config
-import data.udm.udmframeworkv1.modules.proposals._can_view
+import data.udm.udmframeworkv1.modules.view.can_view
 import data.udmtree
 import rego.v1
 
@@ -27,7 +27,7 @@ viewable_fields contains {"node": node.id, "field": f} if {
 # button from the validation preview (save.valid, dirty state, blocking
 # messages). Navigation is not a write at all.
 editable_fields contains {"node": node.id, "field": f} if {
-	_can_view
+	can_view
 	some node in udmtree.tree_nodes
 	some f, entry in node.fields
 	entry.data_type in config.STRUCTURAL_TYPES

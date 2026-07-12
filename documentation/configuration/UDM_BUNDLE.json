@@ -24,7 +24,9 @@
     "delete",
     "sudo",
     "description",
-    "proposals",
+    "create",
+    "messages",
+    "status",
     "proposals-actions",
     "proposal_id",
     "tabs",
@@ -1568,7 +1570,13 @@
    "slug": "description"
   },
   {
-   "slug": "proposals"
+   "slug": "create"
+  },
+  {
+   "slug": "messages"
+  },
+  {
+   "slug": "status"
   },
   {
    "slug": "proposals-actions"

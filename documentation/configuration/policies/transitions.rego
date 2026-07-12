@@ -1,9 +1,9 @@
 package udm.udmframeworkv1.modules.transitions
 
-import data.udm.udmframeworkv1.modules.proposals._can_view
-import data.udm.udmframeworkv1.modules.proposals._proposal_ctx
-import data.udm.udmframeworkv1.modules.proposals.current_status
 import data.udm.udmframeworkv1.modules.roles
+import data.udm.udmframeworkv1.modules.utils._proposal_ctx
+import data.udm.udmframeworkv1.modules.view.can_view
+import data.udm.udmframeworkv1.modules.workflow.current_status
 import data.udm.udmframeworkv1.modules.reviews
 import data.udm.udmframeworkv1.modules.reviews._accepting_group_ids
 import data.udm.udmframeworkv1.modules.reviews._accepting_user_ids
@@ -108,7 +108,7 @@ error_messages contains msg if {
 	input.field == "status"
 	input.transition == "accept"
 	roles.is_moderator
-	_can_view
+	can_view
 	not reviews.all_reviews_accepted
 	print(
 		"[block:accept] not all reviews accepted, user=", input.user.username,
@@ -197,6 +197,67 @@ success_messages contains msg if {
 		"level": "info",
 		"text": "No transitions available for reviewers. Submit your review and the moderator will decide.",
 		"field_slug": "status",
+	}
+}
+
+# ── Transition: what is about to happen ──
+success_messages contains msg if {
+	input.action == "transition"
+	input.field == "status"
+	input.transition in {"submit", "resubmit"}
+	roles.is_owner_or_editor
+	msg := {
+		"level": "info",
+		"text": "Proposal submitted. Moderators will be notified for review.",
+		"field_slug": null,
+	}
+}
+
+success_messages contains msg if {
+	input.action == "transition"
+	input.field == "status"
+	input.transition == "accept"
+	roles.is_moderator
+	msg := {
+		"level": "info",
+		"text": "Proposal accepted. All requested reviewers approved.",
+		"field_slug": null,
+	}
+}
+
+success_messages contains msg if {
+	input.action == "transition"
+	input.field == "status"
+	input.transition == "reject"
+	roles.is_moderator
+	msg := {
+		"level": "info",
+		"text": "Proposal rejected. The owner will be notified.",
+		"field_slug": null,
+	}
+}
+
+success_messages contains msg if {
+	input.action == "transition"
+	input.field == "status"
+	input.transition == "request-revision"
+	roles.is_moderator
+	msg := {
+		"level": "info",
+		"text": "Revision requested. The owner will be notified to update and resubmit.",
+		"field_slug": null,
+	}
+}
+
+success_messages contains msg if {
+	input.action == "transition"
+	input.field == "status"
+	input.transition == "allow-revision"
+	roles.is_moderator
+	msg := {
+		"level": "info",
+		"text": "Proposal returned to revision. The owner may update and resubmit.",
+		"field_slug": null,
 	}
 }
 
