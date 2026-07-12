@@ -1719,17 +1719,25 @@ def search_entities(request, q: str = "", type_ids: str = "", ids: str = ""):
         ).filter(id__in=id_list).prefetch_related(*_entity_prefetch)
     # Object-level filter: only surface entities the user may browse/view. We
     # scan past non-viewable rows rather than slicing first, so the result can
-    # still reach the cap of 50 visible entities.
+    # still reach the cap of 50 visible entities. Superusers also get entities
+    # they may not browse — GUID only, no preview content — so they can select
+    # them in the policy evaluator.
     results = []
     for entity in qs.iterator(chunk_size=200):
         if not evaluate_policy(entity, request.user, "browse").allow:
-            continue
-        display = _entity_preview_display(entity)
-        results.append(EntityAutocompleteItem(
-            id=entity.id,
-            display=display,
-            type_id=entity.user_defined_model_type_id,
-        ))
+            if not request.user.is_superuser:
+                continue
+            results.append(EntityAutocompleteItem(
+                id=entity.id,
+                display=str(entity.id),
+                type_id=entity.user_defined_model_type_id,
+            ))
+        else:
+            results.append(EntityAutocompleteItem(
+                id=entity.id,
+                display=_entity_preview_display(entity),
+                type_id=entity.user_defined_model_type_id,
+            ))
         if len(results) >= 50:
             break
     return results

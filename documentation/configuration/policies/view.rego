@@ -3,7 +3,6 @@ package udm.udmframeworkv1.modules.view
 import data.udm
 import data.udm.udmframeworkv1.modules.roles
 import data.udm.udmframeworkv1.modules.workflow
-import data.udm.udmframeworkv1.modules.timemachine
 import rego.v1
 
 # ─── allow ─────────────────────────────────────────────────────────────────────
@@ -37,12 +36,3 @@ viewable_fields contains f if {
 	input.entity.fields[f]
 	not f in udm.protected_fields
 }
-
-# ─── viewable_fields ───────────────────────────────────────────────────────────────
-
-view_was_allowed if {
-    not input.action == "view"
-	print("[view:was_allowed:ENTER]")
-	allow with input as timemachine.old_input
-	print("[view:was_allowed:SUCCESS]")
-} else := false if print("[view:was_allowed:FAIL]")

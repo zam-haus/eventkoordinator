@@ -144,28 +144,36 @@ def build_policy_input(node: "UserDefinedModelEntityNode", user: "OpenIDUser", a
     the policy always has access to the full proposal context (owner, status,
     reviewer lists, etc.) regardless of which node triggered the evaluation.
     """
-    root = node.get_root()
-    context_node = root if root.pk != node.pk else node
-    policy_doc = context_node.to_policy_document()
+    entity_override = kwargs.pop("entity_override", None)
+    if entity_override is not None:
+        policy_doc = entity_override
+    else:
+        root = node.get_root()
+        context_node = root if root.pk != node.pk else node
+        policy_doc = context_node.to_policy_document()
     logger.debug("build_policy_input node=%s action=%s user=%s", node.id, action, user.username)
 
     user_doc = _serialize_user(user, include_group_members=True)
     user_doc["permissions"] = list(user.user_permissions.values_list("codename", flat=True))
 
-    # Expand user_select / group_select field values to rich objects
-    _expand_fields(policy_doc.get("fields", {}))
-    for child_list in policy_doc.get("children", {}).values():
-        for child_doc in child_list:
-            _expand_fields(child_doc.get("fields", {}))
+    # Expand user_select / group_select field values to rich objects.
+    # An entity_override doc is supplied pre-expanded by its caller.
+    if entity_override is None:
+        _expand_fields(policy_doc.get("fields", {}))
+        for child_list in policy_doc.get("children", {}).values():
+            for child_doc in child_list:
+                _expand_fields(child_doc.get("fields", {}))
 
     input_doc = {
         "action": action,
         "entity": policy_doc,      # current (old) values + unchanged fields
         "user": user_doc,
         "type_id": policy_doc.get("type_id"),
-        "changed_fields": None,    # overridden for SAVE action
+        "changed_fields": {},      # overridden for SAVE action
         "transition": None,        # overridden for TRANSITION action
         "field": None,
+        "view_was_allowed": False,     # precomputed for SAVE/TRANSITION (see evaluate_view_precheck)
+        "old_editable_fields": [],     # precomputed for SAVE/TRANSITION (see evaluate_view_precheck)
         **kwargs,
     }
     return input_doc
@@ -277,6 +285,22 @@ def evaluate_policy(node: "UserDefinedModelEntityNode", user: "OpenIDUser", acti
     except Exception as exc:
         logger.exception("Policy evaluation failed: %s", exc)
         return _deny
+
+
+def evaluate_view_precheck(node: "UserDefinedModelEntityNode", user: "OpenIDUser", old_entity_doc: dict | None = None) -> tuple[bool, list]:
+    """Evaluate the VIEW policy against the pre-write entity state.
+
+    Replaces the in-Rego "time machine" (re-evaluating rules `with input as`
+    a rewritten document), which regorus rejects as recursion through the
+    dynamic module aggregation in udm.rego. The results are passed into the
+    subsequent save/transition evaluation as input.view_was_allowed and
+    input.old_editable_fields.
+    """
+    kwargs = {}
+    if old_entity_doc is not None:
+        kwargs["entity_override"] = old_entity_doc
+    output = evaluate_policy(node, user, "view", **kwargs)
+    return output.allow, output.editable_fields or []
 
 
 def evaluate_type_public_fields(udm_type, user=None) -> tuple[dict, dict]:
@@ -422,7 +446,13 @@ def execute_transition(
         from userdefinedmodel.actions import PolicyEvaluationOutput
         output = PolicyEvaluationOutput(allow=True)
     else:
-        output = evaluate_policy(node, user, "transition", transition=name, field=field_slug, node_id=str(node.id))
+        view_was_allowed, old_editable_fields = evaluate_view_precheck(node, user)
+        output = evaluate_policy(
+            node, user, "transition",
+            transition=name, field=field_slug, node_id=str(node.id),
+            view_was_allowed=view_was_allowed,
+            old_editable_fields=old_editable_fields,
+        )
         if not output.allow:
             msgs = output.messages
             if msgs:

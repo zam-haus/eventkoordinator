@@ -9,13 +9,27 @@
       "name": "Proposal",
       "field_config_id": "0f662758-8f16-45f9-bad7-bf91d6fbeb9c",
       "policy_slugs": [
-        "proposals",
-        "description",
-        "dashboard",
-        "proposals-actions",
-        "reviews",
-        "transitions",
-        "validation_rules"
+"utils",
+"test_udm",
+"dashboard",
+"config",
+"validation_rules",
+"view",
+"transitions",
+"udm",
+"roles",
+"reviews",
+"save",
+"timemachine",
+"workflow",
+"delete",
+"sudo",
+"description",
+"proposals",
+"proposals-actions",
+"proposal_id",
+"tabs"
+
       ]
     }
   ],
@@ -1505,26 +1519,25 @@
     }
   ],
   "policies": [
-    {
-      "slug": "proposals"
-    },
-    {
-      "slug": "description"
-    },
-    {
-      "slug": "dashboard"
-    },
-    {
-      "slug": "proposals-actions"
-    },
-    {
-      "slug": "reviews"
-    },
-    {
-      "slug": "transitions"
-    },
-    {
-      "slug": "validation_rules"
-    }
+    {"slug":"utils"},
+    {"slug":"test_udm"},
+    {"slug":"dashboard"},
+    {"slug":"config"},
+    {"slug":"validation_rules"},
+    {"slug":"view"},
+    {"slug":"transitions"},
+    {"slug":"udm"},
+    {"slug":"roles"},
+    {"slug":"reviews"},
+    {"slug":"save"},
+    {"slug":"timemachine"},
+    {"slug":"workflow"},
+    {"slug":"delete"},
+    {"slug":"sudo"},
+    {"slug":"description"},
+    {"slug":"proposals"},
+    {"slug":"proposals-actions"},
+    {"slug":"proposal_id"},
+    {"slug":"tabs"}
   ]
 }

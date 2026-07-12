@@ -102,16 +102,6 @@ wheels = [
 ]
 
 [[package]]
-name = "celine-regorus"
-version = "0.9.1.post20260227075446"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/a1/87996627c5101893c9c9474e9098b4525a975de44bd912bec4f38c1d2976/celine_regorus-0.9.1.post20260227075446-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:cd6aa6b84f99ca0497e3e0ee318a86a88310e885bec5a0b0535a4ef6bd6f4568", size = 3350311, upload-time = "2026-02-27T07:57:55.221Z" },
-    { url = "https://files.pythonhosted.org/packages/7a/bc/5f92f4fd5dbd301a76b632cba577bc20a3251d0453c7934faa6369945079/celine_regorus-0.9.1.post20260227075446-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:653f95d5b3d3c85f51dd697400dfbfcba5479c2c9c33b7e6916ee7b0319940fc", size = 3184722, upload-time = "2026-02-27T07:57:56.906Z" },
-    { url = "https://files.pythonhosted.org/packages/58/93/df79bcce2c4fc027c0f794a497c9e1ccebe85bb2f9d75eaa146331e23e5b/celine_regorus-0.9.1.post20260227075446-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:b1b5cd141ad6029b5e9e668b803516efc909aabbf3f3e480636f54fee56e5309", size = 3643096, upload-time = "2026-02-27T07:57:58.641Z" },
-]
-
-[[package]]
 name = "certifi"
 version = "2026.4.22"
 source = { registry = "https://pypi.org/simple" }
@@ -1382,6 +1372,14 @@ wheels = [
 ]
 
 [[package]]
+name = "regorus"
+version = "2026.7.12+gecc6a3a"
+source = { url = "https://github.com/phi1010/regorus/releases/download/releases%2Fphi1010-2026.7.12%2Bgecc6a3a/regorus-2026.7.12+gecc6a3a-cp310-abi3-manylinux_2_34_x86_64.whl" }
+wheels = [
+    { url = "https://github.com/phi1010/regorus/releases/download/releases%2Fphi1010-2026.7.12%2Bgecc6a3a/regorus-2026.7.12+gecc6a3a-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:5d095a13a8d35237b44a18d4b92e63f0839f26a7c819d81c6d916ae6a0cfdf26" },
+]
+
+[[package]]
 name = "requests"
 version = "2.33.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1562,7 +1560,6 @@ dependencies = [
     { name = "caldav" },
     { name = "celery" },
     { name = "celery-types" },
-    { name = "celine-regorus" },
     { name = "django" },
     { name = "django-celery-beat" },
     { name = "django-cors-headers" },
@@ -1588,6 +1585,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "recurring-ical-events" },
     { name = "redis" },
+    { name = "regorus" },
     { name = "requests" },
     { name = "ruff" },
     { name = "xlsxwriter" },
@@ -1604,7 +1602,6 @@ requires-dist = [
     { name = "caldav", specifier = ">=1.4.0" },
     { name = "celery", specifier = ">=5.6.3" },
     { name = "celery-types", specifier = ">=0.26.0" },
-    { name = "celine-regorus", specifier = ">=0.9.1.post20260227075446" },
     { name = "django", specifier = ">=6.0.3" },
     { name = "django-celery-beat", specifier = ">=2.9.0" },
     { name = "django-cors-headers", specifier = ">=4.3.1" },
@@ -1630,6 +1627,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "recurring-ical-events", specifier = ">=3.8.1" },
     { name = "redis", specifier = ">=7.4.0" },
+    { name = "regorus", url = "https://github.com/phi1010/regorus/releases/download/releases%2Fphi1010-2026.7.12%2Bgecc6a3a/regorus-2026.7.12+gecc6a3a-cp310-abi3-manylinux_2_34_x86_64.whl" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", specifier = ">=0.15.6" },
     { name = "xlsxwriter", specifier = ">=3.2.9" },

@@ -211,7 +211,7 @@ def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool 
     """
     import decimal
     import datetime as dt
-    from userdefinedmodel.engine import evaluate_policy, PolicyError
+    from userdefinedmodel.engine import evaluate_policy, evaluate_view_precheck, PolicyError
 
     def _safe(v):
         if isinstance(v, decimal.Decimal):
@@ -232,7 +232,16 @@ def _evaluate_save_policy(node, user, changed_fields: dict, validate_only: bool 
         node.id, user.username, list(safe_changed.keys()),
     )
 
-    output = evaluate_policy(node, user, "save", changed_fields=safe_changed, validate_only=validate_only, old_entity=old_entity_doc)
+    view_was_allowed, old_editable_fields = evaluate_view_precheck(node, user, old_entity_doc)
+
+    output = evaluate_policy(
+        node, user, "save",
+        changed_fields=safe_changed,
+        validate_only=validate_only,
+        old_entity=old_entity_doc,
+        view_was_allowed=view_was_allowed,
+        old_editable_fields=old_editable_fields,
+    )
 
     logger.debug(
         "policy save result node=%s allow=%s messages=%s",

@@ -2,8 +2,6 @@ package udm.udmframeworkv1.modules.save
 
 import data.udm
 import data.udm.udmframeworkv1.modules.roles
-import data.udm.udmframeworkv1.modules.timemachine
-import data.udm.udmframeworkv1.modules.view
 import data.udm.udmframeworkv1.modules.workflow
 
 import rego.v1
@@ -27,10 +25,11 @@ some_field_changed if {
 	print("[save:some_field_changed] field=", field)
 }
 
+# input.old_editable_fields is precomputed by the Python engine: it evaluates
+# the VIEW policy against the pre-write entity and injects the resulting
+# editable_fields, replacing the old in-Rego time machine.
 field_was_editable[field] if {
-	x := udm.editable_fields with input as timemachine.old_input
-	#print("[save:field_was_editable] checking against", x)
-	x[field]
+	some field in input.old_editable_fields
 	print("[save:field_was_editable] field ", field, " was editable")
 }
 
@@ -51,7 +50,7 @@ default allow := false
 allow if {
 	input.action == "save"
 	print("[save:allow] save action")
-	view.view_was_allowed
+	input.view_was_allowed == true
 	some_field_changed
 	every_field_changed_was_editable
 	print("[save:allow] owner/editor user=", input.user.username, "status=", workflow.current_status, "changed_fields=", changed_fields, "editable_fields=", editable_fields)

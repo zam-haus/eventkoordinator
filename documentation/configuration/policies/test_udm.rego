@@ -96,6 +96,14 @@ _as_owner(u) := [{"op": "replace", "path": "/entity/fields/owner/value", "value"
 _field(slug, v) := [{"op": "replace", "path": sprintf("/entity/fields/%v/value", [slug]), "value": v}]
 _clear(slug) := _field(slug, null)
 _changed(f) := [{"op": "replace", "path": "/changed_fields", "value": f}]
+
+# Simulates the Python view pre-check: the engine evaluates the VIEW policy
+# against the pre-write entity and injects the result into the save/transition
+# input as view_was_allowed / old_editable_fields.
+_precheck(fields) := [
+	{"op": "replace", "path": "/view_was_allowed", "value": true},
+	{"op": "replace", "path": "/old_editable_fields", "value": fields},
+]
 _children(k, v) := [{"op": "replace", "path": sprintf("/entity/children/%v", [k]), "value": v}]
 
 # ─── Document factory ───────────────────────────────────────────────────────────
@@ -138,7 +146,7 @@ test_moderator_cannot_view_draft if {
 # ─── Tests: save ────────────────────────────────────────────────────────────────
 
 test_owner_can_save_draft if {
-	ev := udm with input as _mk([_action("save"), _status("draft"), _changed({"title": true})])
+	ev := udm with input as _mk([_action("save"), _status("draft"), _changed({"title": true}), _precheck(["title"])])
 	ev.allow
 }
 
@@ -512,6 +520,7 @@ test_reviewer_can_save_own_review if {
 		_children("reviews", [_REVIEW_PHI]),
 		_old_reviews([_REVIEW_PHI]),
 		_review_change([_update_op(_REVIEW_PHI_ID)]),
+		_precheck(["reviews"]),
 	])
 	ev.allow
 }
@@ -523,6 +532,7 @@ test_reviewer_can_save_multiple_own_reviews if {
 		_children("reviews", [_REVIEW_PHI, _REVIEW_PHI_2]),
 		_old_reviews([_REVIEW_PHI, _REVIEW_PHI_2]),
 		_review_change([_update_op(_REVIEW_PHI_ID), _update_op(_REVIEW_PHI_2_ID)]),
+		_precheck(["reviews"]),
 	])
 	ev.allow
 }
@@ -536,6 +546,7 @@ test_reviewer_blocked_editing_only_other_users_review if {
 		_children("reviews", [_REVIEW_OTHER]),
 		_old_reviews([_REVIEW_OTHER]),
 		_review_change([_update_op(_REVIEW_OTHER_ID)]),
+		_precheck(["reviews"]),
 	])
 	not ev.allow
 	some m in ev.error_messages
@@ -551,6 +562,7 @@ test_reviewer_blocked_editing_own_and_other_review_simultaneously if {
 		_children("reviews", [_REVIEW_PHI, _REVIEW_OTHER]),
 		_old_reviews([_REVIEW_PHI, _REVIEW_OTHER]),
 		_review_change([_update_op(_REVIEW_PHI_ID), _update_op(_REVIEW_OTHER_ID)]),
+		_precheck(["reviews"]),
 	])
 	not ev.allow
 	some m in ev.error_messages
@@ -1346,7 +1358,9 @@ INPUT_DOCUMENT := {
 		"permissions": [],
 	},
 	"type_id": "e08720eb-1491-4920-9386-cc2fa520de25",
-	"changed_fields": null,
+	"changed_fields": {},
 	"transition": null,
 	"field": null,
+	"view_was_allowed": false,
+	"old_editable_fields": [],
 }
