@@ -434,6 +434,7 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
           subFieldMessages={subFieldMessages}
           resetKey={resetKey}
           onEntityRefresh={onEntityRefresh}
+          nodeId={entity.id}
         />
       ) : fd.is_localized ? (
         <FieldInput
