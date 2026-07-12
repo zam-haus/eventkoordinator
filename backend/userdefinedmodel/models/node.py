@@ -283,7 +283,10 @@ class UserDefinedModelEntityNode(MetaBase):
 class UserDefinedModelEntity(UserDefinedModelEntityNode):
     user_defined_model_type = models.ForeignKey(
         "userdefinedmodel.UserDefinedModelType",
-        on_delete=models.SET_NULL,
+        # PROTECT: deleting a type would strand its entities in a typeless,
+        # policy-less state that nobody can view (default-deny). Entities must
+        # be migrated to another type before the type can be deleted.
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="entities",
