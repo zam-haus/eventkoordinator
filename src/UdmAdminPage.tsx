@@ -34,6 +34,7 @@ import {
   udmSearchEntities,
   udmSearchUsers,
   udmEvalPolicy,
+  udmEvalPolicyNodes,
   udmListWorkflows,
   type FieldConfigOut,
   type ConfigVersionOut,
@@ -43,6 +44,7 @@ import {
   type UDMTypeOut,
   type DataType,
   type PolicyEvalOut,
+  type EvalNodeOut,
   type EntityAutocompleteItem,
   type UserAutocompleteItem,
   type WorkflowDefinitionOut,
@@ -1781,7 +1783,7 @@ function PoliciesTab() {
 
 // ── Policy Evaluator ──────────────────────────────────────────────────────────
 
-const ACTIONS = ['view', 'save', 'transition', 'delete']
+const ACTIONS = ['view', 'browse', 'create', 'save', 'transition', 'delete']
 
 interface PolicyEvaluatorProps {
   typeId: string
@@ -1794,6 +1796,8 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
   const [userId, setUserId] = useState('')
   const [action, setAction] = useState('view')
   const [transitionName, setTransitionName] = useState('')
+  const [nodes, setNodes] = useState<EvalNodeOut[]>([])
+  const [nodeId, setNodeId] = useState('')
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<PolicyEvalOut | null>(null)
   const [evalError, setEvalError] = useState<string | null>(null)
@@ -1804,6 +1808,22 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
     udmSearchUsers('').then(setUsers).catch(() => {})
   }, [typeId])
 
+  // Node tree (incl. submodel nodes) for transition targeting
+  useEffect(() => {
+    setNodes([])
+    setNodeId('')
+    setTransitionName('')
+    if (!entityId) return
+    udmEvalPolicyNodes(typeId, entityId).then(ns => {
+      setNodes(ns)
+      setNodeId(ns.find(n => n.parent_id == null)?.id ?? '')
+    }).catch(() => {})
+  }, [typeId, entityId])
+
+  const selectedNode = nodes.find(n => n.id === nodeId) ?? null
+  const nodeTransitions = (selectedNode?.workflow_fields ?? []).flatMap(wf =>
+    wf.transitions.map(t => ({ field: wf.slug, name: t })))
+
   async function handleRun() {
     if (!entityId || !userId) return
     setRunning(true)
@@ -1813,6 +1833,7 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
       const out = await udmEvalPolicy(
         typeId, entityId, userId, action,
         action === 'transition' && transitionName ? transitionName : undefined,
+        action === 'transition' && nodeId ? nodeId : undefined,
       )
       setResult(out)
     } catch (e) {
@@ -1854,11 +1875,37 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
         </div>
 
         {action === 'transition' && (
-          <div className={styles.formGroup} style={{ minWidth: '140px' }}>
-            <label className={styles.label}>Transition name</label>
-            <input className={styles.input} value={transitionName}
-              onChange={e => setTransitionName(e.target.value)} placeholder="submit" />
-          </div>
+          <>
+            <div className={styles.formGroup} style={{ minWidth: '180px' }}>
+              <label className={styles.label}>Node</label>
+              <select className={styles.select} value={nodeId}
+                onChange={e => { setNodeId(e.target.value); setTransitionName('') }}>
+                {nodes.length === 0 && <option value="">— select entity first —</option>}
+                {nodes.map(n => (
+                  <option key={n.id} value={n.id}>
+                    {n.label} ({n.id.slice(0, 8)}…)
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.formGroup} style={{ minWidth: '160px' }}>
+              <label className={styles.label}>Transition</label>
+              {nodeTransitions.length > 0 ? (
+                <select className={styles.select} value={transitionName}
+                  onChange={e => setTransitionName(e.target.value)}>
+                  <option value="">— select transition —</option>
+                  {nodeTransitions.map(t => (
+                    <option key={`${t.field}:${t.name}`} value={t.name}>
+                      {t.name} ({t.field})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input className={styles.input} value={transitionName}
+                  onChange={e => setTransitionName(e.target.value)} placeholder="submit" />
+              )}
+            </div>
+          </>
         )}
 
         <button

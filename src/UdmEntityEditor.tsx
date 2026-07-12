@@ -119,9 +119,10 @@ interface WorkflowFieldWidgetProps {
   severity?: string
   compact?: boolean
   fieldLabelMap?: Record<string, string>
+  editable?: boolean
 }
 
-function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap, validTransitions }: WorkflowFieldWidgetProps) {
+function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap, validTransitions, editable = true }: WorkflowFieldWidgetProps) {
   const wfDef = (fd as FieldDefinitionOut & { workflow_version?: WorkflowVersionOut | null }).workflow_version
   const fv = entity.field_values.find(v => v.field_slug === fd.slug)
   const currentStateName = (fv?.value as string | null) ?? null
@@ -134,8 +135,8 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
     ? getLang(currentState.label as Record<string, string>, uiLang) || currentStateName
     : currentStateName
 
-  // Mirror engine.py transition gate exactly
-  const availableTransitions: WorkflowTransitionOut[] = (wfDef?.transitions ?? []).filter(t => {
+  // Mirror engine.py transition gate exactly; read-only fields offer no transitions
+  const availableTransitions: WorkflowTransitionOut[] = (!editable ? [] : wfDef?.transitions ?? []).filter(t => {
     if (t.from_undefined_only) return currentStateName === null
     if (t.from_state !== null) return t.from_state === currentStateName
     return true // from_state null, not from_undefined_only → always available
@@ -161,7 +162,7 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
           {severity && messages && messages.length > 0 && (
             <SeverityIndicator severity={severity} messages={messages} fieldSlug={fd.slug} />
           )}
-          <span className={styles.compactLabel}>{label}</span>
+          <span className={styles.compactLabel}>{label}{!editable && <ReadonlyBadge />}</span>
         </div>
         {helpText && <div className={styles.compactHelp}>{helpText}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -198,7 +199,7 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
               </span>
             )
           })}
-          {availableTransitions.length === 0 && (
+          {editable && availableTransitions.length === 0 && (
             <span style={{ fontSize: '0.78rem', color: '#aaa', fontStyle: 'italic' }}>No transitions available</span>
           )}
         </div>
@@ -210,7 +211,7 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
     <div className={styles.fieldGroup}>
       <div className={styles.fieldHeader}>
         <div>
-          <div className={styles.fieldLabel}>{label}</div>
+          <div className={styles.fieldLabel}>{label}{!editable && <ReadonlyBadge />}</div>
           <div className={styles.fieldSlug}>{fd.slug} · workflow</div>
           {helpText && <div className={styles.fieldHelp}>{helpText}</div>}
         </div>
@@ -249,7 +250,7 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
             </span>
           )
         })}
-        {availableTransitions.length === 0 && (
+        {editable && availableTransitions.length === 0 && (
           <span style={{ fontSize: '0.82rem', color: '#888', fontStyle: 'italic' }}>No transitions available</span>
         )}
       </div>
@@ -296,7 +297,7 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
 
   // Workflow fields are fully managed by WorkflowFieldWidget — no dirty/value editing
   if (fd.data_type === 'workflow') {
-    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} fieldLabelMap={fieldLabelMap} validTransitions={validTransitions} />
+    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} fieldLabelMap={fieldLabelMap} validTransitions={validTransitions} editable={editable} />
   }
   const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
   const helpText = getLang(fd.help_text as Record<string, string>, uiLang)

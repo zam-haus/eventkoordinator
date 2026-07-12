@@ -417,15 +417,29 @@ export async function udmEvalPolicy(
   userId: string,
   action: string,
   transition?: string,
+  nodeId?: string,
 ): Promise<PolicyEvalOut> {
   const { data, error, response } = await udmClient.GET('/api/udm/types/{type_id}/eval-policy/', {
     params: {
       path: { type_id: typeId },
-      query: { entity_id: entityId, user_id: userId, action, transition: transition ?? null },
+      query: {
+        entity_id: entityId, user_id: userId, action,
+        transition: transition ?? null, node_id: nodeId ?? null,
+      },
     },
   })
   if (error || !response.ok || !data) throw new Error('Evaluation failed')
   return data as PolicyEvalOut
+}
+
+export type EvalNodeOut = components['schemas']['EvalNodeOut']
+
+export async function udmEvalPolicyNodes(typeId: string, entityId: string): Promise<EvalNodeOut[]> {
+  const { data, error, response } = await udmClient.GET('/api/udm/types/{type_id}/eval-policy/nodes/', {
+    params: { path: { type_id: typeId }, query: { entity_id: entityId } },
+  })
+  if (error || !response.ok || !data) throw new Error('Loading entity nodes failed')
+  return data
 }
 
 export async function udmGetTypeDescriptions(typeId: string): Promise<Record<string, string>> {

@@ -53,6 +53,29 @@ allow if {
 	)
 }
 
+# ─── editable_fields: keep the status field interactive ──────────────────────
+# The GUI hides the transition buttons entirely when the status field is
+# read-only. Grant the field whenever this user's role has a transition
+# defined out of the current status — even when every such transition is
+# blocked right now (incomplete checklist, pending reviews); the preview
+# matrix greys out the individual buttons instead.
+
+# submit / resubmit sources (see _transition_permitted above)
+_OWNER_TRANSITION_SOURCES := {"draft", "revise"}
+
+# accept / reject / request-revision / allow-revision sources
+_MODERATOR_TRANSITION_SOURCES := {"submitted", "rejected"}
+
+editable_fields contains {"node": input.entity.id, "field": "status"} if {
+	roles.is_owner_or_editor
+	current_status in _OWNER_TRANSITION_SOURCES
+}
+
+editable_fields contains {"node": input.entity.id, "field": "status"} if {
+	roles.is_moderator
+	current_status in _MODERATOR_TRANSITION_SOURCES
+}
+
 # ─── valid_transitions: preview matrix (§4, single evaluation) ────────────────
 valid_transitions contains {"node": node_id, "field": field_slug, "name": name} if {
 	some node_id, wf_fields in input.candidate_transitions

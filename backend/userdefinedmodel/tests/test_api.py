@@ -1904,3 +1904,86 @@ messages contains {"level": "critical", "text": "no saving", "field_slug": "titl
         resp2 = self.get(f"/entities/{entity.id}/")
         values = {fv["field_slug"]: fv["value"] for fv in resp2.json()["field_values"]}
         self.assertEqual(values.get("title"), "persisted!")
+
+
+class PolicyEvaluatorTests(BaseAPITest):
+    """eval-policy: browse/create actions, submodel node targeting, and the
+    eval-policy/nodes/ tree endpoint."""
+
+    def _make_entity_with_submodel_workflow(self):
+        from userdefinedmodel.models import FieldDefinition, SubmodelInstance
+        entity, udm_type, version, config = make_entity_with_type()
+        parent_field = FieldDefinition.objects.create(
+            version=version, slug="items", data_type="submodel_list", sort_order=1,
+        )
+        # child schema (own config version) with a workflow field
+        _, child_version, _, _ = make_simple_config(required=False)
+        wf_version, *_ = make_full_workflow()
+        add_workflow_field(child_version, wf_version, slug="status")
+        child = SubmodelInstance.objects.create(
+            config_version=child_version, parent_node=entity, parent_field=parent_field,
+        )
+        return entity, udm_type, child
+
+    def test_nodes_endpoint_lists_submodel_nodes_with_transitions(self):
+        entity, udm_type, child = self._make_entity_with_submodel_workflow()
+        su = UserFactory(username="root-user", is_superuser=True)
+        resp = self.get(f"/types/{udm_type.id}/eval-policy/nodes/?entity_id={entity.id}", user=su)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        nodes = {n["id"]: n for n in resp.json()}
+        self.assertIn(str(entity.id), nodes)
+        self.assertIn(str(child.id), nodes)
+        child_node = nodes[str(child.id)]
+        self.assertEqual(child_node["parent_id"], str(entity.id))
+        self.assertEqual(child_node["parent_field_slug"], "items")
+        self.assertEqual(child_node["label"], "root.items[0]")
+        self.assertEqual(child_node["workflow_fields"],
+                         [{"slug": "status", "transitions": ["submit"]}])
+
+    def test_nodes_endpoint_denied_without_policy_perms(self):
+        entity, udm_type, _ = self._make_entity_with_submodel_workflow()
+        resp = self.get(f"/types/{udm_type.id}/eval-policy/nodes/?entity_id={entity.id}", user=self.user)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_eval_policy_superuser_without_perms(self):
+        entity, udm_type, _ = self._make_entity_with_submodel_workflow()
+        su = UserFactory(username="root-user2", is_superuser=True)
+        resp = self.get(
+            f"/types/{udm_type.id}/eval-policy/?entity_id={entity.id}&user_id={self.user.id}&action=view",
+            user=su,
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_eval_policy_browse_and_create_actions(self):
+        entity, udm_type, _ = self._make_entity_with_submodel_workflow()
+        for action in ("browse", "create"):
+            resp = self.get(
+                f"/types/{udm_type.id}/eval-policy/?entity_id={entity.id}&user_id={self.user.id}&action={action}",
+            )
+            self.assertEqual(resp.status_code, 200, resp.content)
+            data = resp.json()
+            self.assertEqual(data["input_document"]["action"], action)
+            self.assertIsNone(data["input_document"]["old_entity"])
+            self.assertTrue(data["output"]["allow"])
+
+    def test_eval_policy_transition_on_submodel_node(self):
+        entity, udm_type, child = self._make_entity_with_submodel_workflow()
+        resp = self.get(
+            f"/types/{udm_type.id}/eval-policy/?entity_id={entity.id}&user_id={self.user.id}"
+            f"&action=transition&transition=submit&node_id={child.id}",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        doc = resp.json()["input_document"]
+        self.assertEqual(doc["action"], "transition")
+        self.assertEqual(doc["node_id"], str(child.id))
+        self.assertEqual(doc["field"], "status")
+        self.assertEqual(doc["transition"], "submit")
+
+    def test_eval_policy_transition_rejects_foreign_node(self):
+        entity, udm_type, _ = self._make_entity_with_submodel_workflow()
+        other_entity, _, other_child = self._make_entity_with_submodel_workflow()
+        resp = self.get(
+            f"/types/{udm_type.id}/eval-policy/?entity_id={entity.id}&user_id={self.user.id}"
+            f"&action=transition&transition=submit&node_id={other_child.id}",
+        )
+        self.assertEqual(resp.status_code, 400)

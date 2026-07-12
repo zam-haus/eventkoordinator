@@ -16,10 +16,10 @@ _field_to_tabs := {
 	"duration-days": ["tab-scheduling"],
 	"occurrence-count": ["tab-scheduling"],
 	"preferred-dates": ["tab-scheduling"],
-	"speakers": ["tab-submission"],
+#	"speakers": ["tab-submission"],
 	"requested-reviewer-groups": ["tab-submission"],
 	"requested-reviewer-users": ["tab-submission"],
-	"reviews": ["tab-submission"],
+#	"reviews": ["tab-submission"],
 }
 
 # ─── Tab-level message propagation ─────────────────────────────────────────────

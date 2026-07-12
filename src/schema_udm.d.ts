@@ -14,7 +14,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Create Bulk Migration */
-        post: operations["userdefinedmodel_api_create_bulk_migration"];
+        post: operations["userdefinedmodel_api_bundle_create_bulk_migration"];
         delete?: never;
         options?: never;
         head?: never;
@@ -31,7 +31,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Bulk Migration Preview */
-        post: operations["userdefinedmodel_api_bulk_migration_preview"];
+        post: operations["userdefinedmodel_api_bundle_bulk_migration_preview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -46,7 +46,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Bulk Migration */
-        get: operations["userdefinedmodel_api_get_bulk_migration"];
+        get: operations["userdefinedmodel_api_bundle_get_bulk_migration"];
         put?: never;
         post?: never;
         delete?: never;
@@ -65,7 +65,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Execute Bulk Migration Plan */
-        post: operations["userdefinedmodel_api_execute_bulk_migration_plan"];
+        post: operations["userdefinedmodel_api_bundle_execute_bulk_migration_plan"];
         delete?: never;
         options?: never;
         head?: never;
@@ -84,7 +84,7 @@ export interface paths {
          * @description Fetch a single config version by id (any status). Used to render an
          *     entity's form against its actual pinned version, even when archived.
          */
-        get: operations["userdefinedmodel_api_get_config_version"];
+        get: operations["userdefinedmodel_api_configs_get_config_version"];
         put?: never;
         post?: never;
         delete?: never;
@@ -101,10 +101,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Configs */
-        get: operations["userdefinedmodel_api_list_configs"];
+        get: operations["userdefinedmodel_api_configs_list_configs"];
         put?: never;
         /** Create Config */
-        post: operations["userdefinedmodel_api_create_config"];
+        post: operations["userdefinedmodel_api_configs_create_config"];
         delete?: never;
         options?: never;
         head?: never;
@@ -119,15 +119,15 @@ export interface paths {
             cookie?: never;
         };
         /** Get Config */
-        get: operations["userdefinedmodel_api_get_config"];
+        get: operations["userdefinedmodel_api_configs_get_config"];
         put?: never;
         post?: never;
         /** Delete Config */
-        delete: operations["userdefinedmodel_api_delete_config"];
+        delete: operations["userdefinedmodel_api_configs_delete_config"];
         options?: never;
         head?: never;
         /** Update Config */
-        patch: operations["userdefinedmodel_api_update_config"];
+        patch: operations["userdefinedmodel_api_configs_update_config"];
         trace?: never;
     };
     "/api/udm/configs/{config_id}/versions/": {
@@ -138,7 +138,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Config Versions */
-        get: operations["userdefinedmodel_api_list_config_versions"];
+        get: operations["userdefinedmodel_api_configs_list_config_versions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -155,9 +155,9 @@ export interface paths {
             cookie?: never;
         };
         /** Get Draft Version */
-        get: operations["userdefinedmodel_api_get_draft_version"];
+        get: operations["userdefinedmodel_api_configs_get_draft_version"];
         /** Replace Draft */
-        put: operations["userdefinedmodel_api_replace_draft"];
+        put: operations["userdefinedmodel_api_configs_replace_draft"];
         post?: never;
         delete?: never;
         options?: never;
@@ -176,7 +176,7 @@ export interface paths {
          * Get Draft As Input
          * @description Return the draft config version in ConfigDraftIn shape for round-trip editing.
          */
-        get: operations["userdefinedmodel_api_get_draft_as_input"];
+        get: operations["userdefinedmodel_api_configs_get_draft_as_input"];
         put?: never;
         post?: never;
         delete?: never;
@@ -195,7 +195,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Publish Draft */
-        post: operations["userdefinedmodel_api_publish_draft"];
+        post: operations["userdefinedmodel_api_configs_publish_draft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -210,7 +210,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Published Version */
-        get: operations["userdefinedmodel_api_get_published_version"];
+        get: operations["userdefinedmodel_api_configs_get_published_version"];
         put?: never;
         post?: never;
         delete?: never;
@@ -231,10 +231,10 @@ export interface paths {
          * @description List entities for a single UDM type, filtered to those the user may view.
          *     Field values are reduced to the viewable set per entity (policy-enforced).
          */
-        get: operations["userdefinedmodel_api_list_entities"];
+        get: operations["userdefinedmodel_api_entities_list_entities"];
         put?: never;
         /** Create Entity */
-        post: operations["userdefinedmodel_api_create_entity"];
+        post: operations["userdefinedmodel_api_entities_create_entity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -249,15 +249,15 @@ export interface paths {
             cookie?: never;
         };
         /** Get Entity */
-        get: operations["userdefinedmodel_api_get_entity"];
+        get: operations["userdefinedmodel_api_entities_get_entity"];
         put?: never;
         post?: never;
         /** Delete Entity */
-        delete: operations["userdefinedmodel_api_delete_entity"];
+        delete: operations["userdefinedmodel_api_entities_delete_entity"];
         options?: never;
         head?: never;
         /** Patch Entity */
-        patch: operations["userdefinedmodel_api_patch_entity"];
+        patch: operations["userdefinedmodel_api_entities_patch_entity"];
         trace?: never;
     };
     "/api/udm/entities/{entity_id}/history/": {
@@ -268,7 +268,7 @@ export interface paths {
             cookie?: never;
         };
         /** Entity History */
-        get: operations["userdefinedmodel_api_entity_history"];
+        get: operations["userdefinedmodel_api_entities_entity_history"];
         put?: never;
         post?: never;
         delete?: never;
@@ -287,7 +287,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Execute Migration */
-        post: operations["userdefinedmodel_api_execute_migration"];
+        post: operations["userdefinedmodel_api_entities_execute_migration"];
         delete?: never;
         options?: never;
         head?: never;
@@ -302,7 +302,7 @@ export interface paths {
             cookie?: never;
         };
         /** Migration Preview */
-        get: operations["userdefinedmodel_api_migration_preview"];
+        get: operations["userdefinedmodel_api_entities_migration_preview"];
         put?: never;
         post?: never;
         delete?: never;
@@ -319,7 +319,7 @@ export interface paths {
             cookie?: never;
         };
         /** Entity Policy Document */
-        get: operations["userdefinedmodel_api_entity_policy_document"];
+        get: operations["userdefinedmodel_api_entities_entity_policy_document"];
         put?: never;
         post?: never;
         delete?: never;
@@ -344,7 +344,7 @@ export interface paths {
          *     pre-patch snapshot, and a denial rolls back the edits with the transition —
          *     they are never persisted on their own (review §4, execution semantics).
          */
-        post: operations["userdefinedmodel_api_transition_entity"];
+        post: operations["userdefinedmodel_api_entities_transition_entity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -367,7 +367,7 @@ export interface paths {
          *     'preview' policy evaluation, and returns the save verdict, all messages,
          *     and the per-node per-workflow-field valid-transition matrix.
          */
-        post: operations["userdefinedmodel_api_validation_preview"];
+        post: operations["userdefinedmodel_api_entities_validation_preview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -382,7 +382,7 @@ export interface paths {
             cookie?: never;
         };
         /** Search Entities */
-        get: operations["userdefinedmodel_api_search_entities"];
+        get: operations["userdefinedmodel_api_autocomplete_search_entities"];
         put?: never;
         post?: never;
         delete?: never;
@@ -404,7 +404,7 @@ export interface paths {
          * Export Bundle Zip
          * @description Export a ZIP bundle: UDM_BUNDLE.json + policies/<slug>.rego for each policy.
          */
-        post: operations["userdefinedmodel_api_export_bundle_zip"];
+        post: operations["userdefinedmodel_api_bundle_export_bundle_zip"];
         delete?: never;
         options?: never;
         head?: never;
@@ -419,7 +419,7 @@ export interface paths {
             cookie?: never;
         };
         /** Search Groups */
-        get: operations["userdefinedmodel_api_search_groups"];
+        get: operations["userdefinedmodel_api_autocomplete_search_groups"];
         put?: never;
         post?: never;
         delete?: never;
@@ -444,7 +444,7 @@ export interface paths {
          *     scope_type_ids: comma-separated UUID strings of in-scope UDM Types.
          *     policy_slug: if set, save each policy rego with its own slug (already done from policies/ dir).
          */
-        post: operations["userdefinedmodel_api_import_bundle_zip"];
+        post: operations["userdefinedmodel_api_bundle_import_bundle_zip"];
         delete?: never;
         options?: never;
         head?: never;
@@ -464,7 +464,7 @@ export interface paths {
          * Parse Bundle Zip
          * @description Parse a ZIP bundle and return the scope_type_ids and udm_types metadata it declares.
          */
-        post: operations["userdefinedmodel_api_parse_bundle_zip"];
+        post: operations["userdefinedmodel_api_bundle_parse_bundle_zip"];
         delete?: never;
         options?: never;
         head?: never;
@@ -479,10 +479,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Policies */
-        get: operations["userdefinedmodel_api_list_policies"];
+        get: operations["userdefinedmodel_api_policies_list_policies"];
         put?: never;
         /** Create Policy */
-        post: operations["userdefinedmodel_api_create_policy"];
+        post: operations["userdefinedmodel_api_policies_create_policy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -497,12 +497,12 @@ export interface paths {
             cookie?: never;
         };
         /** Get Policy */
-        get: operations["userdefinedmodel_api_get_policy"];
+        get: operations["userdefinedmodel_api_policies_get_policy"];
         /** Update Policy */
-        put: operations["userdefinedmodel_api_update_policy"];
+        put: operations["userdefinedmodel_api_policies_update_policy"];
         post?: never;
         /** Delete Policy */
-        delete: operations["userdefinedmodel_api_delete_policy"];
+        delete: operations["userdefinedmodel_api_policies_delete_policy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -518,7 +518,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Upload Staging File */
-        post: operations["userdefinedmodel_api_upload_staging_file"];
+        post: operations["userdefinedmodel_api_staging_upload_staging_file"];
         delete?: never;
         options?: never;
         head?: never;
@@ -536,7 +536,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete Staging File */
-        delete: operations["userdefinedmodel_api_delete_staging_file"];
+        delete: operations["userdefinedmodel_api_staging_delete_staging_file"];
         options?: never;
         head?: never;
         patch?: never;
@@ -550,10 +550,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Udm Types */
-        get: operations["userdefinedmodel_api_list_udm_types"];
+        get: operations["userdefinedmodel_api_types_list_udm_types"];
         put?: never;
         /** Create Udm Type */
-        post: operations["userdefinedmodel_api_create_udm_type"];
+        post: operations["userdefinedmodel_api_types_create_udm_type"];
         delete?: never;
         options?: never;
         head?: never;
@@ -568,15 +568,15 @@ export interface paths {
             cookie?: never;
         };
         /** Get Udm Type */
-        get: operations["userdefinedmodel_api_get_udm_type"];
+        get: operations["userdefinedmodel_api_types_get_udm_type"];
         put?: never;
         post?: never;
         /** Delete Udm Type */
-        delete: operations["userdefinedmodel_api_delete_udm_type"];
+        delete: operations["userdefinedmodel_api_types_delete_udm_type"];
         options?: never;
         head?: never;
         /** Update Udm Type */
-        patch: operations["userdefinedmodel_api_update_udm_type"];
+        patch: operations["userdefinedmodel_api_types_update_udm_type"];
         trace?: never;
     };
     "/api/udm/types/{type_id}/config/": {
@@ -587,7 +587,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Type Config */
-        get: operations["userdefinedmodel_api_get_type_config"];
+        get: operations["userdefinedmodel_api_types_get_type_config"];
         put?: never;
         post?: never;
         delete?: never;
@@ -608,11 +608,37 @@ export interface paths {
          * @description Evaluate the Rego policy for a given entity + user and return the full
          *     input document, the raw policy sources, and the structured output.
          *
-         *     The input document includes the entity's full field values — data the policy
-         *     would otherwise hide — plus the raw policy source. Require both view and
-         *     change policy permissions; never gate on staff/superuser status alone.
+         *     ``action`` accepts every entity action of the policy contract, including
+         *     ``browse`` and ``create``. For ``transition``, ``node_id`` selects the
+         *     target node (a submodel node of the entity, or the entity itself when
+         *     omitted); the transition is resolved against that node's own schema.
          */
-        get: operations["userdefinedmodel_api_eval_policy_for_type"];
+        get: operations["userdefinedmodel_api_types_eval_policy_for_type"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/types/{type_id}/eval-policy/nodes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Eval Policy Nodes
+         * @description The full node tree of an entity for the policy evaluator's node picker,
+         *     with each node's workflow fields and their transition names.
+         *
+         *     Deliberately bypasses the entity view policy: evaluator users (policy
+         *     admins / superusers) must be able to target submodel nodes they could not
+         *     browse themselves. Gated like eval-policy itself.
+         */
+        get: operations["userdefinedmodel_api_types_eval_policy_nodes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -629,10 +655,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Type Policies */
-        get: operations["userdefinedmodel_api_list_type_policies"];
+        get: operations["userdefinedmodel_api_types_list_type_policies"];
         put?: never;
         /** Assign Policy */
-        post: operations["userdefinedmodel_api_assign_policy"];
+        post: operations["userdefinedmodel_api_types_assign_policy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -650,7 +676,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Remove Policy */
-        delete: operations["userdefinedmodel_api_remove_policy"];
+        delete: operations["userdefinedmodel_api_types_remove_policy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -672,7 +698,7 @@ export interface paths {
          *     dict.  Returns an empty dict when no policies are attached or the rule is
          *     not defined.
          */
-        get: operations["userdefinedmodel_api_get_type_public_fields"];
+        get: operations["userdefinedmodel_api_types_get_type_public_fields"];
         put?: never;
         post?: never;
         delete?: never;
@@ -689,7 +715,7 @@ export interface paths {
             cookie?: never;
         };
         /** Search Users */
-        get: operations["userdefinedmodel_api_search_users"];
+        get: operations["userdefinedmodel_api_autocomplete_search_users"];
         put?: never;
         post?: never;
         delete?: never;
@@ -706,10 +732,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Workflows */
-        get: operations["userdefinedmodel_api_list_workflows"];
+        get: operations["userdefinedmodel_api_workflows_list_workflows"];
         put?: never;
         /** Create Workflow */
-        post: operations["userdefinedmodel_api_create_workflow"];
+        post: operations["userdefinedmodel_api_workflows_create_workflow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -724,12 +750,12 @@ export interface paths {
             cookie?: never;
         };
         /** Get Workflow */
-        get: operations["userdefinedmodel_api_get_workflow"];
+        get: operations["userdefinedmodel_api_workflows_get_workflow"];
         /** Update Workflow */
-        put: operations["userdefinedmodel_api_update_workflow"];
+        put: operations["userdefinedmodel_api_workflows_update_workflow"];
         post?: never;
         /** Delete Workflow */
-        delete: operations["userdefinedmodel_api_delete_workflow"];
+        delete: operations["userdefinedmodel_api_workflows_delete_workflow"];
         options?: never;
         head?: never;
         patch?: never;
@@ -746,7 +772,7 @@ export interface paths {
          * Workflow State Counts
          * @description Return a dict of state_name → entity count for fields using this workflow.
          */
-        get: operations["userdefinedmodel_api_workflow_state_counts"];
+        get: operations["userdefinedmodel_api_workflows_workflow_state_counts"];
         put?: never;
         post?: never;
         delete?: never;
@@ -765,7 +791,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Publish Workflow Draft */
-        post: operations["userdefinedmodel_api_publish_workflow_draft"];
+        post: operations["userdefinedmodel_api_workflows_publish_workflow_draft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1040,6 +1066,39 @@ export interface components {
             changed_fields: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * EvalNodeOut
+         * @description One node of an entity tree, as offered by the policy evaluator's node
+         *     picker. Includes submodel nodes the requesting admin may not otherwise view.
+         */
+        EvalNodeOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /** Parent Field Slug */
+            parent_field_slug?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Workflow Fields
+             * @default []
+             */
+            workflow_fields: components["schemas"]["EvalWorkflowFieldOut"][];
+        };
+        /**
+         * EvalWorkflowFieldOut
+         * @description A workflow field on a node in the evaluator's node tree.
+         */
+        EvalWorkflowFieldOut: {
+            /** Slug */
+            slug: string;
+            /** Transitions */
+            transitions: string[];
         };
         /** FieldConfigCreateIn */
         FieldConfigCreateIn: {
@@ -1709,7 +1768,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    userdefinedmodel_api_create_bulk_migration: {
+    userdefinedmodel_api_bundle_create_bulk_migration: {
         parameters: {
             query?: never;
             header?: never;
@@ -1733,7 +1792,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_bulk_migration_preview: {
+    userdefinedmodel_api_bundle_bulk_migration_preview: {
         parameters: {
             query: {
                 source_version_id: string;
@@ -1755,7 +1814,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_bulk_migration: {
+    userdefinedmodel_api_bundle_get_bulk_migration: {
         parameters: {
             query?: never;
             header?: never;
@@ -1777,7 +1836,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_execute_bulk_migration_plan: {
+    userdefinedmodel_api_bundle_execute_bulk_migration_plan: {
         parameters: {
             query?: never;
             header?: never;
@@ -1797,7 +1856,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_config_version: {
+    userdefinedmodel_api_configs_get_config_version: {
         parameters: {
             query?: never;
             header?: never;
@@ -1819,7 +1878,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_list_configs: {
+    userdefinedmodel_api_configs_list_configs: {
         parameters: {
             query?: never;
             header?: never;
@@ -1839,7 +1898,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_create_config: {
+    userdefinedmodel_api_configs_create_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -1863,7 +1922,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_config: {
+    userdefinedmodel_api_configs_get_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -1885,7 +1944,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_delete_config: {
+    userdefinedmodel_api_configs_delete_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -1905,7 +1964,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_update_config: {
+    userdefinedmodel_api_configs_update_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -1931,7 +1990,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_list_config_versions: {
+    userdefinedmodel_api_configs_list_config_versions: {
         parameters: {
             query?: never;
             header?: never;
@@ -1951,7 +2010,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_draft_version: {
+    userdefinedmodel_api_configs_get_draft_version: {
         parameters: {
             query?: never;
             header?: never;
@@ -1973,7 +2032,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_replace_draft: {
+    userdefinedmodel_api_configs_replace_draft: {
         parameters: {
             query?: never;
             header?: never;
@@ -1999,7 +2058,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_draft_as_input: {
+    userdefinedmodel_api_configs_get_draft_as_input: {
         parameters: {
             query?: never;
             header?: never;
@@ -2021,7 +2080,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_publish_draft: {
+    userdefinedmodel_api_configs_publish_draft: {
         parameters: {
             query?: never;
             header?: never;
@@ -2043,7 +2102,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_published_version: {
+    userdefinedmodel_api_configs_get_published_version: {
         parameters: {
             query?: never;
             header?: never;
@@ -2065,7 +2124,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_list_entities: {
+    userdefinedmodel_api_entities_list_entities: {
         parameters: {
             query: {
                 type_id: string;
@@ -2088,7 +2147,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_create_entity: {
+    userdefinedmodel_api_entities_create_entity: {
         parameters: {
             query?: {
                 validate?: boolean;
@@ -2114,7 +2173,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_entity: {
+    userdefinedmodel_api_entities_get_entity: {
         parameters: {
             query?: never;
             header?: never;
@@ -2136,7 +2195,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_delete_entity: {
+    userdefinedmodel_api_entities_delete_entity: {
         parameters: {
             query?: never;
             header?: never;
@@ -2156,7 +2215,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_patch_entity: {
+    userdefinedmodel_api_entities_patch_entity: {
         parameters: {
             query?: never;
             header?: never;
@@ -2182,7 +2241,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_entity_history: {
+    userdefinedmodel_api_entities_entity_history: {
         parameters: {
             query?: {
                 page?: number;
@@ -2207,7 +2266,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_execute_migration: {
+    userdefinedmodel_api_entities_execute_migration: {
         parameters: {
             query?: never;
             header?: never;
@@ -2233,7 +2292,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_migration_preview: {
+    userdefinedmodel_api_entities_migration_preview: {
         parameters: {
             query?: {
                 target_user_defined_model_type?: string | null;
@@ -2258,7 +2317,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_entity_policy_document: {
+    userdefinedmodel_api_entities_entity_policy_document: {
         parameters: {
             query?: never;
             header?: never;
@@ -2278,7 +2337,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_transition_entity: {
+    userdefinedmodel_api_entities_transition_entity: {
         parameters: {
             query?: never;
             header?: never;
@@ -2304,7 +2363,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_validation_preview: {
+    userdefinedmodel_api_entities_validation_preview: {
         parameters: {
             query?: never;
             header?: never;
@@ -2328,7 +2387,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_search_entities: {
+    userdefinedmodel_api_autocomplete_search_entities: {
         parameters: {
             query?: {
                 q?: string;
@@ -2352,7 +2411,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_export_bundle_zip: {
+    userdefinedmodel_api_bundle_export_bundle_zip: {
         parameters: {
             query?: never;
             header?: never;
@@ -2374,7 +2433,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_search_groups: {
+    userdefinedmodel_api_autocomplete_search_groups: {
         parameters: {
             query?: {
                 q?: string;
@@ -2397,7 +2456,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_import_bundle_zip: {
+    userdefinedmodel_api_bundle_import_bundle_zip: {
         parameters: {
             query?: {
                 scope_type_ids?: string;
@@ -2428,7 +2487,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_parse_bundle_zip: {
+    userdefinedmodel_api_bundle_parse_bundle_zip: {
         parameters: {
             query?: never;
             header?: never;
@@ -2456,7 +2515,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_list_policies: {
+    userdefinedmodel_api_policies_list_policies: {
         parameters: {
             query?: never;
             header?: never;
@@ -2476,7 +2535,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_create_policy: {
+    userdefinedmodel_api_policies_create_policy: {
         parameters: {
             query?: never;
             header?: never;
@@ -2500,7 +2559,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_policy: {
+    userdefinedmodel_api_policies_get_policy: {
         parameters: {
             query?: never;
             header?: never;
@@ -2522,7 +2581,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_update_policy: {
+    userdefinedmodel_api_policies_update_policy: {
         parameters: {
             query?: never;
             header?: never;
@@ -2548,7 +2607,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_delete_policy: {
+    userdefinedmodel_api_policies_delete_policy: {
         parameters: {
             query?: never;
             header?: never;
@@ -2568,7 +2627,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_upload_staging_file: {
+    userdefinedmodel_api_staging_upload_staging_file: {
         parameters: {
             query?: {
                 intended_field_id?: string | null;
@@ -2600,7 +2659,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_delete_staging_file: {
+    userdefinedmodel_api_staging_delete_staging_file: {
         parameters: {
             query?: never;
             header?: never;
@@ -2620,7 +2679,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_list_udm_types: {
+    userdefinedmodel_api_types_list_udm_types: {
         parameters: {
             query?: never;
             header?: never;
@@ -2640,7 +2699,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_create_udm_type: {
+    userdefinedmodel_api_types_create_udm_type: {
         parameters: {
             query?: never;
             header?: never;
@@ -2664,7 +2723,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_udm_type: {
+    userdefinedmodel_api_types_get_udm_type: {
         parameters: {
             query?: never;
             header?: never;
@@ -2686,7 +2745,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_delete_udm_type: {
+    userdefinedmodel_api_types_delete_udm_type: {
         parameters: {
             query?: never;
             header?: never;
@@ -2706,7 +2765,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_update_udm_type: {
+    userdefinedmodel_api_types_update_udm_type: {
         parameters: {
             query?: {
                 field_config_id?: string | null;
@@ -2734,7 +2793,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_type_config: {
+    userdefinedmodel_api_types_get_type_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -2756,13 +2815,14 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_eval_policy_for_type: {
+    userdefinedmodel_api_types_eval_policy_for_type: {
         parameters: {
             query: {
                 entity_id: string;
                 user_id: string;
                 action?: string;
                 transition?: string | null;
+                node_id?: string | null;
             };
             header?: never;
             path: {
@@ -2783,7 +2843,31 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_list_type_policies: {
+    userdefinedmodel_api_types_eval_policy_nodes: {
+        parameters: {
+            query: {
+                entity_id: string;
+            };
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalNodeOut"][];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_types_list_type_policies: {
         parameters: {
             query?: never;
             header?: never;
@@ -2805,7 +2889,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_assign_policy: {
+    userdefinedmodel_api_types_assign_policy: {
         parameters: {
             query?: never;
             header?: never;
@@ -2831,7 +2915,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_remove_policy: {
+    userdefinedmodel_api_types_remove_policy: {
         parameters: {
             query?: never;
             header?: never;
@@ -2852,7 +2936,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_type_public_fields: {
+    userdefinedmodel_api_types_get_type_public_fields: {
         parameters: {
             query?: never;
             header?: never;
@@ -2874,7 +2958,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_search_users: {
+    userdefinedmodel_api_autocomplete_search_users: {
         parameters: {
             query?: {
                 q?: string;
@@ -2898,7 +2982,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_list_workflows: {
+    userdefinedmodel_api_workflows_list_workflows: {
         parameters: {
             query?: never;
             header?: never;
@@ -2918,7 +3002,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_create_workflow: {
+    userdefinedmodel_api_workflows_create_workflow: {
         parameters: {
             query?: never;
             header?: never;
@@ -2942,7 +3026,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_get_workflow: {
+    userdefinedmodel_api_workflows_get_workflow: {
         parameters: {
             query?: never;
             header?: never;
@@ -2964,7 +3048,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_update_workflow: {
+    userdefinedmodel_api_workflows_update_workflow: {
         parameters: {
             query?: never;
             header?: never;
@@ -2990,7 +3074,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_delete_workflow: {
+    userdefinedmodel_api_workflows_delete_workflow: {
         parameters: {
             query?: never;
             header?: never;
@@ -3010,7 +3094,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_workflow_state_counts: {
+    userdefinedmodel_api_workflows_workflow_state_counts: {
         parameters: {
             query?: never;
             header?: never;
@@ -3030,7 +3114,7 @@ export interface operations {
             };
         };
     };
-    userdefinedmodel_api_publish_workflow_draft: {
+    userdefinedmodel_api_workflows_publish_workflow_draft: {
         parameters: {
             query?: never;
             header?: never;

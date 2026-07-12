@@ -746,6 +746,22 @@ class TypePublicFieldsOut(Schema):
     descriptions: dict[str, str]  # lang_code → markdown; "" = language-neutral fallback
 
 
+class EvalWorkflowFieldOut(Schema):
+    """A workflow field on a node in the evaluator's node tree."""
+    slug: str
+    transitions: list[str]
+
+
+class EvalNodeOut(Schema):
+    """One node of an entity tree, as offered by the policy evaluator's node
+    picker. Includes submodel nodes the requesting admin may not otherwise view."""
+    id: uuid.UUID
+    parent_id: Optional[uuid.UUID] = None
+    parent_field_slug: Optional[str] = None
+    label: str
+    workflow_fields: list[EvalWorkflowFieldOut] = []
+
+
 class PolicyEvalOut(Schema):
     input_document: dict[str, Any]
     policies: list[dict[str, str]]   # [{"slug": ..., "source": ...}]
