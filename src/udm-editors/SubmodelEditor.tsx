@@ -11,6 +11,7 @@ import { fieldEditorRegistry } from './registry'
 import { PolicyMessageList } from './shared'
 import { FieldInput } from './FieldInput'
 import { useUdmGrants, type NewItemGrant } from './grants'
+import { ReadonlyBadge } from './shared'
 import { FieldPreview } from './FieldPreview'
 import { PreviewTable, type PreviewRow } from './PreviewTable'
 import styles from '../UdmEntityEditor.module.css'
@@ -316,7 +317,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                         <i id={tooltipId} className={`pi ${SUB_SEV_ICON[sev] ?? 'pi-info-circle'} ${styles.severityIcon} ${SUB_SEV_CLASS[sev] ?? ''}`} />
                       </>
                     )}
-                    <span className={styles.compactLabel}>{subLabel}</span>
+                    <span className={styles.compactLabel}>{subLabel}{(disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user || (item.id == null && subFd.data_type === 'workflow')) && <ReadonlyBadge />}</span>
                   </div>
                   {langs.map(lang => (
                     <FieldInput key={lang || 'nolang'} fd={subFd}
@@ -336,6 +337,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
               }}>
                 <div style={{ fontSize: '0.82rem', fontWeight: 600, color: sev ? subColor : '#444', marginBottom: '0.2rem' }}>
                   {subLabel} <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#999' }}>({subFd.data_type})</span>
+                  {(disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user || (item.id == null && subFd.data_type === 'workflow')) && <ReadonlyBadge />}
                 </div>
                 {langs.map(lang => (
                   <FieldInput

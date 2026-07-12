@@ -51,6 +51,11 @@ function WorkflowCellEditor({ fd, value, disabled, lang = '', nodeId, onEntityRe
       }}>
         {stateLabel ?? '(no state)'}
       </span>
+      {!nodeId && (
+        <span style={{ fontSize: '0.78rem', color: '#888', fontStyle: 'italic' }}>
+          Save this item first — workflow transitions become available after saving.
+        </span>
+      )}
       {nodeId && onEntityRefresh && availableTransitions.length > 0 && (
         <>
           <span style={{ color: '#111', fontSize: '1.1rem', fontWeight: 700, flexShrink: 0, userSelect: 'none', display: 'flex', alignItems: 'center' }}>→</span>

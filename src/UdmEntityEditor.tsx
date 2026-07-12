@@ -26,6 +26,7 @@ import {
 } from './apiUdm'
 import { MigrationAssistant } from './UdmMigration'
 import { FieldInput, getLang, PolicyMessageList } from './udm-editors'
+import { ReadonlyBadge } from './udm-editors/shared'
 import { UdmGrantsContext, type UdmGrants } from './udm-editors/grants'
 import styles from './UdmEntityEditor.module.css'
 import dsStyles from './DefaultScreen.module.css'
@@ -144,6 +145,7 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
   // parent editor (per-node matrix); null = no preview available yet.
   const isTransitionBlocked = (name: string) =>
     validTransitions != null && !validTransitions.includes(name)
+
 
 
   if (compact) {
@@ -357,7 +359,7 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
           {severity && hasMessages && (
             <SeverityIndicator severity={severity} messages={messages!} fieldSlug={fd.slug} />
           )}
-          <span className={styles.compactLabel}>{label}</span>
+          <span className={styles.compactLabel}>{label}{!editable && <ReadonlyBadge />}</span>
           {(isDirty && !isSubmodel) && (
             <button type="button" className={styles.resetBtn} style={{ marginLeft: 'auto', fontSize: '0.72rem' }}
               onClick={() => onReset(fd.slug)}>
@@ -396,7 +398,7 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
     <div className={`${styles.fieldGroup} ${highlightClass}`}>
       <div className={styles.fieldHeader}>
         <div>
-          <div className={styles.fieldLabel}>{label}</div>
+          <div className={styles.fieldLabel}>{label}{!editable && <ReadonlyBadge />}</div>
           <div className={styles.fieldSlug}>{fd.slug} · {fd.data_type}</div>
           {helpText && <div className={styles.fieldHelp}>{helpText}</div>}
         </div>

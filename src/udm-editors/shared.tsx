@@ -27,3 +27,18 @@ export function PolicyMessageList({ messages }: { messages: PolicyMessage[] }) {
     </ul>
   )
 }
+
+/** Small badge shown next to a field label when the policy leaves it read-only. */
+export function ReadonlyBadge() {
+  return (
+    <span style={{
+      fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.03em',
+      textTransform: 'uppercase', color: '#64748b', background: '#f1f5f9',
+      border: '1px solid #cbd5e1', borderRadius: '999px',
+      padding: '0.05rem 0.45rem', marginLeft: '0.4rem', verticalAlign: 'middle',
+      whiteSpace: 'nowrap',
+    }}>
+      read-only
+    </span>
+  )
+}
