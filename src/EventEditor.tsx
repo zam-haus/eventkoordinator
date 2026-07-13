@@ -139,6 +139,7 @@ export function EventEditor({
     const [externalEvents, setExternalEvents] = useState<ExternalCalendarEvent[]>([])
     const [calendarLoading, setCalendarLoading] = useState(false)
     const [calendarError, setCalendarError] = useState<string | null>(null)
+    const [calendarNoAccess, setCalendarNoAccess] = useState(false)
 
     // Track unsaved changes
     const hasChanges = changedFields.size > 0
@@ -290,8 +291,16 @@ export function EventEditor({
                 const data = await fetchExternalCalendarEvents(calendarRange.startUtc, calendarRange.endUtc)
                 setExternalEvents(data)
                 setCalendarError(null)
+                setCalendarNoAccess(false)
             } catch (err) {
-                setCalendarError(translateApiError(err instanceof Error ? err.message : undefined))
+                const code = err instanceof Error ? err.message : undefined
+                if (code === 'auth.permissionDenied') {
+                    setCalendarNoAccess(true)
+                    setCalendarError(null)
+                } else {
+                    setCalendarNoAccess(false)
+                    setCalendarError(translateApiError(code))
+                }
             } finally {
                 setCalendarLoading(false)
             }
@@ -801,6 +810,7 @@ export function EventEditor({
                     </label>
                     {calendarLoading && <p className={styles.loading}>{t('event.loading')}</p>}
                     {calendarError && <p className={styles.error}>{calendarError}</p>}
+                    {calendarNoAccess && <p className={styles.info}>{t('event.calendarNoAccess')}</p>}
                     <div className={styles.calendarWrapper}
                          style={disabled ? {opacity: 0.6, pointerEvents: 'none'} : undefined}>
                         <WeekViewCombined

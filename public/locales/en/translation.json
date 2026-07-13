@@ -399,7 +399,8 @@
     "syncNote": "Changes to this event will be synchronized across all platforms.",
     "EventSchedule": "Event Schedule",
     "loading": "Loading...",
-    "noPermission": "You do not have permission to view this event."
+    "noPermission": "You do not have permission to view this event.",
+    "calendarNoAccess": "You don't have access to the shared calendar, so other events aren't shown here."
   },
   "series": {
     "name": "Series Name",

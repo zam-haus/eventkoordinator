@@ -488,7 +488,8 @@
     "syncNote": "Änderungen an dieser Veranstaltung werden über alle Plattformen hinweg synchronisiert.",
     "EventSchedule": "Veranstaltungsplan",
     "loading": "Lade...",
-    "noPermission": "Du hast keine Berechtigung, diese Veranstaltung anzusehen."
+    "noPermission": "Du hast keine Berechtigung, diese Veranstaltung anzusehen.",
+    "calendarNoAccess": "Du hast keinen Zugriff auf den gemeinsamen Kalender, daher werden andere Veranstaltungen hier nicht angezeigt."
   },
   "syncDiff": {
     "missingParams": "Erforderliche Parameter fehlen",
