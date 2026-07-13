@@ -96,6 +96,8 @@ def export_excel(request):
             "language": pl.Series([], dtype=pl.String),
             "owner": pl.Series([], dtype=pl.String),
             "call": pl.Series([], dtype=pl.String),
+            "description": pl.Series([], dtype=pl.String),
+            "abstract": pl.Series([], dtype=pl.String),
             "occurrence_count": pl.Series([], dtype=pl.Int32),
             "duration_days": pl.Series([], dtype=pl.Int32),
             "duration_time_per_day": pl.Series([], dtype=pl.String),
