@@ -407,6 +407,10 @@ class FieldValueInline(admin.TabularInline):
         "value_time", "value_datetime", "value_json",
         "value_user", "value_group", "value_node", "value_file", "value_workflow_state",
     )
+    raw_id_fields = (
+        "field",
+        "value_user", "value_group", "value_node", "value_file", "value_workflow_state",
+    )
     show_change_link = True
 
 
@@ -416,6 +420,7 @@ class UserDefinedModelEntityAdmin(admin.ModelAdmin):
     list_filter = ("user_defined_model_type", "config_version__config")
     search_fields = ("id",)
     readonly_fields = ("id", "created_at", "updated_at")
+    raw_id_fields = ("user_defined_model_type", "config_version")
     inlines = [FieldValueInline]
 
 
@@ -425,6 +430,7 @@ class SubmodelInstanceAdmin(admin.ModelAdmin):
     list_filter = ("config_version__config",)
     search_fields = ("id",)
     readonly_fields = ("id", "created_at", "updated_at")
+    raw_id_fields = ("parent_node", "parent_field", "config_version")
     inlines = [FieldValueInline]
 
 
