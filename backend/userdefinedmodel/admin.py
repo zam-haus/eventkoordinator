@@ -1,4 +1,6 @@
-from django.contrib import admin
+from django import forms
+from django.contrib import admin, messages
+from django.utils.html import format_html
 from polymorphic.admin import (
     PolymorphicInlineSupportMixin,
     StackedPolymorphicInline,
@@ -397,8 +399,77 @@ class UserDefinedModelTypeAdmin(admin.ModelAdmin):
 
 # ─── Entities ────────────────────────────────────────────────────────────────
 
+# (form field name, model attribute holding the raw value)
+_VALUE_COLUMNS = (
+    ("value_text", "value_text"),
+    ("value_decimal", "value_decimal"),
+    ("value_bool", "value_bool"),
+    ("value_date", "value_date"),
+    ("value_time", "value_time"),
+    ("value_datetime", "value_datetime"),
+    ("value_json", "value_json"),
+    ("value_user", "value_user_id"),
+    ("value_group", "value_group_id"),
+    ("value_node", "value_node_id"),
+    ("value_file", "value_file_id"),
+    ("value_workflow_state", "value_workflow_state_id"),
+)
+
+
+def _field_value_mismatches(fv):
+    """Return (correct_column, [wrongly populated columns]) for a FieldValue."""
+    expected = FieldValue._DATA_TYPE_COLUMN.get(fv.field.data_type)
+    wrong = [
+        name for name, attr in _VALUE_COLUMNS
+        if name != expected and getattr(fv, attr) is not None
+    ]
+    return expected, wrong
+
+
+class FieldValueInlineForm(forms.ModelForm):
+    class Meta:
+        model = FieldValue
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get("instance")
+        if instance is None or instance.pk is None or instance.field_id is None:
+            return  # new row: field/data_type unknown yet, show everything
+        expected, wrong = _field_value_mismatches(instance)
+        for name, _attr in _VALUE_COLUMNS:
+            if name not in self.fields:
+                continue
+            if name == expected:
+                continue
+            if name in wrong:
+                self.fields[name].help_text = format_html(
+                    '<span style="color:#ba2121;font-weight:bold;">'
+                    "⚠ Wrong column for data type “{}” (expected “{}”)</span>",
+                    instance.field.data_type, expected or "—",
+                )
+            else:
+                # Empty and irrelevant for this data type: keep the cell so
+                # tabular column headers stay aligned, but grey it out. A real
+                # HiddenInput (is_hidden=True) would be pulled out of its <td>.
+                self.fields[name].disabled = True
+                self.fields[name].widget = forms.TextInput(
+                    attrs={
+                        "style": (
+                            "background:var(--darkened-bg,#f3f3f3);"
+                            "color:var(--body-quiet-color,#999);"
+                            "border-color:var(--border-color,#ddd);"
+                            "pointer-events:none;opacity:.5;"
+                        ),
+                        "tabindex": "-1",
+                        "placeholder": "n/a",
+                    }
+                )
+
+
 class FieldValueInline(admin.TabularInline):
     model = FieldValue
+    form = FieldValueInlineForm
     fk_name = "node"
     extra = 0
     fields = (
@@ -414,8 +485,29 @@ class FieldValueInline(admin.TabularInline):
     show_change_link = True
 
 
+class FieldValueWarningMixin:
+    """Warn the admin when a FieldValue stores data in a column that does not
+    match its FieldDefinition's data_type."""
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        values = (
+            FieldValue.objects.filter(node_id=object_id)
+            .select_related("field")
+        )
+        for fv in values:
+            expected, wrong = _field_value_mismatches(fv)
+            if wrong:
+                messages.warning(
+                    request,
+                    f"Field value #{fv.pk} ({fv.field.slug}, data type "
+                    f"“{fv.field.data_type}”) has data in unexpected column(s): "
+                    f"{', '.join(wrong)}. Expected column: {expected or '— (none)'}.",
+                )
+        return super().change_view(request, object_id, form_url, extra_context)
+
+
 @admin.register(UserDefinedModelEntity)
-class UserDefinedModelEntityAdmin(admin.ModelAdmin):
+class UserDefinedModelEntityAdmin(FieldValueWarningMixin, admin.ModelAdmin):
     list_display = ("id", "user_defined_model_type", "config_version", "created_at")
     list_filter = ("user_defined_model_type", "config_version__config")
     search_fields = ("id",)
@@ -425,7 +517,7 @@ class UserDefinedModelEntityAdmin(admin.ModelAdmin):
 
 
 @admin.register(SubmodelInstance)
-class SubmodelInstanceAdmin(admin.ModelAdmin):
+class SubmodelInstanceAdmin(FieldValueWarningMixin, admin.ModelAdmin):
     list_display = ("id", "parent_node", "parent_field", "sort_order", "created_at")
     list_filter = ("config_version__config",)
     search_fields = ("id",)
