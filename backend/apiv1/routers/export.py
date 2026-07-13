@@ -53,7 +53,8 @@ def export_excel(request):
 
     # ── proposals ──────────────────────────────────────────────────────────────
     proposals_qs = (
-        ProposalModel.objects.select_related("submission_type", "area", "language", "owner", "call")
+        ProposalModel.objects.filter(status=ProposalModel.Status.ACCEPTED)
+        .select_related("submission_type", "area", "language", "owner", "call")
         .prefetch_related("speakers", "events")
         .order_by("title")
     )
@@ -111,7 +112,10 @@ def export_excel(request):
 
     # ── events ─────────────────────────────────────────────────────────────────
     events_qs = (
-        EventModel.objects.filter(proposal_id__in=accessible_proposal_ids)
+        EventModel.objects.filter(
+            proposal_id__in=accessible_proposal_ids,
+            status__in=[EventModel.Status.PUBLISHED, EventModel.Status.CONFIRMED],
+        )
         .select_related("series", "proposal")
         .order_by("start_time")
     )
