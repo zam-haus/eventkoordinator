@@ -85,6 +85,7 @@ def eval_policy_for_type(
     action: str = "view",
     transition: Optional[str] = None,
     node_id: Optional[uuid.UUID] = None,
+    sudo: bool = False,
 ):
     """Evaluate the Rego policy for a given entity + user and return the full
     input document, the raw policy sources, and the structured output.
@@ -111,6 +112,11 @@ def eval_policy_for_type(
         eval_user = OpenIDUser.objects.prefetch_related("groups", "user_permissions").get(id=user_id)
     except Exception:
         return JsonResponse({"detail": "User not found"}, status=404)
+
+    # Simulate the session sudo toggle for the evaluated user. _serialize_user
+    # ANDs the flag with is_superuser, so it stays false for non-superusers.
+    if sudo:
+        eval_user.sudo_mode = True
 
     # Collect policy sources
     udm_type = get_udm_type_for_node(entity)
@@ -147,8 +153,15 @@ def eval_policy_for_type(
                 )
                 break
     if action in ("save", "transition", "preview"):
-        from userdefinedmodel.engine import build_entity_document
+        from userdefinedmodel.engine import build_entity_document, evaluate_view_precheck
         kwargs.setdefault("old_entity_doc", build_entity_document(entity))
+        # Mirror the real save/transition/preview flow: run the VIEW pre-check
+        # on the persisted state and hand its carry-over to the evaluation as
+        # input.additional_result. Unlike the real flow, a view denial does not
+        # abort here — the evaluator should still show the policy's verdict.
+        _, additional_result = evaluate_view_precheck(
+            entity, eval_user, kwargs["old_entity_doc"], locale=_locale(request))
+        kwargs["additional_result"] = additional_result
     if action == "preview":
         from userdefinedmodel.engine import build_candidate_transitions
         kwargs["candidate_transitions"] = build_candidate_transitions(entity)

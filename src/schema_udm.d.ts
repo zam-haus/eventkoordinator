@@ -2823,6 +2823,7 @@ export interface operations {
                 action?: string;
                 transition?: string | null;
                 node_id?: string | null;
+                sudo?: boolean;
             };
             header?: never;
             path: {

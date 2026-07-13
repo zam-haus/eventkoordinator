@@ -3,10 +3,16 @@ import { getUserPermissions, type UserPermissions } from './api'
 
 const AUTH_CHANGED_EVENT = 'app:auth-changed'
 
+// Cross-tab notification: sudo mode / login state live in the shared session,
+// so a change in one tab must refresh permissions in all tabs.
+const authChannel: BroadcastChannel | null =
+  typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(AUTH_CHANGED_EVENT) : null
+
 export function notifyAuthChanged() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }
+  authChannel?.postMessage('auth-changed')
 }
 
 export function usePermissions() {
@@ -49,10 +55,12 @@ export function usePermissions() {
 
     void loadPermissions()
     window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged)
+    authChannel?.addEventListener('message', handleAuthChanged)
 
     return () => {
       isMounted = false
       window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged)
+      authChannel?.removeEventListener('message', handleAuthChanged)
     }
   }, [])
 

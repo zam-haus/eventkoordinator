@@ -1798,6 +1798,7 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
   const [transitionName, setTransitionName] = useState('')
   const [nodes, setNodes] = useState<EvalNodeOut[]>([])
   const [nodeId, setNodeId] = useState('')
+  const [sudo, setSudo] = useState(false)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<PolicyEvalOut | null>(null)
   const [evalError, setEvalError] = useState<string | null>(null)
@@ -1834,6 +1835,7 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
         typeId, entityId, userId, action,
         action === 'transition' && transitionName ? transitionName : undefined,
         action === 'transition' && nodeId ? nodeId : undefined,
+        sudo,
       )
       setResult(out)
     } catch (e) {
@@ -1907,6 +1909,13 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
             </div>
           </>
         )}
+
+        <div className={styles.formGroup} style={{ minWidth: '90px', flex: 'none', justifyContent: 'flex-end' }}>
+          <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={sudo} onChange={e => setSudo(e.target.checked)} />
+            Sudo
+          </label>
+        </div>
 
         <button
           type="button"

@@ -25,9 +25,21 @@ success_messages contains msg if {
 # ──── Allow all actions for sudo users ───────────────────────────────────────────────
 
 allow if {
+	input.action == "view"
+	is_superuser_sudo
+	print("[allow:view] sudo user=", input.user.username)
+}
+
+allow if {
 	input.action == "browse"
 	is_superuser_sudo
 	print("[allow:browse] sudo user=", input.user.username)
+}
+
+allow if {
+	input.action == "preview"
+	is_superuser_sudo
+	print("[allow:preview] sudo user=", input.user.username)
 }
 
 allow if {

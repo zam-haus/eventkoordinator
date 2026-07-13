@@ -418,6 +418,7 @@ export async function udmEvalPolicy(
   action: string,
   transition?: string,
   nodeId?: string,
+  sudo?: boolean,
 ): Promise<PolicyEvalOut> {
   const { data, error, response } = await udmClient.GET('/api/udm/types/{type_id}/eval-policy/', {
     params: {
@@ -425,6 +426,7 @@ export async function udmEvalPolicy(
       query: {
         entity_id: entityId, user_id: userId, action,
         transition: transition ?? null, node_id: nodeId ?? null,
+        sudo: sudo ?? false,
       },
     },
   })
