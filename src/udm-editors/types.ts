@@ -16,6 +16,9 @@ export interface FieldInputProps {
   nodeId?: string | null
   onEntityRefresh?: (policyMessages?: PolicyMessage[]) => void | Promise<void>
   compact?: boolean
+  /** Immediately persist submodel ops (create/update/delete) for this field.
+   *  Throws on failure. When absent, submodel editors stage ops locally (legacy). */
+  onCommitOps?: (ops: unknown) => Promise<void>
 }
 
 export function getLang(map: Record<string, string>, uiLang: string): string {

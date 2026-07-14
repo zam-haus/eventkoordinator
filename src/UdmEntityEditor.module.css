@@ -710,3 +710,78 @@
   font-size: 0.7rem;
   flex-shrink: 0;
 }
+
+/* Per-field commit (check/cancel) UI */
+.editorStack {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.editorStack :global(.p-inputtext),
+.editorStack :global(.p-inputnumber),
+.editorStack :global(.p-calendar) {
+  width: 100%;
+}
+
+.commitGroupField {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.commitGroupField :global(.p-inputtext),
+.commitGroupField :global(.p-inputnumber),
+.commitGroupField :global(.p-calendar) {
+  width: 100%;
+}
+/* Fuse the (nested) input's right edge with the addon buttons, InputGroup-style */
+.commitGroupDirty .commitGroupField :global(.p-inputtext:not(.p-inputnumber-input)),
+.commitGroupDirty .commitGroupField :global(.p-inputnumber .p-inputnumber-input),
+.commitGroupDirty .commitGroupField :global(.p-calendar .p-inputtext) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+/* Buttons stretch to the input height (native InputGroup behavior). The
+   length hint is taken out of flow so it doesn't inflate the row height. */
+.commitGroupDirty .commitGroupField {
+  position: relative;
+}
+.commitGroupDirty .commitGroupField .lenHint {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.1rem;
+}
+.commitGroupDirty {
+  margin-bottom: 1rem; /* reserve space for the out-of-flow length hint */
+}
+
+.commitButtons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+}
+
+/* Explicit solid backgrounds for the commit buttons (theme-independent) */
+:global(.p-button.commitBtnCheck) {
+  background: #16a34a;
+  border: 1px solid #16a34a;
+  color: #fff;
+}
+:global(.p-button.commitBtnCheck:enabled:hover) {
+  background: #15803d;
+  border-color: #15803d;
+  color: #fff;
+}
+:global(.p-button.commitBtnCancel) {
+  background: #dc2626;
+  border: 1px solid #dc2626;
+  color: #fff;
+}
+:global(.p-button.commitBtnCancel:enabled:hover) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}

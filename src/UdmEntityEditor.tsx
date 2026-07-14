@@ -26,6 +26,7 @@ import {
 } from './apiUdm'
 import { MigrationAssistant } from './UdmMigration'
 import { FieldInput, getLang, PolicyMessageList } from './udm-editors'
+import { FieldCommitWrapper, LARGE_TYPES, BLUR_COMMIT_TYPES } from './udm-editors/FieldCommitWrapper'
 import { ReadonlyBadge } from './udm-editors/shared'
 import { UdmGrantsContext, type UdmGrants } from './udm-editors/grants'
 import styles from './UdmEntityEditor.module.css'
@@ -288,9 +289,13 @@ interface FieldRowProps {
   compact?: boolean
   fieldLabelMap?: Record<string, string>
   validTransitions?: string[] | null
+  onSaveField: (slug: string) => Promise<void>
+  onCommitOps?: (ops: unknown) => Promise<void>
+  fieldSaving: boolean
+  saveErrorMessages?: PolicyMessage[]
 }
 
-function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, uiLang, severity, messages, subFieldSeverities, subFieldMessages, onTransition, transitioning, resetKey, onEntityRefresh, compact, fieldLabelMap, validTransitions }: FieldRowProps) {
+function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, uiLang, severity, messages, subFieldSeverities, subFieldMessages, onTransition, transitioning, resetKey, onEntityRefresh, compact, fieldLabelMap, validTransitions, onSaveField, onCommitOps, fieldSaving, saveErrorMessages }: FieldRowProps) {
   const [activeLang, setActiveLang] = useState(languages[0] ?? '')
   const isDirty = fd.slug in dirty
   const isSubmodel = fd.data_type === 'submodel_list' || fd.data_type === 'submodel_select'
@@ -314,7 +319,13 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
 
   function handleChange(lang: string, val: unknown) {
     if (isSubmodel) {
-      // submodel ops passed directly — no localized wrapping
+      // submodel ops passed directly — no localized wrapping.
+      // An empty ops list means "no pending changes" (emitted after a server
+      // refresh) — clear the slug instead of keeping a phantom dirty entry.
+      if (Array.isArray(val) && val.length === 0) {
+        onReset(fd.slug)
+        return
+      }
       onDirty(fd.slug, val)
       return
     }
@@ -337,6 +348,17 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
   })()
 
   const fieldIsDirty = (isDirty && !isSubmodel) || submodelHasChanges
+
+  const commitProps = {
+    dirty: isDirty && !isSubmodel,
+    saving: fieldSaving,
+    large: LARGE_TYPES.has(fd.data_type),
+    blurCommit: BLUR_COMMIT_TYPES.has(fd.data_type),
+    disabled: !editable,
+    onCommit: () => void onSaveField(fd.slug),
+    // X resets the whole slug (all languages for localized fields)
+    onCancel: () => onReset(fd.slug),
+  }
   const highlightClass = (() => {
     if (!severity) return fieldIsDirty ? styles.fieldGroupDirty : ''
     if (severity === 'error' || severity === 'critical') return styles.fieldGroupError
@@ -361,36 +383,36 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
             <SeverityIndicator severity={severity} messages={messages!} fieldSlug={fd.slug} />
           )}
           <span className={styles.compactLabel}>{label}{!editable && <ReadonlyBadge />}</span>
-          {(isDirty && !isSubmodel) && (
-            <button type="button" className={styles.resetBtn} style={{ marginLeft: 'auto', fontSize: '0.72rem' }}
-              onClick={() => onReset(fd.slug)}>
-              Reset
-            </button>
-          )}
         </div>
         {helpText && <div className={styles.compactHelp}>{helpText}</div>}
-        {!isSubmodel && fd.is_localized && languages.length > 1 && (
-          <div className={styles.langTabs} style={{ marginBottom: '0.2rem' }}>
-            {languages.map(l => (
-              <button key={l} type="button"
-                className={`${styles.langTab} ${activeLang === l ? styles.langTabActive : ''}`}
-                onClick={() => setActiveLang(l)}>
-                {l}
-              </button>
-            ))}
-          </div>
-        )}
         {isSubmodel ? (
           <FieldInput fd={fd} value={getFieldValue(entity, fd.slug, '')} onChange={val => handleChange('', val)}
             disabled={!editable} lang={uiLang} entityChildren={entity.children as Record<string, unknown[]>}
             subFieldSeverities={subFieldSeverities} subFieldMessages={subFieldMessages}
-            resetKey={resetKey} onEntityRefresh={onEntityRefresh} compact={compact} nodeId={entity.id} />
-        ) : fd.is_localized ? (
-          <FieldInput fd={fd} value={getVal(activeLang)} onChange={val => handleChange(activeLang, val)}
-            disabled={!editable} lang={activeLang} />
+            resetKey={resetKey} onEntityRefresh={onEntityRefresh} compact={compact} nodeId={entity.id}
+            onCommitOps={onCommitOps} />
         ) : (
-          <FieldInput fd={fd} value={getVal()} onChange={val => handleChange('', val)} disabled={!editable} />
+          <FieldCommitWrapper {...commitProps}>
+            {fd.is_localized && languages.length > 1 && (
+              <div className={styles.langTabs} style={{ marginBottom: '0.2rem' }}>
+                {languages.map(l => (
+                  <button key={l} type="button"
+                    className={`${styles.langTab} ${activeLang === l ? styles.langTabActive : ''}`}
+                    onClick={() => setActiveLang(l)}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+            {fd.is_localized ? (
+              <FieldInput fd={fd} value={getVal(activeLang)} onChange={val => handleChange(activeLang, val)}
+                disabled={!editable} lang={activeLang} />
+            ) : (
+              <FieldInput fd={fd} value={getVal()} onChange={val => handleChange('', val)} disabled={!editable} />
+            )}
+          </FieldCommitWrapper>
         )}
+        {saveErrorMessages && saveErrorMessages.length > 0 && <PolicyMessageList messages={saveErrorMessages} />}
       </div>
     )
   }
@@ -403,26 +425,7 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
           <div className={styles.fieldSlug}>{fd.slug} · {fd.data_type}</div>
           {helpText && <div className={styles.fieldHelp}>{helpText}</div>}
         </div>
-        {(isDirty && !isSubmodel) && (
-          <div className={styles.fieldActions}>
-            <button type="button" className={styles.resetBtn} onClick={() => onReset(fd.slug)}>
-              Reset
-            </button>
-          </div>
-        )}
       </div>
-
-      {!isSubmodel && fd.is_localized && languages.length > 1 && (
-        <div className={styles.langTabs}>
-          {languages.map(l => (
-            <button key={l} type="button"
-              className={`${styles.langTab} ${activeLang === l ? styles.langTabActive : ''}`}
-              onClick={() => setActiveLang(l)}>
-              {l}
-            </button>
-          ))}
-        </div>
-      )}
 
       {isSubmodel ? (
         // Submodels always receive full entity.children context; value = FK UUID for submodel_select
@@ -438,23 +441,40 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
           resetKey={resetKey}
           onEntityRefresh={onEntityRefresh}
           nodeId={entity.id}
-        />
-      ) : fd.is_localized ? (
-        <FieldInput
-          fd={fd}
-          value={getVal(activeLang)}
-          onChange={val => handleChange(activeLang, val)}
-          disabled={!editable}
-          lang={activeLang}
+          onCommitOps={onCommitOps}
         />
       ) : (
-        <FieldInput
-          fd={fd}
-          value={getVal()}
-          onChange={val => handleChange('', val)}
-          disabled={!editable}
-        />
+        <FieldCommitWrapper {...commitProps}>
+          {fd.is_localized && languages.length > 1 && (
+            <div className={styles.langTabs}>
+              {languages.map(l => (
+                <button key={l} type="button"
+                  className={`${styles.langTab} ${activeLang === l ? styles.langTabActive : ''}`}
+                  onClick={() => setActiveLang(l)}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
+          {fd.is_localized ? (
+            <FieldInput
+              fd={fd}
+              value={getVal(activeLang)}
+              onChange={val => handleChange(activeLang, val)}
+              disabled={!editable}
+              lang={activeLang}
+            />
+          ) : (
+            <FieldInput
+              fd={fd}
+              value={getVal()}
+              onChange={val => handleChange('', val)}
+              disabled={!editable}
+            />
+          )}
+        </FieldCommitWrapper>
       )}
+      {saveErrorMessages && saveErrorMessages.length > 0 && <PolicyMessageList messages={saveErrorMessages} />}
       {messages && messages.length > 0 && <PolicyMessageList messages={messages} />}
     </div>
   )
@@ -647,8 +667,9 @@ export function UdmEntityEditor() {
   const [entity, setEntity] = useState<EntityOut | null>(null)
   const [config, setConfig] = useState<ConfigVersionOut | null>(null)
   const [dirty, setDirty] = useState<Record<string, unknown>>({})
-  const [discardCount, setDiscardCount] = useState(0)
-  const [saving, setSaving] = useState(false)
+  const [discardCount] = useState(0)
+  const [savingFields, setSavingFields] = useState<Set<string>>(new Set())
+  const [fieldSaveErrors, setFieldSaveErrors] = useState<Record<string, PolicyMessage[]>>({})
   const [transitioning, setTransitioning] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [success, setSuccess] = useState<string | null>(null)
@@ -656,7 +677,6 @@ export function UdmEntityEditor() {
   const [policyMessages, setPolicyMessages] = useState<PolicyMessage[]>([])
   // Validation-preview matrix: node id → workflow field slug → preview.
   const [previewNodes, setPreviewNodes] = useState<ValidationPreview['nodes']>({})
-  const [savePreviewValid, setSavePreviewValid] = useState<boolean>(true)
   const [transitionPopup, setTransitionPopup] = useState<PolicyMessage[]>([])
   const [compact, setCompact] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
@@ -679,7 +699,6 @@ export function UdmEntityEditor() {
     if (idx >= 0) setActiveTab(prev => (prev === idx ? prev : idx))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, config])
-  const [validationPending, setValidationPending] = useState(false)
 
   const fieldSeverities = useMemo(() => {
     const out: Record<string, string> = {}
@@ -764,7 +783,6 @@ export function UdmEntityEditor() {
         const preview = await udmValidationPreview(entityId, {})
         setPolicyMessages(preview.messages ?? [])
         setPreviewNodes(preview.nodes ?? {})
-        setSavePreviewValid(preview.save?.valid ?? true)
       } catch { /* validation is best-effort */ }
     } catch (err) {
       if (err instanceof UdmApiError && err.policyMessages.length > 0) {
@@ -792,23 +810,18 @@ export function UdmEntityEditor() {
         .then(r => {
           setPolicyMessages(r.messages ?? [])
           setPreviewNodes(r.nodes ?? {})
-          setSavePreviewValid(r.save?.valid ?? true)
         })
         .catch(() => {})
       return
     }
     if (pendingValidation.current) clearTimeout(pendingValidation.current)
-    setValidationPending(true)
     pendingValidation.current = setTimeout(async () => {
       try {
         const result = await udmValidationPreview(entityId, dirty)
         setPolicyMessages(result.messages ?? [])
         setPreviewNodes(result.nodes ?? {})
-        setSavePreviewValid(result.save?.valid ?? true)
       } catch {
         // Validation is best-effort — ignore lock conflicts and network errors
-      } finally {
-        setValidationPending(false)
       }
     }, 600)
     return () => {
@@ -860,8 +873,18 @@ export function UdmEntityEditor() {
   // granted (view.rego grants them unconditionally; a policy may still revoke).
   const fields = allFields.filter(fd => viewableFieldSlugs.has(fd.slug))
 
+  function clearFieldSaveError(slug: string) {
+    setFieldSaveErrors(prev => {
+      if (!(slug in prev)) return prev
+      const n = { ...prev }
+      delete n[slug]
+      return n
+    })
+  }
+
   function handleDirty(slug: string, val: unknown) {
     setDirty(prev => ({ ...prev, [slug]: val }))
+    clearFieldSaveError(slug)
     setSuccess(null)
   }
 
@@ -871,50 +894,91 @@ export function UdmEntityEditor() {
       delete n[slug]
       return n
     })
+    clearFieldSaveError(slug)
   }
 
-  async function handleSave() {
-    if (Object.keys(dirty).length === 0) return
-    if (pendingValidation.current) clearTimeout(pendingValidation.current)
-    setSaving(true)
+  // Turn an API error into per-field policy messages
+  function errorToMessages(e: unknown): PolicyMessage[] {
+    if (e instanceof UdmApiError) {
+      const msgs: PolicyMessage[] = [...e.policyMessages]
+      for (const err of e.pydanticErrors) {
+        const loc = err.loc.filter(s => s !== 'body' && s !== 'payload').join(' → ')
+        msgs.push({ level: 'error', text: loc ? `${loc}: ${err.msg}` : err.msg })
+      }
+      for (const [field, errs] of Object.entries(e.fieldErrors)) {
+        for (const err of errs) msgs.push({ level: 'error', text: field === '__all__' ? err : `${field}: ${err}` })
+      }
+      if (msgs.length === 0) msgs.push({ level: 'error', text: e.message })
+      return msgs
+    }
+    return [{ level: 'error', text: e instanceof Error ? e.message : 'Save failed' }]
+  }
+
+  /** PATCH a single field's payload; on success merge the fresh entity and un-dirty the slug. */
+  async function savePayload(slug: string, payload: unknown) {
+    if (savingFields.has(slug)) return
+    setSavingFields(prev => new Set(prev).add(slug))
+    clearFieldSaveError(slug)
     setErrors([])
     setSuccess(null)
     try {
-      const updated = await udmPatchEntity(resolvedEntityId, dirty)
+      const updated = await udmPatchEntity(resolvedEntityId, { [slug]: payload })
       setEntity(updated)
-      skipAmbientValidation.current = true
-      setDirty({})
+      setDirty(prev => {
+        const n = { ...prev }
+        delete n[slug]
+        if (Object.keys(n).length === 0) skipAmbientValidation.current = true
+        return n
+      })
       setPolicyMessages((updated.policy_messages ?? []) as PolicyMessage[])
-      setSuccess('Saved successfully.')
     } catch (e) {
-      if (e instanceof UdmApiError) {
-        const plainErrors: string[] = [
-          ...e.pydanticErrors.map(err => {
-            const loc = err.loc.filter(s => s !== 'body' && s !== 'payload').join(' → ')
-            return loc ? `${loc}: ${err.msg}` : err.msg
-          }),
-          ...Object.entries(e.fieldErrors).flatMap(([field, errs]) =>
-            errs.map(err => (field === '__all__' ? err : `${field}: ${err}`)),
-          ),
-        ]
-        // Fall back to the raw message only when there is no structured data at all
-        if (plainErrors.length === 0 && e.policyMessages.length === 0) plainErrors.push(e.message)
-        setErrors(plainErrors)
-        setPolicyMessages(e.policyMessages)
-      } else {
-        setErrors([e instanceof Error ? e.message : 'Save failed'])
-      }
+      setFieldSaveErrors(prev => ({ ...prev, [slug]: errorToMessages(e) }))
+      throw e
     } finally {
-      setSaving(false)
+      setSavingFields(prev => {
+        const n = new Set(prev)
+        n.delete(slug)
+        return n
+      })
     }
   }
 
+  async function saveField(slug: string) {
+    if (!(slug in dirty)) return
+    try {
+      await savePayload(slug, dirty[slug])
+    } catch {
+      // error already surfaced under the field; value stays dirty/editable
+    }
+  }
+
+  /** Immediately commit submodel ops (create/update/delete) for one field slug. Throws on failure. */
+  async function saveSubmodelOps(slug: string, ops: unknown) {
+    await savePayload(slug, ops)
+  }
+
   async function handleTransition(fieldSlug: string, transitionName: string) {
+    // Fields whose per-field save failed would fail the transition too — offer
+    // to reset them to their server values before transitioning.
+    let sendDirty = dirty
+    const failedSlugs = Object.keys(fieldSaveErrors).filter(s => s in dirty)
+    if (failedSlugs.length > 0) {
+      const labels = failedSlugs.map(s => fieldLabelMap[s] ?? s).join(', ')
+      if (!window.confirm(`These fields could not be saved and will be reset to their previous values: ${labels}. Continue?`)) return
+      sendDirty = { ...dirty }
+      for (const s of failedSlugs) delete sendDirty[s]
+      setDirty(sendDirty)
+      setFieldSaveErrors(prev => {
+        const n = { ...prev }
+        for (const s of failedSlugs) delete n[s]
+        return n
+      })
+    }
     setTransitioning(true)
     setErrors([])
     setSuccess(null)
     try {
-      const updated = await udmTransitionEntity(resolvedEntityId, fieldSlug, transitionName, dirty)
+      const updated = await udmTransitionEntity(resolvedEntityId, fieldSlug, transitionName, sendDirty)
       skipAmbientValidation.current = true
       setDirty({})
       const globalMsgs = ((updated.policy_messages ?? []) as PolicyMessage[]).filter((m: PolicyMessage) => !m.highlight_fields?.length)
@@ -950,10 +1014,6 @@ export function UdmEntityEditor() {
       setTransitioning(false)
     }
   }
-
-  const dirtyCount = Object.keys(dirty).length
-  const hasBlockingMessages = policyMessages.some(m => m.level === 'error' || m.level === 'critical')
-  const saveDisabled = saving || dirtyCount === 0 || !editable || validationPending || hasBlockingMessages || !savePreviewValid
 
   // ── Layout parsing ──────────────────────────────────────────────────────────
   const sortedFields = [...fields].sort((a, b) => a.sort_order - b.sort_order)
@@ -1003,9 +1063,6 @@ export function UdmEntityEditor() {
     return null
   }
 
-  // Check if any save button exists in the config (inline save buttons suppress the toolbar save)
-  const hasSaveInConfig = sortedFields.some(f => f.data_type === 'save_button')
-
   function getTabTitle(tab: (typeof sortedFields)[0]): string {
     const tc = tab.type_config as { title?: string } | undefined
     return tc?.title || tab.slug
@@ -1042,44 +1099,11 @@ export function UdmEntityEditor() {
         compact={compact}
         onEntityRefresh={onEntityRefreshCb}
         validTransitions={previewNodes[entity!.id]?.[fd.slug]?.valid_transitions ?? null}
+        onSaveField={saveField}
+        onCommitOps={ops => saveSubmodelOps(fd.slug, ops)}
+        fieldSaving={savingFields.has(fd.slug)}
+        saveErrorMessages={fieldSaveErrors[fd.slug]}
       />
-    )
-  }
-
-  function renderToolbarSaveButton() {
-    const blockingMsgs = policyMessages.filter(m => m.level === 'error' || m.level === 'critical')
-    const showTooltip = hasBlockingMessages && blockingMsgs.length > 0
-    return (
-      <span id="save-btn-toolbar" style={{ display: 'inline-block' }}>
-        {showTooltip && (
-          <Tooltip target="#save-btn-toolbar" position="top">{formatPolicyMessages(blockingMsgs, fieldLabelMap)}</Tooltip>
-        )}
-        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-          onClick={() => void handleSave()} disabled={saveDisabled}>
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
-      </span>
-    )
-  }
-
-  function renderSaveButton(label?: string, variant?: string, slug?: string) {
-    const isSuccess = variant === 'success'
-    const blockingMsgs = policyMessages.filter(m => m.level === 'error' || m.level === 'critical')
-    const showTooltip = hasBlockingMessages && blockingMsgs.length > 0
-    return (
-      <span id="save-btn-inline" style={{ display: 'inline-block' }}>
-        {showTooltip && (
-          <Tooltip target="#save-btn-inline" position="top">{formatPolicyMessages(blockingMsgs, fieldLabelMap)}</Tooltip>
-        )}
-        <button
-          type="button"
-          className={`${styles.inlineBtn} ${isSuccess ? styles.inlineBtnSuccess : styles.inlineBtnPrimary}`}
-          onClick={() => void handleSave()}
-          disabled={saveDisabled || (slug != null && !isTabClickable(slug))}
-        >
-          {saving ? 'Saving…' : (label || 'Save')}
-        </button>
-      </span>
     )
   }
 
@@ -1092,10 +1116,8 @@ export function UdmEntityEditor() {
   }
 
   function renderHstackGroupButton(fd: (typeof sortedFields)[0]) {
-    if (fd.data_type === 'save_button') {
-      const tc = fd.type_config as { label?: string; variant?: string } | undefined
-      return <span key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant, fd.slug)}</span>
-    }
+    // save_button configs are obsolete — fields save individually on commit
+    if (fd.data_type === 'save_button') return null
     if (fd.data_type === 'tab_prev') {
       const tc = fd.type_config as { label?: string } | undefined
       return (
@@ -1120,10 +1142,8 @@ export function UdmEntityEditor() {
   }
 
   function renderStructuralField(fd: (typeof sortedFields)[0]) {
-    if (fd.data_type === 'save_button') {
-      const tc = fd.type_config as { label?: string; variant?: string } | undefined
-      return <div key={fd.slug}>{renderSaveButton(tc?.label, tc?.variant, fd.slug)}</div>
-    }
+    // save_button configs are obsolete — fields save individually on commit
+    if (fd.data_type === 'save_button') return null
     if (fd.data_type === 'tab_prev') {
       const tc = fd.type_config as { label?: string } | undefined
       return (
@@ -1260,7 +1280,7 @@ export function UdmEntityEditor() {
                   aria-selected={activeTab === idx}
                   className={`${styles.tabButton} ${activeTab === idx ? styles.tabButtonActive : ''}`}
                   onClick={() => selectTab(idx, true)}
-                  disabled={saving || transitioning || !isTabClickable(tab.slug)}
+                  disabled={transitioning || !isTabClickable(tab.slug)}
                 >
                   <span className={styles.tabNumberContainer}>
                     {tabSeverity && tabMsgs.length > 0 ? (
@@ -1289,7 +1309,7 @@ export function UdmEntityEditor() {
             <select
               value={activeTab}
               onChange={e => selectTab(parseInt(e.target.value, 10), true)}
-              disabled={saving || transitioning}
+              disabled={transitioning}
             >
               {tabsWithFields.map(({ tab }, idx) => (
                 <option key={tab.slug} value={idx} disabled={!isTabClickable(tab.slug)}>
@@ -1335,11 +1355,9 @@ export function UdmEntityEditor() {
         </div>
       )}
 
-      {/* Default toolbar — hidden if the config has inline save buttons */}
+      {/* Toolbar — fields save individually, so no global Save/Discard */}
       <div className={styles.toolbar}>
-        <div style={{ fontSize: '0.875rem', color: '#888' }}>
-          {dirtyCount > 0 ? `${dirtyCount} unsaved change${dirtyCount > 1 ? 's' : ''}` : 'No changes'}
-        </div>
+        <div />
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button type="button"
             className={`${styles.compactModeBtn} ${compact ? styles.compactModeBtnActive : ''}`}
@@ -1347,17 +1365,10 @@ export function UdmEntityEditor() {
             title="Toggle compact view">
             Compact
           </button>
-          {dirtyCount > 0 && (
-            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-              onClick={() => { setDirty({}); setDiscardCount(c => c + 1) }}>
-              Discard All
-            </button>
-          )}
           <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
             onClick={() => setShowHistory(!showHistory)}>
             {showHistory ? 'Hide History' : 'View History'}
           </button>
-          {!hasSaveInConfig && renderToolbarSaveButton()}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react'
 import { Tooltip } from 'primereact/tooltip'
 import {
   udmSearchUsers,
@@ -10,6 +10,7 @@ import { getLang } from './types'
 import { fieldEditorRegistry } from './registry'
 import { PolicyMessageList } from './shared'
 import { FieldInput } from './FieldInput'
+import { FieldCommitWrapper, LARGE_TYPES, BLUR_COMMIT_TYPES } from './FieldCommitWrapper'
 import { useUdmGrants, type NewItemGrant } from './grants'
 import { ReadonlyBadge } from './shared'
 import { FieldPreview } from './FieldPreview'
@@ -187,9 +188,13 @@ interface SubmodelChildCardProps {
   visibleSlugs?: string[] | null
   /** §6: field slugs the user may edit on this item; null = all (legacy). */
   editableSlugs?: string[] | null
+  /** Immediate mode: commit a single sub-field's staged value now. Throws on failure. */
+  onCommitField?: (subSlug: string) => Promise<void>
+  /** Immediate mode: whether the delete button is busy. */
+  opBusy?: boolean
 }
 
-function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, onChange, onDelete, subFieldSeverities, subFieldMessages, nameMap = {}, onEntityRefresh, compact, expanded, onToggleExpanded, deleteAllowed, visibleSlugs, editableSlugs }: SubmodelChildCardProps) {
+function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, onChange, onDelete, subFieldSeverities, subFieldMessages, nameMap = {}, onEntityRefresh, compact, expanded, onToggleExpanded, deleteAllowed, visibleSlugs, editableSlugs, onCommitField, opBusy }: SubmodelChildCardProps) {
   const canDelete = deleteAllowed ?? !disabled
   const shownFields = visibleSlugs != null ? subFields.filter(f => visibleSlugs.includes(f.slug)) : subFields
   const fieldEditable = (slug: string) => editableSlugs == null || editableSlugs.includes(slug)
@@ -218,6 +223,42 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
   }
 
   const hasChanges = Object.keys(item.dirty).length > 0
+
+  // Per-subfield commit (immediate mode): only for saved items with a commit callback
+  const [subSaving, setSubSaving] = useState<Record<string, boolean>>({})
+  const commitEnabled = !!onCommitField && item.id != null
+  async function commitSub(slug: string) {
+    if (!onCommitField || subSaving[slug]) return
+    setSubSaving(s => ({ ...s, [slug]: true }))
+    try {
+      await onCommitField(slug)
+    } catch {
+      // error surfaced by the parent editor under the submodel field
+    } finally {
+      setSubSaving(s => ({ ...s, [slug]: false }))
+    }
+  }
+  function cancelSub(slug: string) {
+    const d = { ...item.dirty }
+    delete d[slug]
+    onChange(d)
+  }
+  // Nested submodels/workflows manage their own persistence — no commit wrapper
+  const subCommitable = (subFd: FieldDefinitionOut) =>
+    commitEnabled && !subFd.data_type.startsWith('submodel') && subFd.data_type !== 'workflow'
+  const wrapCommit = (subFd: FieldDefinitionOut, children: ReactNode, fieldDisabled: boolean) =>
+    subCommitable(subFd) ? (
+      <FieldCommitWrapper
+        dirty={subFd.slug in item.dirty}
+        saving={!!subSaving[subFd.slug]}
+        large={LARGE_TYPES.has(subFd.data_type)}
+        blurCommit={BLUR_COMMIT_TYPES.has(subFd.data_type)}
+        disabled={fieldDisabled}
+        onCommit={() => void commitSub(subFd.slug)}
+        onCancel={() => cancelSub(subFd.slug)}>
+        {children}
+      </FieldCommitWrapper>
+    ) : children
 
   const topSeverity = hasHighlightedFields ? maxSeverity(
     Object.entries(subFieldSeverities ?? {}).flatMap(([, sev]) => [{ level: sev } as PolicyMessage])
@@ -253,7 +294,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
               {canDelete && (
                 <button type="button"
                   style={{ fontSize: '0.78rem', padding: '0.2rem 0.5rem', border: '1px solid #dc2626', borderRadius: '4px', cursor: 'pointer', background: '#fff', color: '#dc2626' }}
-                  onClick={onDelete}>
+                  onClick={onDelete} disabled={opBusy}>
                   Delete
                 </button>
               )}
@@ -319,14 +360,17 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                     )}
                     <span className={styles.compactLabel}>{subLabel}{(disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user || (item.id == null && subFd.data_type === 'workflow')) && <ReadonlyBadge />}</span>
                   </div>
-                  {langs.map(lang => (
-                    <FieldInput key={lang || 'nolang'} fd={subFd}
-                      value={getChildFieldValue(item, subFd.slug, lang)}
-                      onChange={val => handleFieldChange(subFd.slug, lang, val)}
-                      disabled={disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user}
-                      lang={lang} entityChildren={item.saved?.children} nodeId={item.id}
-                      onEntityRefresh={onEntityRefresh} />
-                  ))}
+                  {(() => {
+                    const fieldDisabled = disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user
+                    return wrapCommit(subFd, langs.map(lang => (
+                      <FieldInput key={lang || 'nolang'} fd={subFd}
+                        value={getChildFieldValue(item, subFd.slug, lang)}
+                        onChange={val => handleFieldChange(subFd.slug, lang, val)}
+                        disabled={fieldDisabled}
+                        lang={lang} entityChildren={item.saved?.children} nodeId={item.id}
+                        onEntityRefresh={onEntityRefresh} />
+                    )), fieldDisabled)
+                  })()}
                 </div>
               )
             }
@@ -339,19 +383,22 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                   {subLabel} <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#999' }}>({subFd.data_type})</span>
                   {(disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user || (item.id == null && subFd.data_type === 'workflow')) && <ReadonlyBadge />}
                 </div>
-                {langs.map(lang => (
-                  <FieldInput
-                    key={lang || 'nolang'}
-                    fd={subFd}
-                    value={getChildFieldValue(item, subFd.slug, lang)}
-                    onChange={val => handleFieldChange(subFd.slug, lang, val)}
-                    disabled={disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user}
-                    lang={lang}
-                    entityChildren={item.saved?.children}
-                    nodeId={item.id}
-                    onEntityRefresh={onEntityRefresh}
-                  />
-                ))}
+                {(() => {
+                  const fieldDisabled = disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user
+                  return wrapCommit(subFd, langs.map(lang => (
+                    <FieldInput
+                      key={lang || 'nolang'}
+                      fd={subFd}
+                      value={getChildFieldValue(item, subFd.slug, lang)}
+                      onChange={val => handleFieldChange(subFd.slug, lang, val)}
+                      disabled={fieldDisabled}
+                      lang={lang}
+                      entityChildren={item.saved?.children}
+                      nodeId={item.id}
+                      onEntityRefresh={onEntityRefresh}
+                    />
+                  )), fieldDisabled)
+                })()}
                 {subMsgs.length > 0 && <PolicyMessageList messages={subMsgs} />}
               </div>
             )
@@ -364,7 +411,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
 
 // ── SubmodelEditor ────────────────────────────────────────────────────────────
 
-function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled, uiLang, onChange, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact, nodeId }: {
+function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled, uiLang, onChange, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact, nodeId, onCommitOps }: {
   fd: FieldDefinitionOut
   existingChildren: unknown[]
   existingValue: unknown
@@ -377,6 +424,8 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
   resetKey?: number
   onEntityRefresh?: (policyMessages?: PolicyMessage[]) => void | Promise<void>
   compact?: boolean
+  /** Immediate mode: persist ops right away (per-op PATCH). Absent = legacy staging. */
+  onCommitOps?: (ops: unknown) => Promise<void>
 }) {
   const isList = fd.data_type === 'submodel_list'
   // §6 grants: null context (admin previews etc.) keeps legacy `disabled` behavior.
@@ -411,6 +460,9 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
 
   const [items, setItems] = useState<LocalChild[]>(() => toItems(existingChildren))
   const nextKeyRef = useRef(0)
+  // Immediate mode: busy flag for create/delete PATCHes; expand items created just now
+  const [opBusy, setOpBusy] = useState(false)
+  const justCreatedRef = useRef(false)
 
   // Lifted expansion state — keyed by item.key (= id for saved items, "_new_N" for pending ones)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set)
@@ -434,7 +486,8 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
       for (const c of incoming) {
         if (expandedKeys.has(c.id)) newExpandedKeys.add(c.id)
       }
-      const hasExpandedNew = items.some(it => !it.id && expandedKeys.has(it.key))
+      const hasExpandedNew = justCreatedRef.current || items.some(it => !it.id && expandedKeys.has(it.key))
+      justCreatedRef.current = false
       if (hasExpandedNew) {
         for (const c of incoming) {
           if (!prevServerIds.current.has(c.id)) newExpandedKeys.add(c.id)
@@ -467,7 +520,26 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
     onChangeRef.current(ops.length > 0 ? ops : [])
   }
 
+  async function runOp(ops: SubmodelOp[]) {
+    if (!onCommitOps || opBusy) return
+    setOpBusy(true)
+    try {
+      await onCommitOps(ops)
+    } catch {
+      // error surfaced by the parent editor under the submodel field
+    } finally {
+      setOpBusy(false)
+    }
+  }
+
   function addItem() {
+    if (onCommitOps) {
+      // Immediate mode: create on the server right away; the entity refresh
+      // rebuilds the item list with the fresh child, expanded via justCreatedRef.
+      justCreatedRef.current = true
+      void runOp([{ op: 'create', fields: {} }])
+      return
+    }
     const key = `_new_${nextKeyRef.current++}`
     applyItemChange([...items, { key, id: null, dirty: {}, saved: null, deleted: false }])
     setExpandedKeys(prev => new Set([...prev, key]))
@@ -478,6 +550,12 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
   }
 
   function deleteItem(key: string) {
+    const target = items.find(it => it.key === key)
+    if (onCommitOps && target?.id) {
+      // Immediate mode: delete on the server right away
+      void runOp([{ op: 'delete', id: target.id }])
+      return
+    }
     applyItemChange(
       items
         .map(it => {
@@ -487,6 +565,25 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
         })
         .filter(it => !(it.deleted && !it.id))
     )
+  }
+
+  /** Immediate mode: commit one staged sub-field of one item, then un-stage it. */
+  async function commitItemField(key: string, subSlug: string) {
+    const target = items.find(it => it.key === key)
+    if (!onCommitOps || !target?.id || !(subSlug in target.dirty)) return
+    await onCommitOps([{ op: 'update', id: target.id, fields: { [subSlug]: target.dirty[subSlug] } }])
+    // Success: drop the committed sub-slug, keep other staged edits pending
+    setItems(prev => {
+      const next = prev.map(it => {
+        if (it.key !== key) return it
+        const d = { ...it.dirty }
+        delete d[subSlug]
+        return { ...it, dirty: d }
+      })
+      const ops = buildOps(next)
+      onChangeRef.current(ops.length > 0 ? ops : [])
+      return next
+    })
   }
 
   // For submodel_select: the current op to send (or null = no change)
@@ -625,6 +722,8 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
             nameMap={previewNameMap}
             onEntityRefresh={onEntityRefresh}
             compact={compact}
+            onCommitField={onCommitOps ? subSlug => commitItemField(item.key, subSlug) : undefined}
+            opBusy={opBusy}
             expanded={expandedKeys.has(item.key)}
             onToggleExpanded={() => setExpandedKeys(prev => {
               const next = new Set(prev)
@@ -637,8 +736,8 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
         {!disabled && canCreate && (
           <button type="button"
             style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem', border: '1px dashed #aaa', borderRadius: '4px', cursor: 'pointer', background: '#fff', color: '#555', marginTop: '0.25rem' }}
-            onClick={addItem}>
-            + Add item
+            onClick={addItem} disabled={opBusy}>
+            {opBusy ? 'Saving…' : '+ Add item'}
           </button>
         )}
       </div>
@@ -651,26 +750,93 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
     setPendingRemoval(false)
     setSelectDirty({})
     setSelectExpanded(true)
+    if (onCommitOps) {
+      // Immediate mode: create the child now; the refresh sets the FK and
+      // the prevSelectNodeId effect clears pendingNew.
+      setOpBusy(true)
+      onCommitOps({ op: 'create', fields: {} })
+        .catch(() => setPendingNew(false))
+        .finally(() => setOpBusy(false))
+      return
+    }
     onChange({ op: 'create', fields: {} })
   }
 
   function handleCancelPending() {
     setPendingNew(false)
     setSelectDirty({})
-    onChange(null)
+    if (!onCommitOps) onChange(null)
   }
 
   function handleDelete() {
     setPendingRemoval(true)
     setSelectExpanded(false)
+    if (onCommitOps) {
+      setOpBusy(true)
+      onCommitOps({ op: 'delete' })
+        .catch(() => setPendingRemoval(false))
+        .finally(() => setOpBusy(false))
+      return
+    }
     onChange({ op: 'delete' })
   }
 
   function handleClear() {
     setPendingRemoval(true)
     setSelectExpanded(false)
+    if (onCommitOps) {
+      // Clearing the FK = PATCH the field to null
+      setOpBusy(true)
+      onCommitOps(null)
+        .catch(() => setPendingRemoval(false))
+        .finally(() => setOpBusy(false))
+      return
+    }
     onChange(null)
   }
+
+  // Immediate mode: per-subfield commit/cancel for the owned child's fields
+  const [selectSubSaving, setSelectSubSaving] = useState<Record<string, boolean>>({})
+  async function commitSelectField(subSlug: string) {
+    if (!onCommitOps || !(subSlug in selectDirty) || selectSubSaving[subSlug]) return
+    setSelectSubSaving(s => ({ ...s, [subSlug]: true }))
+    try {
+      await onCommitOps({ op: 'update', fields: { [subSlug]: selectDirty[subSlug] } })
+      setSelectDirty(prev => {
+        const n = { ...prev }
+        delete n[subSlug]
+        // Re-stage any remaining uncommitted edits; [] = nothing pending
+        onChangeRef.current(Object.keys(n).length > 0 ? { op: 'update', fields: n } : [])
+        return n
+      })
+    } catch {
+      // error surfaced by the parent editor under the submodel field
+    } finally {
+      setSelectSubSaving(s => ({ ...s, [subSlug]: false }))
+    }
+  }
+  function cancelSelectField(subSlug: string) {
+    setSelectDirty(prev => {
+      const n = { ...prev }
+      delete n[subSlug]
+      onChangeRef.current(Object.keys(n).length > 0 ? { op: 'update', fields: n } : [])
+      return n
+    })
+  }
+  const selectCommitEnabled = !!onCommitOps && ownedChild != null && !pendingNew
+  const wrapSelectCommit = (subFd: FieldDefinitionOut, children: ReactNode) =>
+    selectCommitEnabled && !subFd.data_type.startsWith('submodel') && subFd.data_type !== 'workflow' ? (
+      <FieldCommitWrapper
+        dirty={subFd.slug in selectDirty}
+        saving={!!selectSubSaving[subFd.slug]}
+        large={LARGE_TYPES.has(subFd.data_type)}
+        blurCommit={BLUR_COMMIT_TYPES.has(subFd.data_type)}
+        disabled={disabled}
+        onCommit={() => void commitSelectField(subFd.slug)}
+        onCancel={() => cancelSelectField(subFd.slug)}>
+        {children}
+      </FieldCommitWrapper>
+    ) : children
 
   function handleSelectFieldChange(slug: string, lang: string, val: unknown) {
     const subFd = subFields.find(f => f.slug === slug)
@@ -824,14 +990,14 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
                         )}
                         <span className={styles.compactLabel}>{subLabel}</span>
                       </div>
-                      {langs.map(lang => (
+                      {wrapSelectCommit(subFd, langs.map(lang => (
                         <FieldInput key={lang || 'nolang'} fd={subFd}
                           value={fieldValue(lang)}
                           onChange={val => handleSelectFieldChange(subFd.slug, lang, val)}
                           disabled={disabled} lang={lang}
                           entityChildren={ownedChild?.children} nodeId={ownedChild?.id}
                           onEntityRefresh={onEntityRefresh} />
-                      ))}
+                      )))}
                     </div>
                   )
                 }
@@ -843,7 +1009,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
                     <div style={{ fontSize: '0.82rem', fontWeight: 600, color: sev ? subColor : '#444', marginBottom: '0.2rem' }}>
                       {subLabel} <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#999' }}>({subFd.data_type})</span>
                     </div>
-                    {langs.map(lang => (
+                    {wrapSelectCommit(subFd, langs.map(lang => (
                       <FieldInput
                         key={lang || 'nolang'}
                         fd={subFd}
@@ -855,7 +1021,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
                         nodeId={ownedChild?.id}
                         onEntityRefresh={onEntityRefresh}
                       />
-                    ))}
+                    )))}
                     {subMsgs.length > 0 && <PolicyMessageList messages={subMsgs} />}
                   </div>
                 )
@@ -877,11 +1043,12 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
 // ── FieldInputProps adapter ───────────────────────────────────────────────────
 // SubmodelEditor wraps SubmodelEditorComponent to match the FieldInputProps interface.
 
-function SubmodelEditorAdapter({ fd, value, onChange, disabled, lang = 'en', entityChildren, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact, nodeId }: FieldInputProps) {
+function SubmodelEditorAdapter({ fd, value, onChange, disabled, lang = 'en', entityChildren, subFieldSeverities, subFieldMessages, resetKey, onEntityRefresh, compact, nodeId, onCommitOps }: FieldInputProps) {
   return (
     <SubmodelEditorComponent
       fd={fd}
       nodeId={nodeId}
+      onCommitOps={onCommitOps}
       existingChildren={(entityChildren?.[fd.slug] ?? []) as unknown[]}
       existingValue={value}
       disabled={disabled}
