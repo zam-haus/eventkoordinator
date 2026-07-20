@@ -7,6 +7,7 @@ proposals, events, and event prices — scoped to what the current user can acce
 
 import io
 import os
+import re
 import zipfile
 from datetime import datetime
 
@@ -41,6 +42,11 @@ def _isoformat_or_none(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
+
+
+def _safe_slug(text: str, max_length: int = 50) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")
+    return slug[:max_length]
 
 
 @router.get(
@@ -264,7 +270,8 @@ def export_images(request):
                 continue
             try:
                 ext = os.path.splitext(p.photo.name)[1].lower()
-                arcname = f"{p.id}{ext}"
+                title_slug = _safe_slug(p.title)
+                arcname = f"{p.id}-{title_slug}{ext}" if title_slug else f"{p.id}{ext}"
                 with p.photo.open("rb") as fh:
                     zf.writestr(arcname, fh.read())
             except (OSError, FileNotFoundError):
