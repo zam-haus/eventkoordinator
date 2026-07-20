@@ -64,6 +64,20 @@ def export_excel(request):
     ]
     accessible_proposal_ids = {p.id for p in accessible_proposals}
 
+    # Times shown per proposal must match exactly what ends up in the Events
+    # sheet below: same status filter and the same per-event view permission
+    # check.
+    times_by_proposal_id: dict = {}
+    for e in EventModel.objects.filter(
+        proposal_id__in=accessible_proposal_ids,
+        status__in=[EventModel.Status.PUBLISHED, EventModel.Status.CONFIRMED],
+    ).order_by("start_time"):
+        if not request.user.has_perm((apiv1, "view", EventModel), e):
+            continue
+        times_by_proposal_id.setdefault(e.proposal_id, []).append(
+            f"{e.status}: {_isoformat_or_none(e.start_time)} - {_isoformat_or_none(e.end_time)}"
+        )
+
     proposals_rows = []
     for p in accessible_proposals:
         proposals_rows.append({
@@ -85,6 +99,7 @@ def export_excel(request):
             "material_cost_eur": _decimal_or_none(p.material_cost_eur),
             "has_building_access": p.has_building_access,
             "speakers": ", ".join(s.display_name for s in sorted(p.speakers.all(), key=lambda s: s.sort_order)),
+            "times": ", ".join(times_by_proposal_id.get(p.id, [])),
         })
 
     df_proposals = pl.DataFrame(
@@ -107,6 +122,7 @@ def export_excel(request):
             "material_cost_eur": pl.Series([], dtype=pl.Float64),
             "has_building_access": pl.Series([], dtype=pl.Boolean),
             "speakers": pl.Series([], dtype=pl.String),
+            "times": pl.Series([], dtype=pl.String),
         }
     )
 
