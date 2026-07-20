@@ -10,6 +10,7 @@ import os
 import re
 import zipfile
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import polars as pl
 import xlsxwriter
@@ -27,6 +28,7 @@ from sync_pretix.models import CalculatedPrices
 router = Router()
 
 TABLE_STYLE = "Table Style Medium 9"
+BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
 
 def _decimal_or_none(value) -> float | None:
@@ -41,6 +43,8 @@ def _decimal_or_none(value) -> float | None:
 def _isoformat_or_none(value: datetime | None) -> str | None:
     if value is None:
         return None
+    if value.tzinfo is not None:
+        value = value.astimezone(BERLIN_TZ)
     return value.isoformat()
 
 
