@@ -270,6 +270,31 @@ class ConfigVersionTests(BaseAPITest):
         })
         self.assertEqual(resp.status_code, 422)
 
+    def test_replace_draft_rejects_binding_to_missing_data_field(self):
+        """A form element binding to a data field that was not provided must be
+        rejected — a data field cannot be deleted while still referenced."""
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config)
+        ConfigVersionFactory(config=config, status="draft")
+        resp = self.put(f"/configs/{config.id}/versions/draft/", {
+            "notes": "",
+            "data_fields": [
+                {"slug": "title", "data_type": "text_short", "is_localized": False, "type_config": {}, "default": None},
+            ],
+            "form_elements": [
+                {"slug": "title-el", "element_type": "field", "sort_order": 0, "is_preview": False,
+                 "labels": {"en": "Title"}, "help_texts": {}, "type_config": {},
+                 "bindings": [{"data_field_slug": "title", "role": ""}]},
+                # This element binds to a data field that is NOT in data_fields
+                {"slug": "ghost-el", "element_type": "field", "sort_order": 1, "is_preview": False,
+                 "labels": {"en": "Ghost"}, "help_texts": {}, "type_config": {},
+                 "bindings": [{"data_field_slug": "ghost", "role": ""}]},
+            ],
+        })
+        self.assertEqual(resp.status_code, 400, resp.text)
+        self.assertIn("ghost", resp.json()["detail"])
+        self.assertIn("cannot be deleted", resp.json()["detail"])
+
     def test_publish_draft(self):
         config = FieldConfigFactory()
         ConfigLanguageFactory(config=config)

@@ -389,7 +389,12 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
             for b in el_in.bindings:
                 df = field_map.get(b.data_field_slug)
                 if df is None:
-                    raise ApiError(400, {"detail": f"Form element '{el_in.slug}' binds to unknown data field '{b.data_field_slug}'"})
+                    raise ApiError(400, {"detail": (
+                        f"Form element '{el_in.slug}' binds to data field '{b.data_field_slug}', "
+                        f"but that data field is not present in this version. "
+                        f"A data field cannot be deleted while a form element still references it; "
+                        f"remove the binding first."
+                    )})
                 FormElementBinding.objects.create(form_element=el, data_field=df, role=b.role)
 
         # Resolve parents (slug -> FK) after all elements exist

@@ -301,11 +301,11 @@ migration — higher risk.
 
 ---
 
-## 9. Implementation Log (TODO #1–#14)
+## 9. Implementation Log (TODO #1–#15)
 
-All 14 tracked tasks are complete. This section records what was actually
+All 15 tracked tasks are complete. This section records what was actually
 changed, where, and the key decisions that emerged during implementation.
-Verification at the end of each item: backend tests (143 in `userdefinedmodel`),
+Verification at the end of each item: backend tests (144 in `userdefinedmodel`),
 frontend `tsc --noEmit`, and `VITE_DJANGO_BASE=true npm run build` all pass.
 
 ### #1 — Strip form-tree columns from the Data Field editor
@@ -463,6 +463,25 @@ frontend `tsc --noEmit`, and `VITE_DJANGO_BASE=true npm run build` all pass.
 - Browser-verified: `field` dropdown shows all 28 data fields (unfiltered);
   `date_range` filter applied to the same list yields only the date-compatible
   fields (`startdate`, `enddate`).
+
+### #15 — Block deletion of referenced data fields
+- **Files:** `src/UdmAdminPage.tsx` (`DataFieldsEditor.removeField`, delete button),
+  `backend/userdefinedmodel/api_configs.py` (`replace_draft` binding check),
+  `backend/userdefinedmodel/tests/test_api.py` (1 new test).
+- **Frontend (preventive):** the ✕ delete button on a data field is **disabled**
+  with a tooltip ("Cannot delete: bound to a form element. Remove the binding
+  in the Form Config tab first.") when the field's slug is in `referencedSlugs`
+  (bound by any form element in the current draft). `removeField` also guards
+  with an `alert` naming the bound element(s) as a fallback.
+- **Backend (defense in depth):** `replace_draft` already rejected bindings to
+  unknown data fields; the error message was improved to explicitly state a
+  data field cannot be deleted while still referenced ("…but that data field is
+  not present in this version. A data field cannot be deleted while a form
+  element still references it; remove the binding first.").
+- Browser-verified: all 28 referenced fields show disabled delete buttons; a
+  newly-added (unreferenced) field's delete button is enabled. New backend test
+  confirms a 400 with the field name in the detail when a binding targets a
+  missing data field.
 
 ### Cross-cutting notes
 - **Stable slug keys:** tree nodes are keyed by `el.slug` (not a random

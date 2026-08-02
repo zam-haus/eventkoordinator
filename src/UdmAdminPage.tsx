@@ -2220,6 +2220,21 @@ function DataFieldsEditor({ dataFields, onChange, languages, allConfigs, formEle
   }
 
   function removeField(slug: string) {
+    // Block deletion of data fields that are referenced by a form element
+    // binding. The backend (replace_draft) would reject the save anyway
+    // ("binds to unknown data field"), but blocking here gives immediate,
+    // clear feedback instead of a confusing save-time error.
+    if (referencedSlugs.has(slug)) {
+      const boundBy = formElements
+        .filter(el => (el.bindings ?? []).some(b => b.data_field_slug === slug))
+        .map(el => el.slug)
+      alert(
+        `Cannot delete data field “${slug}” because it is bound to form element(s): ${boundBy.join(', ')}.
+` +
+        `Remove the binding(s) in the Form Config tab first.`
+      )
+      return
+    }
     onChange(dataFields.filter(f => f.slug !== slug))
   }
 
@@ -2298,6 +2313,8 @@ function DataFieldsEditor({ dataFields, onChange, languages, allConfigs, formEle
               </button>
               <button type="button" className={`${styles.btn} ${styles.btnDanger}`}
                 style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+                disabled={referencedSlugs.has(f.slug)}
+                title={referencedSlugs.has(f.slug) ? 'Cannot delete: bound to a form element. Remove the binding in the Form Config tab first.' : 'Delete data field'}
                 onClick={() => removeField(f.slug)}>✕</button>
             </div>
             {editingSlug === (f.slug || '') && (
