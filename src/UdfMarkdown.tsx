@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import rehypeComponents from 'rehype-components'
 import type { Element, ElementContent } from 'hast'
 
@@ -36,6 +37,22 @@ function Pill({ color = 'blue', children }: { color?: string; children?: React.R
   )
 }
 
+// ── sanitize schema ─────────────────────────────────────────────────────────
+// rehype-raw parses embedded HTML into hast; rehype-sanitize then strips anything
+// not explicitly allowed (GitHub-style defaults) BEFORE rehype-components rewrites
+// the custom <pill> element to <pill-badge>. We extend the default schema to let the
+// pill custom element and its color/data-color attributes through.
+const SANITIZE_PILL_COLORS = ['blue', 'green', 'yellow', 'red', 'gray'] as const
+const sanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), 'pill', 'pill-badge'],
+  attributes: {
+    ...defaultSchema.attributes,
+    pill: [['color', ...SANITIZE_PILL_COLORS]],
+    'pill-badge': [['data-color', ...SANITIZE_PILL_COLORS]],
+  },
+}
+
 // ── rehype-components config ──────────────────────────────────────────────────
 
 const rehypeComponentMap = {
@@ -59,7 +76,7 @@ export function UdfMarkdown({ content, className }: UdfMarkdownProps) {
   return (
     <div className={className}>
       <ReactMarkdown
-        rehypePlugins={[rehypeRaw, [rehypeComponents, { components: rehypeComponentMap }]]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema], [rehypeComponents, { components: rehypeComponentMap }]]}
         components={{
           'pill-badge': ({ node, children }: { node?: unknown; children?: React.ReactNode }) => {
             const color = String((node as Element | undefined)?.properties?.['data-color'] ?? 'blue')

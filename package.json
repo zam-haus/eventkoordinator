@@ -15,6 +15,7 @@
     "@playwright/test": "^1.58.2",
     "@stackoverflow/stacks-editor": "^0.15.3",
     "@xyflow/react": "^12.10.2",
+    "dompurify": "^3.4.12",
     "i18next": "^26.0.8",
     "i18next-browser-languagedetector": "^8.2.1",
     "i18next-http-backend": "^3.0.6",
@@ -28,7 +29,8 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.13.1",
     "rehype-components": "^0.3.0",
-    "rehype-raw": "^7.0.0"
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
