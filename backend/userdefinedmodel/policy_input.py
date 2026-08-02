@@ -71,6 +71,21 @@ class UserDocument(BaseModel):
     sudo: bool = False
 
 
+class FileDocument(BaseModel):
+    """Metadata of a FileAttachment referenced by an image/file field.
+    image_width/image_height are null for non-images and for files whose
+    dimensions could not be determined."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    original_name: str
+    mime_type: str
+    size_bytes: int
+    image_width: Optional[int]
+    image_height: Optional[int]
+
+
 class GroupDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -122,6 +137,7 @@ class EntityActionInput(BaseModel):
     users: dict[str, UserDocument]
     groups: dict[str, GroupDocument]
     linked_entities: dict[str, NodeDocument]  # entity_select targets, one deep
+    files: dict[str, FileDocument]  # image/file attachment metadata by PK
     user: UserDocument
     changed_fields: dict[str, Any]
     additional_result: dict[str, Any]  # VIEW pre-check carry-over

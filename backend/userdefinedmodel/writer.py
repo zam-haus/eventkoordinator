@@ -382,6 +382,7 @@ def _write_field_value(node, field, value, language, user, edit_group) -> None:
             mime_type=staging.mime_type,
             size_bytes=staging.size_bytes,
             file=staging.file,
+            **_image_dimensions(staging),
         )
 
         # Soft-delete old attachment if nothing else references it
@@ -421,6 +422,27 @@ def _write_field_value(node, field, value, language, user, edit_group) -> None:
     fv.full_clean()
     fv.save()
     _record_field_edit(edit_group, field, old_value, value, lang=language, affected_node=node)
+
+
+def _image_dimensions(staging) -> dict:
+    """Probe pixel dimensions of an image upload for FileAttachment.image_width/
+    image_height (exposed to policies via input.files). Non-images and files
+    Pillow cannot read yield no dimensions — the fields stay null and any
+    policy resolution check fails closed."""
+    if not (staging.mime_type or "").startswith("image/"):
+        return {}
+    try:
+        from PIL import Image
+        with staging.file.open("rb") as fh:
+            with Image.open(fh) as img:
+                width, height = img.size
+    except Exception:
+        logger.warning("could not determine image dimensions for staging file %s", staging.id, exc_info=True)
+        return {}
+    if width > 32767 or height > 32767:  # PositiveSmallIntegerField bound
+        logger.warning("image dimensions %dx%d exceed storable range for staging file %s", width, height, staging.id)
+        return {}
+    return {"image_width": width, "image_height": height}
 
 
 def _record_field_edit(edit_group, field, old_value, new_value, *, old_attachment=None, new_attachment=None, lang="", affected_node=None) -> None:

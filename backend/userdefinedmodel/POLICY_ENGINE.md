@@ -54,6 +54,7 @@ Current `input_version`: **1**.
   "users":           { "<uuid>": { /* UserDocument */ } },
   "groups":          { "<int-as-string>": { "id", "name", "member_ids" } },
   "linked_entities": { "<uuid>": { /* NodeDocument, one entity deep */ } },
+  "files":           { "<uuid>": { "id", "original_name", "mime_type", "size_bytes", "image_width", "image_height" } },
   "user":            { /* requesting user, incl. "permissions" */ },
   "changed_fields":  { "<slug>": { "value": <scalar> } },
   "additional_result": { /* VIEW pre-check carry-over, {} when none ran */ }
@@ -72,6 +73,9 @@ Key rules:
 - Field values hold **raw PKs**; resolve details via the lookup maps:
   `input.users[input.entity.fields.owner.value]`, `input.groups[sprintf("%v", [gid])].member_ids`.
   There is no in-place expansion of user/group objects anywhere in the tree.
+- `files` — metadata of `image`/`file` attachments referenced anywhere in the tree (and in linked
+  entities), keyed by attachment PK: `input.files[input.entity.fields.photo.value].image_width`.
+  `image_width`/`image_height` are `null` for non-images and files whose dimensions are unknown.
 - `linked_entities` — `entity_select`/`entity_select_multi` targets resolved exactly **one entity deep**
   (`engine.LINKED_ENTITY_DEPTH`): the linked entity's own fields and submodel tree are included, its
   outgoing entity links stay raw PKs. User/group references inside linked entities are in the lookup maps.

@@ -9,6 +9,7 @@ function FileEditor({ fd, value, onChange, disabled }: FieldInputProps) {
   const [progress, setProgress] = useState(0)
   const [stagingName, setStagingName] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const uploadAreaRef = useRef<HTMLDivElement>(null)
 
   async function handleFile(file: File) {
     setUploading(true)
@@ -34,6 +35,10 @@ function FileEditor({ fd, value, onChange, disabled }: FieldInputProps) {
   const hasValue = stagingName !== null || currentUrl !== null
 
   function handleClear() {
+    // The Clear button unmounts after clearing (no value left), and removing
+    // a focused element fires no blur event — so park focus on the upload
+    // area, which persists, to keep the commit wrapper's blur-save armed.
+    uploadAreaRef.current?.focus()
     setStagingName(null)
     onChange(null)
   }
@@ -53,13 +58,19 @@ function FileEditor({ fd, value, onChange, disabled }: FieldInputProps) {
         </div>
       )}
       {stagingName && (
-        <div className={styles.fileInfo}>Staged: {stagingName} — will be saved on next save</div>
+        <div className={styles.fileInfo}>Staged: {stagingName} — saved when you leave the field</div>
       )}
       {!disabled && (
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.4rem' }}>
           <div
+            ref={uploadAreaRef}
             className={styles.fileUploadArea}
             style={{ flex: 1, marginTop: 0 }}
+            // Focusable so the commit wrapper's blur-save fires when the user
+            // clicks elsewhere after staging an upload
+            tabIndex={disabled ? undefined : 0}
+            role="button"
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click() } }}
             onClick={() => inputRef.current?.click()}
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) void handleFile(f) }}
             onDragOver={e => e.preventDefault()}

@@ -156,6 +156,19 @@ def _serialize_user(user, *, include_permissions: bool = False) -> dict:
     return doc
 
 
+def _serialize_file(attachment) -> dict:
+    """FileDocument for input.files. image_width/image_height are null for
+    non-images and for files whose dimensions could not be determined."""
+    return {
+        "id": str(attachment.id),
+        "original_name": attachment.original_name,
+        "mime_type": attachment.mime_type,
+        "size_bytes": attachment.size_bytes,
+        "image_width": attachment.image_width,
+        "image_height": attachment.image_height,
+    }
+
+
 def _serialize_group(group) -> dict:
     """GroupDocument: members as a flat id list; user data lives in input.users."""
     return {
@@ -174,11 +187,12 @@ def _walk_doc_nodes(node_doc: dict):
             yield from _walk_doc_nodes(child)
 
 
-def _collect_reference_ids(node_docs: list[dict]) -> tuple[set, set, set]:
-    """Scan field values of all nodes for user / group / entity PKs."""
+def _collect_reference_ids(node_docs: list[dict]) -> tuple[set, set, set, set]:
+    """Scan field values of all nodes for user / group / entity / file PKs."""
     user_ids: set[str] = set()
     group_ids: set[int] = set()
     entity_ids: set[str] = set()
+    file_ids: set[str] = set()
     for doc in node_docs:
         for node in _walk_doc_nodes(doc):
             for entry in node.get("fields", {}).values():
@@ -198,19 +212,22 @@ def _collect_reference_ids(node_docs: list[dict]) -> tuple[set, set, set]:
                     entity_ids.add(str(val))
                 elif dt == "entity_select_multi" and isinstance(val, list):
                     entity_ids.update(str(v) for v in val)
-    return user_ids, group_ids, entity_ids
+                elif dt in ("image", "file"):
+                    file_ids.add(str(val))
+    return user_ids, group_ids, entity_ids, file_ids
 
 
-def build_lookup_maps(entity_docs: list[dict], schemas: dict) -> tuple[dict, dict, dict]:
-    """Build input.users / input.groups / input.linked_entities for the given
-    node documents. Linked entities are resolved LINKED_ENTITY_DEPTH deep; their
-    user/group references are included in the lookup maps, their own entity
-    links stay raw PKs."""
+def build_lookup_maps(entity_docs: list[dict], schemas: dict) -> tuple[dict, dict, dict, dict]:
+    """Build input.users / input.groups / input.linked_entities / input.files
+    for the given node documents. Linked entities are resolved
+    LINKED_ENTITY_DEPTH deep; their user/group/file references are included in
+    the lookup maps, their own entity links stay raw PKs."""
     from django.contrib.auth.models import Group
     from openid_user_management.models import OpenIDUser
     from userdefinedmodel.models import UserDefinedModelEntityNode
+    from userdefinedmodel.models.node import FileAttachment
 
-    user_ids, group_ids, entity_ids = _collect_reference_ids(entity_docs)
+    user_ids, group_ids, entity_ids, file_ids = _collect_reference_ids(entity_docs)
 
     linked_entities: dict[str, dict] = {}
     seen_entity_ids = {str(n.get("id")) for d in entity_docs for n in _walk_doc_nodes(d)}
@@ -225,10 +242,11 @@ def build_lookup_maps(entity_docs: list[dict], schemas: dict) -> tuple[dict, dic
             n.collect_schema_documents(schemas)
             linked_entities[str(n.id)] = doc
             next_docs.append(doc)
-        # include user/group refs of linked docs; do NOT follow their entity links
-        more_users, more_groups, _ = _collect_reference_ids(next_docs)
+        # include user/group/file refs of linked docs; do NOT follow their entity links
+        more_users, more_groups, _, more_files = _collect_reference_ids(next_docs)
         user_ids |= more_users
         group_ids |= more_groups
+        file_ids |= more_files
         frontier = set()  # depth 1: stop
 
     users: dict[str, dict] = {}
@@ -244,7 +262,12 @@ def build_lookup_maps(entity_docs: list[dict], schemas: dict) -> tuple[dict, dic
             for u in g.user_set.all():
                 users.setdefault(str(u.id), _serialize_user(u))
 
-    return users, groups, linked_entities
+    files: dict[str, dict] = {}
+    if file_ids:
+        for att in FileAttachment.objects.filter(id__in=file_ids):
+            files[str(att.id)] = _serialize_file(att)
+
+    return users, groups, linked_entities, files
 
 
 def get_udm_type_for_node(node: "UserDefinedModelEntityNode"):
@@ -305,7 +328,7 @@ def build_policy_input(
     docs = [entity_doc]
     if old_entity_doc is not None:
         docs.append(old_entity_doc)
-    users, groups, linked_entities = build_lookup_maps(docs, schemas)
+    users, groups, linked_entities, files = build_lookup_maps(docs, schemas)
 
     user_doc = _serialize_user(user, include_permissions=True)
 
@@ -320,6 +343,7 @@ def build_policy_input(
         "users": users,
         "groups": groups,
         "linked_entities": linked_entities,
+        "files": files,
         "user": user_doc,
         "changed_fields": changed_fields or {},
         "additional_result": additional_result or {},

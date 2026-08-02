@@ -190,18 +190,41 @@ error_messages contains msg if {
 	msg := {"level": "warning", "text": "Please select a workshop area.", "field_slug": "area"}
 }
 
-# photo: an image has been uploaded
-_photo_complete if {
+# photo: an image has been uploaded …
+_photo_uploaded if {
 	print("[check:photo] value=", input.entity.fields.photo.value)
 	input.entity.fields.photo.value != null
-	print("[check:photo] PASS")
+	print("[check:photo] uploaded")
+}
+
+# … with sufficient resolution. Dimensions come from input.files (null for
+# attachments whose dimensions could not be determined — those fail closed).
+_photo_resolution_ok if {
+	f := input.files[input.entity.fields.photo.value]
+	print("[check:photo] width=", f.image_width, "height=", f.image_height)
+	f.image_width >= 1440
+	f.image_height >= 1080
+	print("[check:photo] PASS resolution ok")
+}
+
+_photo_complete if {
+	_photo_uploaded
+	_photo_resolution_ok
 }
 
 error_messages contains msg if {
 	_checklist_ctx
-	not _photo_complete
+	not _photo_uploaded
 	print("[checklist:photo] FAIL no image uploaded")
 	msg := {"level": "warning", "text": "Please upload a proposal image (min. 1440×1080 px).", "field_slug": "photo"}
+}
+
+error_messages contains msg if {
+	_checklist_ctx
+	_photo_uploaded
+	not _photo_resolution_ok
+	print("[checklist:photo] FAIL resolution too low")
+	msg := {"level": "warning", "text": "The proposal image is too small — minimum resolution is 1440×1080 pixels.", "field_slug": "photo"}
 }
 
 # photo-copyright-consent: uploading a new (non-null) image requires the

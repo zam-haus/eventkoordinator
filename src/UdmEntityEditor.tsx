@@ -121,9 +121,11 @@ interface WorkflowFieldWidgetProps {
   compact?: boolean
   fieldLabelMap?: Record<string, string>
   editable?: boolean
+  /** True while any field has uncommitted edits — transitions are blocked. */
+  locked?: boolean
 }
 
-function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap, validTransitions, editable = true }: WorkflowFieldWidgetProps) {
+function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, messages, severity, compact, fieldLabelMap, validTransitions, editable = true, locked = false }: WorkflowFieldWidgetProps) {
   const wfDef = (fd as FieldDefinitionOut & { workflow_version?: WorkflowVersionOut | null }).workflow_version
   const fv = entity.field_values.find(v => v.field_slug === fd.slug)
   const currentStateName = (fv?.value as string | null) ?? null
@@ -193,7 +195,8 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
                   <Tooltip target={`#${spanId}`} position="top">{formatPolicyMessages(blockMsgs, fieldLabelMap)}</Tooltip>
                 )}
                 <button type="button" className={styles.tabNavButton}
-                  disabled={transitioning || isBlocked}
+                  disabled={transitioning || isBlocked || locked}
+                  title={locked ? 'Save or discard pending field changes first' : undefined}
                   onClick={() => void onTransition(fd.slug, t.name)}>
                   → {tLabel}
                 </button>
@@ -302,7 +305,7 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
 
   // Workflow fields are fully managed by WorkflowFieldWidget — no dirty/value editing
   if (fd.data_type === 'workflow') {
-    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} fieldLabelMap={fieldLabelMap} validTransitions={validTransitions} editable={editable} />
+    return <WorkflowFieldWidget fd={fd} entity={entity} uiLang={uiLang} onTransition={onTransition} transitioning={transitioning} messages={messages} severity={severity} compact={compact} fieldLabelMap={fieldLabelMap} validTransitions={validTransitions} editable={editable} locked={Object.keys(dirty).length > 0} />
   }
   const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
   const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
@@ -819,7 +822,10 @@ export function UdmEntityEditor() {
       try {
         const result = await udmValidationPreview(entityId, dirty)
         setPolicyMessages(result.messages ?? [])
-        setPreviewNodes(result.nodes ?? {})
+        // Deliberately NOT updating previewNodes here: this preview evaluates
+        // the pending (unsaved) values, so its transition matrix says what
+        // WOULD be valid after saving. Transition buttons must only reflect
+        // the saved state — previewNodes updates on ambient ({}) previews.
       } catch {
         // Validation is best-effort — ignore lock conflicts and network errors
       }
@@ -924,10 +930,12 @@ export function UdmEntityEditor() {
     try {
       const updated = await udmPatchEntity(resolvedEntityId, { [slug]: payload })
       setEntity(updated)
+      // Deliberately NOT setting skipAmbientValidation here: the dirty-change
+      // effect must re-run the validation preview so the transition-button
+      // matrix (previewNodes) reflects the newly saved state.
       setDirty(prev => {
         const n = { ...prev }
         delete n[slug]
-        if (Object.keys(n).length === 0) skipAmbientValidation.current = true
         return n
       })
       setPolicyMessages((updated.policy_messages ?? []) as PolicyMessage[])

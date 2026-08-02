@@ -110,6 +110,10 @@ valid_input_doc(doc) if {
 	is_object(doc.groups)
 	is_object(doc.linked_entities) # entity_select targets, ONE entity deep;
 	                               # their own entity links stay raw PKs
+	is_object(doc.files)           # image/file attachment metadata by PK:
+	                               # {id, original_name, mime_type, size_bytes,
+	                               #  image_width, image_height} — dimensions are
+	                               #  null for non-images / unreadable files
 	is_object(doc.user)
 	is_object(doc.changed_fields)  # save/preview: raw submitted payload,
 	                               # {"<slug>": {"value": <scalar>}}
@@ -270,6 +274,16 @@ example_users := {example_user.id: example_user}
 
 example_groups := {"1": {"id": 1, "name": "moderators", "member_ids": [example_user.id]}}
 
+# image/file fields hold raw attachment PKs; resolve metadata via input.files.
+example_files := {EXAMPLE_ATTACHMENT_ID: {
+	"id": EXAMPLE_ATTACHMENT_ID,
+	"original_name": "logo.png",
+	"mime_type": "image/png",
+	"size_bytes": 123456,
+	"image_width": 1920,
+	"image_height": 1080,
+}}
+
 # The complete field map: one value example per data type. EVERY defined
 # field appears (unset ones with value null / {} when localized).
 example_base_fields := {
@@ -410,6 +424,7 @@ example_inputs contains doc if {
 			"users": example_users,
 			"groups": example_groups,
 			"linked_entities": example_linked_entities,
+			"files": example_files,
 			"user": example_user,
 			"changed_fields": {},
 			"additional_result": {},
