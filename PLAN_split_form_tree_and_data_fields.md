@@ -298,3 +298,180 @@ migration — higher risk.
 ---
 
 *End of plan. Tick §0 then say "implement" (or paste your edited checklist) to proceed.*
+
+---
+
+## 9. Implementation Log (TODO #1–#14)
+
+All 14 tracked tasks are complete. This section records what was actually
+changed, where, and the key decisions that emerged during implementation.
+Verification at the end of each item: backend tests (143 in `userdefinedmodel`),
+frontend `tsc --noEmit`, and `VITE_DJANGO_BASE=true npm run build` all pass.
+
+### #1 — Strip form-tree columns from the Data Field editor
+- **Files:** `src/UdmAdminPage.tsx`
+- Removed `label` / `help_text` / `is_preview` / `sort_order` inputs from the
+  Data Field editor (these now live on the FormElement, not the DataField).
+  Data Field editor keeps only storage semantics: `data_type`, `is_localized`,
+  `type_config`, defaults, validation.
+
+### #2 — Preview Config sub-tab stored like a form
+- **Files:** `src/UdmAdminPage.tsx`
+- `ConfigDraftEditor` gained a third sub-tab `preview`. The form element tree is
+  split by `is_preview`: the Preview Config tab shows only `is_preview=true`
+  elements; the Form Config tab shows the rest. `FormConfigEditor` takes an
+  `isPreview` prop. The inline `FormElementEditor` no longer shows an "Is Preview"
+  checkbox (set via the tab instead).
+
+### #3 — Default submodel_config_version_id to latest published
+- **Files:** `src/UdmAdminPage.tsx` (`SubmodelVersionPicker`),
+  `backend/userdefinedmodel/api_configs.py` (`replace_draft`),
+  `backend/userdefinedmodel/schemas.py` (validator),
+  `backend/userdefinedmodel/api_bundle.py` (import).
+- **Decision — split constraint:** drafts may be saved with orphaned submodel
+  fields (no config); publishing is blocked until every submodel field has a
+  config (`_validate_submodels_for_publish`). `SubmodelVersionPicker` auto-selects
+  the latest published version. `replace_draft` accepts a FieldConfig id and
+  resolves it to the latest published ConfigVersion. Bundle import resolves
+  pending submodel refs leaf-first (topo order) before the parent publishes.
+
+### #4 — Make sidebar→tree drag-drop reliable
+- **Files:** `src/UdmAdminPage.tsx`, `src/UdmAdminPage.module.css`
+- **Decision — remove PrimeReact dragdropScope:** eliminated the competing
+  PrimeReact `dragdropScope` / `onDragDrop` handlers; the custom HTML5 drop lines
+  are now the only drop path. Drop lines are taller (1.1rem) and always visible.
+  The outer `onDrop` inserts at the last-hovered position as a fallback.
+
+### #5 — Edit the languages available in a schema
+- **Files:** `backend/userdefinedmodel/schemas.py` (`FieldConfigUpdateIn`),
+  `backend/userdefinedmodel/api_configs.py` (`update_config`),
+  `backend/userdefinedmodel/tests/test_api.py` (4 new tests),
+  `src/UdmAdminPage.tsx` (`ConfigDetail` language editor),
+  `src/UdmAdminPage.module.css` (`.langEditor`/`.langRow`/`.langDefault`),
+  `src/schema_udm.d.ts` (regenerated).
+- `FieldConfigUpdateIn` now accepts an optional `languages: list[ConfigLanguageIn]`
+  with the same validator as create (exactly one default, no duplicate codes).
+  `PATCH /configs/{id}/` handles language updates via **soft replace**: deletes
+  existing `ConfigLanguage` rows and recreates them from the payload. Removing a
+  language only deletes the `ConfigLanguage` row — existing
+  translations/field-values for that code remain in the DB (orphaned but
+  harmless; re-adding the same code re-enables them). Frontend language editor
+  lives inside the Config Info edit view: per-language code/label inputs, a
+  radio group for the default (enforces exactly one), ↑/↓ reorder, ✕ remove
+  (disabled at one language; auto-promotes a remaining language to default),
+  and "+ Add language".
+
+### #6 — Warning badge for missing labels / help translations
+- **Files:** `src/UdmAdminPage.tsx`
+- A ⚠ badge appears on tree nodes when a form element lacks labels or has
+  incomplete help-text translations. This is a warning, not a block (see #10).
+
+### #7 — Preset / validate binding roles by form field type
+- **Files:** `src/UdmAdminPage.tsx` (`BINDING_ROLES`),
+  `backend/userdefinedmodel/schemas.py` (`FormElementIn.validate_element`,
+  `_BINDING_ROLES`).
+- **Decision — preset roles, no freetext:** `field` → role `""`;
+  `date_range` → roles `from`/`to`. The inline editor renders fixed role labels
+  and a data-field dropdown per role (no freetext role input). Backend
+  `validate_element` enforces the exact role list per element type.
+
+### #8 — Fix stuck bulk migration
+- **Files:** `backend/userdefinedmodel/models/migration.py` (`error_message`),
+  `backend/userdefinedmodel/migrations/0028_*`, `backend/userdefinedmodel/tasks.py`
+  (`run_bulk_migration`), `backend/userdefinedmodel/schemas.py`
+  (`BulkMigrationOut`), `src/UdmMigration.tsx`.
+- **Root cause:** a stale Celery worker (predating migration 0027) had the old
+  `userdefinedmodel_fielddefinition` table name cached in memory while the DB
+  had `userdefinedmodel_datafield` (migration 0027). Added an `error_message`
+  field to `BulkMigrationPlan` (migration 0028); the task now captures
+  `executed_at` / `error_message` on failure and resets progress counters on
+  re-run. Exposed in the API and the frontend migration UI.
+- **Note:** the stale Celery worker must be restarted by the user (the agent does
+  not kill processes).
+
+### #9 — Localized help text
+- **Files:** `src/UdmAdminPage.tsx` (`FormElementEditor`)
+- Added per-language Help Text inputs alongside the per-language Labels in the
+  inline `FormElementEditor`.
+
+### #10 — Allow saving / publishing without labels
+- **Files:** `backend/userdefinedmodel/schemas.py` (`validate_element`).
+- **Decision — labels optional:** removed the hard `labels is required for
+  'field' elements` validation. A field config may be saved and published
+  without labels; the missing-label condition is surfaced as a warning badge
+  (#6), not a hard block.
+
+### #11 — Fix label input focus loss (HIGH PRIORITY)
+- **Files:** `src/UdmAdminPage.tsx` (`FormConfigEditor`).
+- **Root cause:** `FormConfigEditor` rebuilt the tree with fresh `genElKey()`
+  keys on every prop change, causing the inline editor to unmount/remount and
+  lose input focus on each keystroke. **Fix:** stable slug-based keys + a
+  structural-signature guard (`structSig`) on the rebuild `useEffect` — the tree
+  is rebuilt only when structure (slug/parent/type/order) changes; pure field
+  value edits (labels/help/bindings) no longer trigger a rebuild. Browser-verified:
+  focus retained across keystrokes in the date_range label field.
+
+### #12 — Date-range field in the entity editor
+- **Files:** `backend/userdefinedmodel/api_helpers.py` (compat merge),
+  `src/UdmEntityEditor.tsx` (`FieldRow` date_range branch, `renderFieldRow`),
+  `src/udm-editors/DateRangeEditor.tsx` (rewritten),
+  `src/udm-editors/FieldCommitWrapper.tsx` (reused),
+  `src/udm-editors/DateTimeEditors.tsx` (reference).
+- **Backend:** the legacy `fields` compat merge folds the binding→data-field slugs
+  into `type_config.bindings` for `date_range` elements, so the entity editor
+  (which iterates `fields`) can resolve the bound fields.
+- **Frontend visibility:** a multi-field widget shows when **all** bound fields
+  are editable (per user correction — not viewable, not "any").
+- **Widget:** a single PrimeReact `Calendar` with `selectionMode="range"` (one
+  control, two dates). The in-progress selection is held in **local state** so
+  the two-click range flow completes without parent re-renders resetting
+  PrimeReact's second-click state. The parent is notified only when the range
+  is complete (both dates set) or fully cleared — never mid-selection — so
+  picking a new `from` doesn't wipe the existing `to`. **Dates are flipped** if
+  the user picks the end before the start, so `from ≤ to`.
+- **Autosave:** the `date_range` branch wraps `DateRangeEditor` in
+  `FieldCommitWrapper` (same commit/cancel buttons as other fields, with
+  blur-commit). Editability and saving aggregate over both bound fields
+  (`commitBoth` saves `from` then `to`; `resetBoth` clears both).
+- Browser-verified: single range calendar renders both bound values; two-click
+  range completes; flip on reverse order; autosave buttons appear.
+
+### #13 — Sync multiple form fields bound to the same data field
+- **Files:** none — verified the sync already works through shared state.
+- **Finding:** no code change was needed. The compat merge gives `field` elements
+  `slug = data_field.slug`, so both the `date_range` widget (writing
+  `dirty[fromSlug]`/`dirty[toSlug]`) and a separate `field` element bound to the
+  same data field (writing `dirty[fd.slug]`) share the **same dirty keys**.
+  Editing either one live-updates the other (visual sync, the chosen scope).
+- **Test setup (per user instruction):** created a draft from the published
+  config, added `startdate-field` and `enddate-field` `field` elements
+  alongside the existing `date_range` picker, published, ran the bulk migration
+  (28 slug-matched field mappings; 4/4 entities migrated with values intact).
+- Browser-verified both directions: date_range → fields and field → date_range
+  sync live. The format mismatch (date-only vs datetime) is handled gracefully
+  by `parseDate` in both editors.
+
+### #14 — Filter selectable form field bindings to the correct data type
+- **Files:** `src/UdmAdminPage.tsx` (`BINDING_DATA_TYPES`, `FormElementEditor`).
+- Added a `BINDING_DATA_TYPES` map alongside `BINDING_ROLES` declaring the allowed
+  data types per element type / role. `undefined` means "any type" (no filter):
+  `field` → role `""` → `undefined` (any data type with an editor);
+  `date_range` → roles `from`/`to` → `['date', 'time', 'datetime']`. The binding
+  dropdown filters `dataFields` by the allowed set; the currently-selected slug
+  is always kept visible even if its type no longer matches, so an existing
+  binding is never silently hidden.
+- Browser-verified: `field` dropdown shows all 28 data fields (unfiltered);
+  `date_range` filter applied to the same list yields only the date-compatible
+  fields (`startdate`, `enddate`).
+
+### Cross-cutting notes
+- **Stable slug keys:** tree nodes are keyed by `el.slug` (not a random
+  counter) to prevent unmount/remount on edits (#11).
+- **Soft remove for languages:** removing a language never purges existing
+  translations / field values; re-adding the code re-enables them (#5).
+- **Submodel constraint split:** drafts may have orphaned submodel fields;
+  publishing enforces all submodel fields have a config (#3).
+- **Multi-field widget visibility:** show iff ALL bound fields are editable
+  (#12, #13).
+- **Schema regen:** `bash buildnodeclient.sh` was run after every backend API
+  schema change (per AGENTS.md).
