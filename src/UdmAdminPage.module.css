@@ -366,6 +366,27 @@
   font-weight: 600;
 }
 
+.langEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.langRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.langDefault {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .ruleTag {
   display: inline-block;
   padding: 0.15rem 0.5rem;

@@ -36,6 +36,7 @@ import {
   udmEvalPolicyNodes,
   udmListWorkflows,
   type FieldConfigOut,
+  type ConfigLanguageIn,
   type ConfigVersionOut,
   type FieldDefinitionIn,
   type FieldDefinitionOut,
@@ -602,6 +603,7 @@ function ConfigDetail({ configId, onBack }: ConfigDetailProps) {
   const [allConfigs, setAllConfigs] = useState<FieldConfigOut[]>([])
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
+  const [editLangs, setEditLangs] = useState<ConfigLanguageIn[]>([])
   const [editingMeta, setEditingMeta] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -616,6 +618,9 @@ function ConfigDetail({ configId, onBack }: ConfigDetailProps) {
       setConfig(cfg)
       setEditName(cfg.name)
       setEditDesc(cfg.description)
+      setEditLangs(cfg.languages.map((l, i) => ({
+        code: l.code, label: l.label, is_default: l.is_default, sort_order: l.sort_order ?? i,
+      })))
     } catch { /* ignore */ }
 
     try {
@@ -641,8 +646,13 @@ function ConfigDetail({ configId, onBack }: ConfigDetailProps) {
     setError(null)
     setSuccess(null)
     try {
-      const c = await udmUpdateConfig(configId, { name: editName, description: editDesc })
+      // Normalize sort_order to the list index before sending.
+      const langs = editLangs.map((l, i) => ({ ...l, sort_order: i }))
+      const c = await udmUpdateConfig(configId, { name: editName, description: editDesc, languages: langs })
       setConfig(c)
+      setEditLangs(c.languages.map((l, i) => ({
+        code: l.code, label: l.label, is_default: l.is_default, sort_order: l.sort_order ?? i,
+      })))
       setEditingMeta(false)
       setSuccess('Config updated.')
     } catch (e) {
@@ -693,6 +703,48 @@ function ConfigDetail({ configId, onBack }: ConfigDetailProps) {
               <div className={styles.formGroup} style={{ flex: 2 }}>
                 <label className={styles.label}>Description</label>
                 <input className={styles.input} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+              </div>
+            </div>
+            {/* Languages: add / remove / reorder / set default */}
+            <div className={styles.subsection}>
+              <div className={styles.subsectionTitle}>Languages</div>
+              <div className={styles.langEditor}>
+                {editLangs.map((lang, i) => (
+                  <div key={i} className={styles.langRow}>
+                    <input className={styles.input} style={{ width: '5rem' }}
+                      placeholder="code" value={lang.code}
+                      onChange={e => setEditLangs(prev => prev.map((l, j) => j === i ? { ...l, code: e.target.value } : l))} />
+                    <input className={styles.input} style={{ flex: 2 }}
+                      placeholder="Label" value={lang.label}
+                      onChange={e => setEditLangs(prev => prev.map((l, j) => j === i ? { ...l, label: e.target.value } : l))} />
+                    <label className={styles.langDefault} title="Set as default">
+                      <input type="radio" name="lang-default" checked={lang.is_default}
+                        onChange={() => setEditLangs(prev => prev.map((l, j) => ({ ...l, is_default: j === i })))} />
+                      default
+                    </label>
+                    <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ padding: '0.25rem 0.5rem' }}
+                      disabled={i === 0}
+                      onClick={() => setEditLangs(prev => { const next = [...prev]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next })}
+                      title="Move up">↑</button>
+                    <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ padding: '0.25rem 0.5rem' }}
+                      disabled={i === editLangs.length - 1}
+                      onClick={() => setEditLangs(prev => { const next = [...prev]; [next[i + 1], next[i]] = [next[i], next[i + 1]]; return next })}
+                      title="Move down">↓</button>
+                    <button type="button" className={`${styles.btn} ${styles.btnDanger}`} style={{ padding: '0.25rem 0.5rem' }}
+                      disabled={editLangs.length <= 1}
+                      onClick={() => setEditLangs(prev => {
+                        const next = prev.filter((_, j) => j !== i)
+                        // Ensure exactly one default remains
+                        if (!next.some(l => l.is_default) && next.length) next[0].is_default = true
+                        return next
+                      })}
+                      title="Remove language">✕</button>
+                  </div>
+                ))}
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                  onClick={() => setEditLangs(prev => [...prev, { code: '', label: '', is_default: false, sort_order: prev.length }])}>
+                  + Add language
+                </button>
               </div>
             </div>
             {error && <div className={styles.error}>{error}</div>}
@@ -2325,6 +2377,19 @@ const BINDING_ROLES: Record<string, string[]> = {
   date_range: ['from', 'to'],
 }
 
+/** Allowed data types per binding role. `undefined` (or a missing element/role
+ * entry) means "any data type" — no filter. Used to filter the data-field
+ * dropdown so a role only offers compatible data fields (e.g. date_range
+ * from/to only lists date/time/datetime fields). The currently-selected slug
+ * is always kept visible even if its type no longer matches, so an existing
+ * binding is never silently hidden. */
+const BINDING_DATA_TYPES: Record<string, Record<string, string[] | undefined>> = {
+  // 'field' is the generic widget: any data type with an editor is allowed.
+  field: { '': undefined },
+  // date_range reads two dates via parseDate — only date-compatible types.
+  date_range: { from: ['date', 'time', 'datetime'], to: ['date', 'time', 'datetime'] },
+}
+
 interface ElNodeData { el: FormElementIn }
 type ElTreeNode = TreeNode & { data?: ElNodeData }
 
@@ -2827,7 +2892,15 @@ function FormElementEditor({ el, dataFields, languages, onChange }: FormElementE
       {isWidget && (
         <div>
           <label className={styles.label} style={{ margin: '0.3rem 0' }}>Bindings (data fields)</label>
-          {presetBindings.map(b => (
+          {presetBindings.map(b => {
+            const allowed = BINDING_DATA_TYPES[el.element_type]?.[b.role]
+            const allowedSet = allowed ? new Set(allowed) : null
+            // Keep the currently-selected slug visible even if its type no
+            // longer matches the filter (don't silently hide an existing binding).
+            const visibleFields = allowedSet
+              ? dataFields.filter(f => allowedSet.has(f.data_type) || f.slug === b.data_field_slug)
+              : dataFields
+            return (
             <div key={b.role} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
               <span style={{ flex: '0 0 4rem', fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
                 {b.role === '' ? 'field' : b.role}
@@ -2835,10 +2908,11 @@ function FormElementEditor({ el, dataFields, languages, onChange }: FormElementE
               <select className={styles.select} value={b.data_field_slug}
                 onChange={e => setBindingForRole(b.role, e.target.value)} style={{ flex: 1 }}>
                 <option value="">— select data field —</option>
-                {dataFields.map(f => <option key={f.slug} value={f.slug}>{f.slug} ({f.data_type})</option>)}
+                {visibleFields.map(f => <option key={f.slug} value={f.slug}>{f.slug} ({f.data_type})</option>)}
               </select>
             </div>
-          ))}
+            )
+          })}
           {el.element_type === 'date_range' && (
             <div style={{ fontSize: '0.7rem', color: '#888' }}>Bind two <code>date</code> fields as <b>from</b> and <b>to</b>.</div>
           )}

@@ -115,18 +115,31 @@ def get_config(request, config_id: uuid.UUID):
 
 @router.patch("/configs/{config_id}/", response=FieldConfigOut, auth=django_auth)
 def update_config(request, config_id: uuid.UUID, payload: FieldConfigUpdateIn):
-    from userdefinedmodel.models import FieldConfig
+    from userdefinedmodel.models import FieldConfig, ConfigLanguage
     if denied := _require_perms(request, "userdefinedmodel.change_fieldconfig"):
         return denied
     try:
         cfg = FieldConfig.objects.prefetch_related("languages", "user_defined_model_types").get(id=config_id)
     except FieldConfig.DoesNotExist:
         return JsonResponse({"detail": "Not found"}, status=404)
-    if payload.name is not None:
-        cfg.name = payload.name
-    if payload.description is not None:
-        cfg.description = payload.description
-    cfg.save()
+    with transaction.atomic():
+        if payload.name is not None:
+            cfg.name = payload.name
+        if payload.description is not None:
+            cfg.description = payload.description
+        cfg.save()
+        # Languages: soft replace. Removing a language only deletes the
+        # ConfigLanguage row — existing translations / field values for that
+        # language code remain in the DB (orphaned but harmless; they simply
+        # won't be shown or edited). Re-adding the same code re-enables them.
+        if payload.languages is not None:
+            cfg.languages.all().delete()
+            for i, lang in enumerate(payload.languages):
+                ConfigLanguage.objects.create(
+                    config=cfg, code=lang.code, label=lang.label,
+                    is_default=lang.is_default,
+                    sort_order=lang.sort_order if lang.sort_order else i,
+                )
     return _field_config_out(cfg)
 
 

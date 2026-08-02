@@ -1168,6 +1168,8 @@ export interface components {
         FieldConfigUpdateIn: {
             /** Description */
             description?: string | null;
+            /** Languages */
+            languages?: components["schemas"]["ConfigLanguageIn"][] | null;
             /** Name */
             name?: string | null;
         };

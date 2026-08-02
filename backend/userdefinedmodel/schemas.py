@@ -372,7 +372,20 @@ class FieldConfigCreateIn(Schema):
 class FieldConfigUpdateIn(Schema):
     name: Optional[Annotated[str, Field(min_length=1, max_length=_MAX_LABEL_LEN)]] = None
     description: Optional[Annotated[str, Field(max_length=_MAX_DESCRIPTION_LEN)]] = None
+    languages: Optional[list[ConfigLanguageIn]] = Field(None, min_length=1, max_length=_MAX_LANGUAGES)
     model_config = {"extra": "forbid"}
+
+    @field_validator("languages")
+    @classmethod
+    def exactly_one_default(cls, langs: Optional[list[ConfigLanguageIn]]) -> Optional[list[ConfigLanguageIn]]:
+        if langs is None:
+            return langs
+        if sum(1 for l in langs if l.is_default) != 1:
+            raise ValueError("exactly one language must have is_default=True")
+        codes = [l.code for l in langs]
+        if len(codes) != len(set(codes)):
+            raise ValueError("duplicate language codes")
+        return langs
 
 
 class FieldConfigOut(Schema):

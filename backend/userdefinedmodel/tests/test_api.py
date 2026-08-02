@@ -150,6 +150,73 @@ class FieldConfigTests(BaseAPITest):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["name"], "Updated Name")
 
+    def test_update_config_languages_add_remove_reorder(self):
+        from userdefinedmodel.models import ConfigLanguage, FieldConfig
+        config = FieldConfig.objects.create(name="Lang Config")
+        ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True, sort_order=0)
+        ConfigLanguage.objects.create(config=config, code="fr", label="Français", is_default=False, sort_order=1)
+        # Remove fr, add de, set de as default (demote en)
+        resp = self.patch(f"/configs/{config.id}/", {
+            "languages": [
+                {"code": "de", "label": "Deutsch", "is_default": True, "sort_order": 0},
+                {"code": "en", "label": "English", "is_default": False, "sort_order": 1},
+            ],
+        })
+        self.assertEqual(resp.status_code, 200, resp.text)
+        langs = resp.json()["languages"]
+        codes = [l["code"] for l in langs]
+        self.assertEqual(codes, ["de", "en"])  # reordered
+        self.assertTrue(langs[0]["is_default"])
+        self.assertFalse(langs[1]["is_default"])
+        # fr removed, de + en present
+        self.assertFalse(ConfigLanguage.objects.filter(config=config, code="fr").exists())
+        self.assertEqual(ConfigLanguage.objects.filter(config=config).count(), 2)
+
+    def test_update_config_languages_requires_one_default(self):
+        from userdefinedmodel.models import ConfigLanguage, FieldConfig
+        config = FieldConfig.objects.create(name="Lang Config")
+        ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True, sort_order=0)
+        resp = self.patch(f"/configs/{config.id}/", {
+            "languages": [
+                {"code": "en", "label": "English", "is_default": False, "sort_order": 0},
+                {"code": "de", "label": "Deutsch", "is_default": False, "sort_order": 1},
+            ],
+        })
+        self.assertEqual(resp.status_code, 422)
+
+    def test_update_config_languages_rejects_duplicate_codes(self):
+        from userdefinedmodel.models import ConfigLanguage, FieldConfig
+        config = FieldConfig.objects.create(name="Lang Config")
+        ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True, sort_order=0)
+        resp = self.patch(f"/configs/{config.id}/", {
+            "languages": [
+                {"code": "en", "label": "English", "is_default": True, "sort_order": 0},
+                {"code": "en", "label": "English2", "is_default": False, "sort_order": 1},
+            ],
+        })
+        self.assertEqual(resp.status_code, 422)
+
+    def test_update_config_languages_soft_remove_keeps_translations(self):
+        """Removing a language only deletes the ConfigLanguage row; existing
+        translations / field values for that code remain (soft remove)."""
+        from userdefinedmodel.models import (
+            ConfigLanguage, FieldConfig, ConfigVersion, FieldDefinition, FieldDefinitionTranslation,
+        )
+        config = FieldConfig.objects.create(name="Lang Config")
+        ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True, sort_order=0)
+        ConfigLanguage.objects.create(config=config, code="de", label="Deutsch", is_default=False, sort_order=1)
+        version = ConfigVersion.objects.create(config=config, status="draft")
+        field = FieldDefinition.objects.create(version=version, slug="title", data_type="text_short", is_localized=True)
+        FieldDefinitionTranslation.objects.create(field=field, language="de", label="Titel")
+        # Remove de
+        resp = self.patch(f"/configs/{config.id}/", {
+            "languages": [{"code": "en", "label": "English", "is_default": True, "sort_order": 0}],
+        })
+        self.assertEqual(resp.status_code, 200, resp.text)
+        # de language gone, but the de translation row still exists (soft remove)
+        self.assertFalse(ConfigLanguage.objects.filter(config=config, code="de").exists())
+        self.assertTrue(FieldDefinitionTranslation.objects.filter(field=field, language="de").exists())
+
     def test_delete_config(self):
         config = FieldConfigFactory()
         resp = self.delete(f"/configs/{config.id}/")
