@@ -5,15 +5,18 @@ from django.utils.html import format_html
 from polymorphic.admin import PolymorphicChildModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
 
+from project.admin_utils import MaskedSecretFormMixin
 from sync_caldav import models
 
 
 @admin.register(models.CalDAVSyncTarget)
-class CalDAVSyncTargetAdmin(PolymorphicChildModelAdmin, SimpleHistoryAdmin):
+class CalDAVSyncTargetAdmin(MaskedSecretFormMixin, PolymorphicChildModelAdmin, SimpleHistoryAdmin):
     list_display = ("name", "url", "calendar_display_name", "username", "created_at", "updated_at")
     search_fields = ("name", "url", "calendar_display_name", "username")
     ordering = ("-updated_at",)
     readonly_fields = ("sync_button",)
+    # Mask the CalDAV password on display; blank-on-save keeps the existing value.
+    secret_fields = ("password",)
 
     def get_urls(self):
         urls = super().get_urls()

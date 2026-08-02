@@ -2,6 +2,7 @@ from django.contrib import admin
 from polymorphic.admin import PolymorphicChildModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
 
+from project.admin_utils import MaskedSecretFormMixin
 from sync_pretix import models
 
 
@@ -36,11 +37,13 @@ class PretixSyncTargetAreaAssociationInline(admin.StackedInline):
 
 
 @admin.register(models.PretixSyncTarget)
-class PretixSyncTargetAdmin(PolymorphicChildModelAdmin, SimpleHistoryAdmin):
+class PretixSyncTargetAdmin(MaskedSecretFormMixin, PolymorphicChildModelAdmin, SimpleHistoryAdmin):
 	list_display = ("organizer_slug", "api_url", "created_at", "updated_at")
 	search_fields = ("organizer_slug", "api_url")
 	ordering = ("-updated_at",)
 	inlines = (PretixSyncTargetAreaAssociationInline,)
+	# Mask the Pretix API token on display; blank-on-save keeps the existing value.
+	secret_fields = ("api_token",)
 
 
 @admin.register(models.PretixSyncTargetAreaAssociation)
