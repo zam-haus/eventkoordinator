@@ -11,6 +11,7 @@ from django.http import HttpRequest
 from django.template.defaultfilters import urlencode
 from mozilla_django_oidc.auth import OIDCAuthenticationBackend as BaseOIDCAuthenticationBackend
 from openid_user_management.models import OpenIDUser
+from django.core.exceptions import SuspiciousOperation
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,63 @@ class OIDCAuthenticationBackend(BaseOIDCAuthenticationBackend):
         """
         Create a new OpenIDUser from OIDC claims.
 
+        If the email from claims is already in use by an *unlinked* account
+        (one with no ``openid_subject`` — e.g. a pre-OIDC account that has not
+        yet logged in via OIDC) and the IdP asserts the email is verified, the
+        existing account is claimed: its ``openid_subject``/provider and profile
+        fields are populated and the existing user is returned. This preserves
+        the legacy "first OIDC login links the matching local account" path
+        without allowing account takeover.
+
+        An email already in use by an account that *is* already linked to a
+        different ``sub``, or an unverified email, is rejected with
+        ``SuspiciousOperation`` — email is not a stable identifier and must not
+        be used to bind a second identity to an existing account.
+
         Args:
             claims (dict): OIDC claims from the identity provider
 
         Returns:
-            OpenIDUser: The created user instance
+            OpenIDUser: The created (or claimed) user instance
         """
         email = claims.get('email', '')
+        sub = claims.get('sub', '')
+
+        # Email collision handling: only an unlinked account may be claimed,
+        # and only when the IdP confirms the email is verified.
+        if email:
+            existing = OpenIDUser.objects.filter(email=email).first()
+            if existing is not None:
+                if existing.openid_subject:
+                    # Account is already linked to a different identity. Refuse
+                    # to bind a second sub to it via email — that would be an
+                    # account takeover via a reused/changed email.
+                    logger.warning(
+                        "Refusing OIDC user creation: email %s already bound to "
+                        "linked account %s (sub=%s); new sub=%s",
+                        email, existing.pk, existing.openid_subject, sub,
+                    )
+                    raise SuspiciousOperation(
+                        "Email already linked to another OpenID subject."
+                    )
+                if not claims.get('email_verified'):
+                    logger.warning(
+                        "Refusing OIDC user creation: email %s is unverified "
+                        "and already in use by unlinked account %s",
+                        email, existing.pk,
+                    )
+                    raise SuspiciousOperation(
+                        "Email already in use and not verified by the identity "
+                        "provider."
+                    )
+                # Claim the unlinked pre-OIDC account for this identity.
+                logger.warning(
+                    "Claiming unlinked account %s (email=%s) for new OIDC "
+                    "subject %s from provider %s",
+                    existing.pk, email, sub, self.get_provider_name(claims),
+                )
+                return self.update_user(existing, claims)
+
         username = claims.get('preferred_username', email.split('@')[0] if email else '')
 
         # Generate unique username if it already exists
@@ -49,7 +100,7 @@ class OIDCAuthenticationBackend(BaseOIDCAuthenticationBackend):
         )
 
         # Store OIDC provider information
-        user.openid_subject = claims.get('sub', '')
+        user.openid_subject = sub
         user.openid_provider = self.get_provider_name(claims)
 
         # Store optional profile information
@@ -103,29 +154,23 @@ class OIDCAuthenticationBackend(BaseOIDCAuthenticationBackend):
         """
         Find users matching the OIDC claims.
 
-        First tries to match by openid_subject (sub claim),
-        then falls back to email if subject is not found.
+        Matching is done **only** by the ``sub`` (subject) claim, which is the
+        stable, issuer-assigned identifier. Email is deliberately **not** used
+        as a fallback: email is not guaranteed unique across identities, is not
+        immutable, and may be unverified, so matching an existing account by
+        email would allow an attacker who controls a second identity with a
+        matching email to bind to and take over an existing account.
 
         Args:
             claims (dict): OIDC claims from the identity provider
 
         Returns:
-            QuerySet: Users matching the claims
+            QuerySet: Users matching the ``sub`` claim (empty if absent)
         """
         sub = claims.get('sub')
-        email = claims.get('email')
-
-        # Try to find user by OpenID subject first
-        if sub:
-            users = OpenIDUser.objects.filter(openid_subject=sub)
-            if users.exists():
-                return users
-
-        # Fall back to email
-        if email:
-            return OpenIDUser.objects.filter(email=email)
-
-        return OpenIDUser.objects.none()
+        if not sub:
+            return OpenIDUser.objects.none()
+        return OpenIDUser.objects.filter(openid_subject=sub)
 
     def get_provider_name(self, claims):
         """
@@ -156,14 +201,18 @@ class OIDCAuthenticationBackend(BaseOIDCAuthenticationBackend):
         """
         Verify that required claims are present.
 
+        Requires the ``sub`` claim: it is the stable, issuer-assigned subject
+        identifier and the only value used to bind a login to an existing
+        account (see ``filter_users_by_claims``). Email alone is not accepted,
+        because an unverified or shared email must not authorize a login.
+
         Args:
             claims (dict): OIDC claims
 
         Returns:
-            bool: True if claims are valid
+            bool: True if a ``sub`` claim is present
         """
-        # Require either sub or email
-        return bool(claims.get('sub') or claims.get('email'))
+        return bool(claims.get('sub'))
 
 
 def generate_username(email):

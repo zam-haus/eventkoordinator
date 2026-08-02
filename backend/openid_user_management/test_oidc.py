@@ -7,7 +7,7 @@ Tests the custom OIDCAuthenticationBackend integration with OpenIDUser model.
 from django.test import TestCase
 from unittest.mock import Mock, patch
 from openid_user_management.models import OpenIDUser
-from openid_user_management.auth import OIDCAuthenticationBackend, generate_username
+from openid_user_management.auth import OIDCAuthenticationBackend, generate_username, SuspiciousOperation
 
 
 class OIDCAuthenticationBackendTests(TestCase):
@@ -76,11 +76,16 @@ class OIDCAuthenticationBackendTests(TestCase):
         self.assertEqual(found_users.count(), 1)
         self.assertEqual(found_users.first().id, user.id)
 
-    def test_filter_users_by_email_fallback(self):
-        """Test finding users by email when sub doesn't match."""
+    def test_filter_users_by_email_no_longer_matches(self):
+        """Email must not be used to match an existing account — only ``sub``.
+
+        A different ``sub`` with the same email as an existing user returns
+        *no* users, so the caller cannot bind a second identity to the
+        existing account via a reused/changed email.
+        """
         user = self.backend.create_user(self.sample_claims)
 
-        # Search with different sub but same email
+        # Search with a different sub but the same email.
         claims = {
             'sub': 'different_sub',
             'email': 'test@example.com'
@@ -88,8 +93,15 @@ class OIDCAuthenticationBackendTests(TestCase):
 
         found_users = self.backend.filter_users_by_claims(claims)
 
-        self.assertEqual(found_users.count(), 1)
-        self.assertEqual(found_users.first().id, user.id)
+        self.assertEqual(found_users.count(), 0)
+
+    def test_filter_users_without_sub_returns_none(self):
+        """Claims without a ``sub`` match no users."""
+        self.backend.create_user(self.sample_claims)
+
+        found_users = self.backend.filter_users_by_claims({'email': 'test@example.com'})
+
+        self.assertEqual(found_users.count(), 0)
 
     def test_get_provider_name_google(self):
         """Test provider name extraction for Google."""
@@ -114,10 +126,11 @@ class OIDCAuthenticationBackendTests(TestCase):
         claims = {'sub': 'user123'}
         self.assertTrue(self.backend.verify_claims(claims))
 
-    def test_verify_claims_with_email(self):
-        """Test claim verification with email."""
+    def test_verify_claims_with_email_only_fails(self):
+        """Email without a ``sub`` must not pass claim verification, because
+        email is not used to bind a login to an existing account."""
         claims = {'email': 'user@example.com'}
-        self.assertTrue(self.backend.verify_claims(claims))
+        self.assertFalse(self.backend.verify_claims(claims))
 
     def test_verify_claims_missing(self):
         """Test claim verification fails when required claims missing."""
@@ -181,4 +194,78 @@ class OIDCAuthenticationBackendTests(TestCase):
         self.assertEqual(updated_user.picture, original_picture)
         # Locale should be updated
         self.assertEqual(updated_user.locale, 'fr-FR')
+
+    # ── Email-collision / account-claiming security tests ─────────────────────
+
+    def test_create_user_claims_unlinked_account(self):
+        """A verified email matching an *unlinked* (no ``openid_subject``)
+        pre-OIDC account claims that account instead of creating a new one.
+        """
+        # Pre-existing local account with no openid_subject.
+        existing = OpenIDUser.objects.create_user(
+            username='localuser', email='taken@example.com', password='x'
+        )
+        self.assertFalse(existing.openid_subject)
+
+        claims = {
+            'sub': 'new_sub_1',
+            'email': 'taken@example.com',
+            'email_verified': True,
+            'preferred_username': 'localuser',
+            'iss': 'https://accounts.google.com',
+        }
+
+        claimed = self.backend.create_user(claims)
+
+        # The existing account is returned (claimed), not a new one.
+        self.assertEqual(claimed.pk, existing.pk)
+        self.assertEqual(claimed.openid_subject, 'new_sub_1')
+        self.assertEqual(claimed.openid_provider, 'google')
+        # No duplicate user was created.
+        self.assertEqual(OpenIDUser.objects.filter(email='taken@example.com').count(), 1)
+
+    def test_create_user_email_collision_already_linked_rejected(self):
+        """An email already bound to a linked account (has a ``sub``) cannot be
+        claimed by a different ``sub`` — that would be account takeover via a
+        reused/changed email.
+        """
+        # Existing account already linked to an identity.
+        self.backend.create_user({**self.sample_claims, 'email_verified': True})
+
+        # A second identity reuses the same email with a different sub.
+        attacker_claims = {
+            'sub': 'attacker_sub',
+            'email': 'test@example.com',
+            'email_verified': True,
+            'iss': 'https://accounts.google.com',
+        }
+
+        with self.assertRaises(SuspiciousOperation):
+            self.backend.create_user(attacker_claims)
+
+        # The original account's binding is unchanged.
+        original = OpenIDUser.objects.get(email='test@example.com')
+        self.assertEqual(original.openid_subject, 'google_12345')
+
+    def test_create_user_email_collision_unverified_rejected(self):
+        """An email matching an unlinked account but not marked verified by the
+        IdP must not be auto-linked.
+        """
+        OpenIDUser.objects.create_user(
+            username='localuser', email='taken@example.com', password='x'
+        )
+
+        unverified_claims = {
+            'sub': 'new_sub_2',
+            'email': 'taken@example.com',
+            'email_verified': False,
+            'iss': 'https://accounts.google.com',
+        }
+
+        with self.assertRaises(SuspiciousOperation):
+            self.backend.create_user(unverified_claims)
+
+        # The unlinked account is untouched.
+        existing = OpenIDUser.objects.get(email='taken@example.com')
+        self.assertFalse(existing.openid_subject)
 
