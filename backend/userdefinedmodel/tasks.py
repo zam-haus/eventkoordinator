@@ -43,7 +43,12 @@ def run_bulk_migration(plan_id: str) -> None:
 
             plan.status = BulkMigrationPlan.Status.RUNNING
             plan.total_entities = qs.count()
-            plan.save(update_fields=["status", "total_entities"])
+            # Reset progress counters on (re-)run so a previously partial/crashed
+            # plan starts fresh rather than accumulating stale counts.
+            plan.done_entities = 0
+            plan.failed_entities = 0
+            plan.error_message = ""
+            plan.save(update_fields=["status", "total_entities", "done_entities", "failed_entities", "error_message"])
 
         entity_ids = list(
             UserDefinedModelEntity.objects.filter(config_version=plan.source_version)
@@ -140,11 +145,17 @@ def run_bulk_migration(plan_id: str) -> None:
 
         plan.refresh_from_db()
         final_status = BulkMigrationPlan.Status.DONE if plan.failed_entities == 0 else BulkMigrationPlan.Status.PARTIAL
-        BulkMigrationPlan.objects.filter(id=plan_id).update(status=final_status, executed_at=now())
+        BulkMigrationPlan.objects.filter(id=plan_id).update(
+            status=final_status, executed_at=now(), error_message=""
+        )
 
     except Exception as exc:
         logger.exception("run_bulk_migration failed: %s", exc)
-        BulkMigrationPlan.objects.filter(id=plan_id).update(status=BulkMigrationPlan.Status.PARTIAL)
+        msg = str(exc) or exc.__class__.__name__
+        BulkMigrationPlan.objects.filter(id=plan_id).update(
+            status=BulkMigrationPlan.Status.PARTIAL, executed_at=now(),
+            error_message=(msg[:2000]),
+        )
 
 
 @shared_task(bind=True, max_retries=0)

@@ -26,6 +26,7 @@ import {
 } from './apiUdm'
 import { MigrationAssistant } from './UdmMigration'
 import { FieldInput, getLang, PolicyMessageList } from './udm-editors'
+import { DateRangeEditor } from './udm-editors/DateRangeEditor'
 import { FieldCommitWrapper, LARGE_TYPES, BLUR_COMMIT_TYPES } from './udm-editors/FieldCommitWrapper'
 import { ReadonlyBadge } from './udm-editors/shared'
 import { UdmGrantsContext, type UdmGrants } from './udm-editors/grants'
@@ -309,6 +310,44 @@ function FieldRow({ fd, entity, dirty, onDirty, onReset, editable, languages, ui
   }
   const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
   const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
+
+  // date_range: a multi-field widget binding two data fields (from/to).
+  // The legacy `fields` merge folds the binding→data-field slugs into
+  // type_config.bindings. Manage each bound field's dirty/save independently,
+  // wrapped in FieldCommitWrapper so the same autosave/cancel buttons as other
+  // fields appear (commit saves both bound fields; cancel resets both).
+  if (fd.data_type === 'date_range') {
+    const bindings = (fd.type_config as { bindings?: { role: string; data_field_slug: string }[] }).bindings ?? []
+    const fromSlug = bindings.find(b => b.role === 'from')?.data_field_slug ?? ''
+    const toSlug = bindings.find(b => b.role === 'to')?.data_field_slug ?? ''
+    const fromVal = fromSlug in dirty ? dirty[fromSlug] : getFieldValue(entity, fromSlug, '')
+    const toVal = toSlug in dirty ? dirty[toSlug] : getFieldValue(entity, toSlug, '')
+    const isDirty = fromSlug in dirty || toSlug in dirty
+    const highlightClass = isDirty ? styles.fieldGroupDirty : (severity ? styles.fieldGroupInfo : '')
+    const commitBoth = async () => {
+      if (fromSlug in dirty) await onSaveField(fromSlug)
+      if (toSlug in dirty) await onSaveField(toSlug)
+    }
+    const resetBoth = () => { onReset(fromSlug); onReset(toSlug) }
+    return (
+      <div className={`${styles.fieldGroup} ${highlightClass}`}>
+        <div className={styles.fieldHeader}>
+          <div>
+            <div className={styles.fieldLabel}>{label}{!editable && <ReadonlyBadge />}</div>
+            <div className={styles.fieldSlug}>{fd.slug} · {fd.data_type}</div>
+            {helpText && <div className={styles.fieldHelp}>{helpText}</div>}
+          </div>
+        </div>
+        <FieldCommitWrapper dirty={isDirty} saving={fieldSaving} large={false} blurCommit={true}
+          disabled={!editable} onCommit={commitBoth} onCancel={resetBoth}>
+          <DateRangeEditor fd={fd} value={fromVal} toValue={toVal} disabled={!editable}
+            onChange={v => onDirty(fromSlug, v)}
+            onToChange={v => onDirty(toSlug, v)} />
+        </FieldCommitWrapper>
+        {saveErrorMessages && saveErrorMessages.length > 0 && <PolicyMessageList messages={saveErrorMessages} />}
+      </div>
+    )
+  }
 
   function getVal(lang = '') {
     if (isDirty) {
@@ -858,7 +897,6 @@ export function UdmEntityEditor() {
 
   // Determine editability: archived overrides everything; otherwise defer to
   // the per-field editable_fields list returned by the policy.
-  const editable = !isArchived
   // Per-node grant maps {node_id: [slugs]} (deny-by-default)
   const editableFieldSlugs: Set<string> =
     new Set((entity.editable_fields as unknown as Record<string, string[]>)?.[entity.id] ?? [])
@@ -877,7 +915,16 @@ export function UdmEntityEditor() {
   const viewableFieldSlugs = new Set((entity.viewable_fields as unknown as Record<string, string[]>)?.[entity.id] ?? [])
   // Visibility is the policy's decision: structural fields are only shown when
   // granted (view.rego grants them unconditionally; a policy may still revoke).
-  const fields = allFields.filter(fd => viewableFieldSlugs.has(fd.slug))
+  // Multi-field widgets (e.g. date_range) carry their bound data-field slugs in
+  // type_config.bindings; show the widget only when ALL bound fields are editable
+  // (a partial grant would leave part of the widget read-only with no way to
+  // express that in a single combined control).
+  const fields = allFields.filter(fd => {
+    if (viewableFieldSlugs.has(fd.slug)) return true
+    const bs = (fd.type_config as { bindings?: { data_field_slug: string }[] } | undefined)?.bindings
+    if (bs && bs.length) return bs.every(b => editableFieldSlugs.has(b.data_field_slug))
+    return false
+  })
 
   function clearFieldSaveError(slug: string) {
     setFieldSaveErrors(prev => {
@@ -1085,6 +1132,17 @@ export function UdmEntityEditor() {
 
   function renderFieldRow(fd: (typeof sortedFields)[0]) {
     if (STRUCTURAL.has(fd.data_type)) return null  // structural fields rendered elsewhere
+    // date_range binds two data fields; editability follows the bound fields,
+    // not the element slug.
+    let editable = !isArchived && editableFieldSlugs.has(fd.slug)
+    let fieldSaving = savingFields.has(fd.slug)
+    let saveErrorMessages = fieldSaveErrors[fd.slug]
+    if (fd.data_type === 'date_range') {
+      const bs = (fd.type_config as { bindings?: { data_field_slug: string }[] }).bindings ?? []
+      editable = !isArchived && bs.every(b => editableFieldSlugs.has(b.data_field_slug))
+      fieldSaving = bs.some(b => savingFields.has(b.data_field_slug))
+      saveErrorMessages = bs.flatMap(b => fieldSaveErrors[b.data_field_slug] ?? [])
+    }
     return (
       <FieldRow
         key={fd.slug}
@@ -1093,7 +1151,7 @@ export function UdmEntityEditor() {
         dirty={dirty}
         onDirty={handleDirty}
         onReset={handleReset}
-        editable={editable && editableFieldSlugs.has(fd.slug)}
+        editable={editable}
         languages={fd.is_localized ? languages.filter(Boolean) : ['']}
         uiLang={uiLang}
         severity={fieldSeverities[fd.slug]}
@@ -1109,8 +1167,8 @@ export function UdmEntityEditor() {
         validTransitions={previewNodes[entity!.id]?.[fd.slug]?.valid_transitions ?? null}
         onSaveField={saveField}
         onCommitOps={ops => saveSubmodelOps(fd.slug, ops)}
-        fieldSaving={savingFields.has(fd.slug)}
-        saveErrorMessages={fieldSaveErrors[fd.slug]}
+        fieldSaving={fieldSaving}
+        saveErrorMessages={saveErrorMessages}
       />
     )
   }

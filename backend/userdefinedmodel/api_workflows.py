@@ -27,7 +27,7 @@ def _get_workflow_display_version(wf_def):
 @router.get("/workflows/", response=list[WorkflowDefinitionOut], auth=django_auth)
 def list_workflows(request):
     from userdefinedmodel.models import WorkflowDefinition
-    if denied := _require_perms(request, "userdefinedmodel.view_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.view_datafield"):
         return denied
     workflows = WorkflowDefinition.objects.prefetch_related(
         "versions",
@@ -50,7 +50,7 @@ def create_workflow(request, payload: WorkflowCreateIn):
         WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
-    if denied := _require_perms(request, "userdefinedmodel.add_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.add_datafield"):
         return denied
     with transaction.atomic():
         wf_def = WorkflowDefinition.objects.create(
@@ -91,7 +91,7 @@ def create_workflow(request, payload: WorkflowCreateIn):
 @router.get("/workflows/{workflow_id}/", response=WorkflowDefinitionOut, auth=django_auth)
 def get_workflow(request, workflow_id: uuid.UUID):
     from userdefinedmodel.models import WorkflowDefinition
-    if denied := _require_perms(request, "userdefinedmodel.view_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.view_datafield"):
         return denied
     try:
         wf_def = WorkflowDefinition.objects.prefetch_related(
@@ -115,7 +115,7 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
         WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowStateTranslation,
         WorkflowTransition, WorkflowTransitionTranslation,
     )
-    if denied := _require_perms(request, "userdefinedmodel.change_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.change_datafield"):
         return denied
     try:
         wf_def = WorkflowDefinition.objects.get(id=workflow_id)
@@ -210,7 +210,7 @@ def update_workflow(request, workflow_id: uuid.UUID, payload: WorkflowUpdateIn):
 @router.post("/workflows/{workflow_id}/versions/draft/publish/", response=WorkflowDefinitionOut, auth=django_auth)
 def publish_workflow_draft(request, workflow_id: uuid.UUID):
     from userdefinedmodel.models import WorkflowDefinition, WorkflowVersion
-    if denied := _require_perms(request, "userdefinedmodel.change_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.change_datafield"):
         return denied
     try:
         wf_def = WorkflowDefinition.objects.get(id=workflow_id)
@@ -227,7 +227,7 @@ def publish_workflow_draft(request, workflow_id: uuid.UUID):
 @router.delete("/workflows/{workflow_id}/", auth=django_auth)
 def delete_workflow(request, workflow_id: uuid.UUID):
     from userdefinedmodel.models import WorkflowDefinition
-    if denied := _require_perms(request, "userdefinedmodel.delete_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.delete_datafield"):
         return denied
     try:
         wf = WorkflowDefinition.objects.get(id=workflow_id)
@@ -247,7 +247,7 @@ def workflow_state_counts(request, workflow_id: uuid.UUID):
     from userdefinedmodel.models.node import FieldValue
     from django.db.models import Count
 
-    if denied := _require_perms(request, "userdefinedmodel.view_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.view_datafield"):
         return denied
     try:
         WorkflowDefinition.objects.get(id=workflow_id)

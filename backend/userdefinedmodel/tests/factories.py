@@ -124,23 +124,59 @@ class PublishedConfigVersionFactory(ConfigVersionFactory):
 
 class FieldDefinitionFactory(DjangoModelFactory):
     class Meta:
-        model = "userdefinedmodel.FieldDefinition"
+        model = "userdefinedmodel.DataField"
 
     version = factory.SubFactory(ConfigVersionFactory)
     slug = factory.Sequence(lambda n: f"field{n}")
     data_type = "text_short"
-    sort_order = factory.Sequence(lambda n: n)
     is_localized = False
+    type_config = {}
+
+    @factory.post_generation
+    def with_form_element(obj, create, extracted, **kwargs):
+        """Backward-compat: every data field created via this factory also gets a
+        1:1 'field' FormElement bound to it, plus an English translation whose
+        label mirrors the slug. Pass with_form_element=False to skip (hidden field)."""
+        if not create or extracted is False:
+            return
+        from userdefinedmodel.models import FormElement, FormElementTranslation, FormElementBinding
+        el = FormElement.objects.create(
+            version=obj.version, slug=obj.slug, element_type=FormElement.ElementType.FIELD,
+            sort_order=0, is_preview=False, type_config={},
+        )
+        FormElementBinding.objects.create(form_element=el, data_field=obj, role="")
+        FormElementTranslation.objects.create(
+            element=el, language="en",
+            label=obj.slug.replace("_", " ").title(),
+            help_text="",
+        )
+
+
+# Alias for new code
+DataFieldFactory = FieldDefinitionFactory
+
+
+class FormElementFactory(DjangoModelFactory):
+    class Meta:
+        model = "userdefinedmodel.FormElement"
+
+    version = factory.SubFactory(ConfigVersionFactory)
+    slug = factory.Sequence(lambda n: f"element{n}")
+    element_type = "field"
+    sort_order = factory.Sequence(lambda n: n)
+    is_preview = False
     type_config = {}
 
 
 class FieldDefinitionTranslationFactory(DjangoModelFactory):
+    """Deprecated: labels now live on FormElement. This factory creates a
+    FormElementTranslation for a FormElement."""
     class Meta:
-        model = "userdefinedmodel.FieldDefinitionTranslation"
+        model = "userdefinedmodel.FormElementTranslation"
 
-    field = factory.SubFactory(FieldDefinitionFactory)
+    element = factory.SubFactory(FormElementFactory)
     language = "en"
-    label = factory.LazyAttribute(lambda obj: obj.field.slug.replace("_", " ").title())
+    label = factory.LazyAttribute(lambda obj: obj.element.slug.replace("_", " ").title())
     help_text = ""
 
 
@@ -335,29 +371,33 @@ class FieldValueFactory(DjangoModelFactory):
 
 def make_simple_config(data_type="text_short", required=True, max_length=None):
     """
-    Create a complete FieldConfig→published ConfigVersion→FieldDefinition set
+    Create a complete FieldConfig→published ConfigVersion→DataField+FormElement set
     suitable for testing entities.
 
     Returns: (config, version, field_def, language)
     """
     from userdefinedmodel.models import (
-        FieldConfig, ConfigLanguage, ConfigVersion, FieldDefinition,
-        FieldDefinitionTranslation, RequiredRule, MaxLengthRule,
+        FieldConfig, ConfigLanguage, ConfigVersion, DataField,
+        FormElement, FormElementTranslation, FormElementBinding,
+        RequiredRule, MaxLengthRule,
     )
 
     config = FieldConfig.objects.create(name="Test Config", description="")
     lang = ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True)
 
     version = ConfigVersion.objects.create(config=config, status="published")
-    field = FieldDefinition.objects.create(
+    field = DataField.objects.create(
         version=version, slug="content", data_type=data_type,
-        sort_order=0, type_config={},
+        type_config={},
     )
-    FieldDefinitionTranslation.objects.create(field=field, language="en", label="Content")
+    el = FormElement.objects.create(
+        version=version, slug="content", element_type=FormElement.ElementType.FIELD,
+        sort_order=0, is_preview=False, type_config={},
+    )
+    FormElementBinding.objects.create(form_element=el, data_field=field, role="")
+    FormElementTranslation.objects.create(element=el, language="en", label="Content")
 
     if required:
-        # applies_to_save=False per spec: "save-time is permissive, never requires a field to be filled"
-        # RequiredRule runs at transition time only
         RequiredRule.objects.create(field=field, applies_to_save=False)
     if max_length:
         MaxLengthRule.objects.create(field=field, applies_to_save=True, max_length=max_length)
@@ -394,20 +434,25 @@ def make_full_workflow():
 
 def add_workflow_field(version, workflow_version, slug="status"):
     """
-    Add a WORKFLOW field definition to a config version, linked to the given workflow version.
+    Add a WORKFLOW data field + 'field' FormElement to a config version, linked
+    to the given workflow version.
 
-    Returns the FieldDefinition.
+    Returns the DataField.
     """
-    from userdefinedmodel.models import FieldDefinition, FieldDefinitionTranslation
+    from userdefinedmodel.models import DataField, FormElement, FormElementTranslation, FormElementBinding
 
-    field = FieldDefinition.objects.create(
+    field = DataField.objects.create(
         version=version,
         slug=slug,
         data_type="workflow",
-        sort_order=999,
         workflow_version=workflow_version,
     )
-    FieldDefinitionTranslation.objects.create(field=field, language="en", label="Status")
+    el = FormElement.objects.create(
+        version=version, slug=slug, element_type=FormElement.ElementType.FIELD,
+        sort_order=999, is_preview=False, type_config={},
+    )
+    FormElementBinding.objects.create(form_element=el, data_field=field, role="")
+    FormElementTranslation.objects.create(element=el, language="en", label="Status")
     return field
 
 
@@ -422,16 +467,22 @@ def make_entity_with_type(policy_source=ALLOW_ALL_POLICY):
     Returns: (entity, udm_type, version, config)
     """
     from userdefinedmodel.models import (
-        FieldConfig, ConfigLanguage, ConfigVersion, FieldDefinition,
-        FieldDefinitionTranslation, UserDefinedModelType, UserDefinedModelEntity,
+        FieldConfig, ConfigLanguage, ConfigVersion, DataField,
+        FormElement, FormElementTranslation, FormElementBinding,
+        UserDefinedModelType, UserDefinedModelEntity,
         Policy, UserDefinedModelTypePolicy,
     )
 
     config = FieldConfig.objects.create(name="Entity Config")
     ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True)
     version = ConfigVersion.objects.create(config=config, status="published")
-    field = FieldDefinition.objects.create(version=version, slug="title", data_type="text_short", sort_order=0)
-    FieldDefinitionTranslation.objects.create(field=field, language="en", label="Title")
+    field = DataField.objects.create(version=version, slug="title", data_type="text_short")
+    el = FormElement.objects.create(
+        version=version, slug="title", element_type=FormElement.ElementType.FIELD,
+        sort_order=0, is_preview=False, type_config={},
+    )
+    FormElementBinding.objects.create(form_element=el, data_field=field, role="")
+    FormElementTranslation.objects.create(element=el, language="en", label="Title")
 
     udm_type = UserDefinedModelType.objects.create(name="Test Type", field_config=config)
 

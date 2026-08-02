@@ -12,6 +12,16 @@ companion; where they disagree, the executable contract wins.
 
 Current `input_version`: **1**.
 
+> **Form tree / data field split (2026-08):** `FieldDefinition` was split into
+> `DataField` (storage semantics) + `FormElement` (form tree / widget) +
+> `FormElementBinding` (M:N). The Rego input contract is **unchanged**
+> (shape-compatible, `input_version` stays 1): structural `FormElement`s are
+> still emitted into `entity.fields` with `element_type` as `data_type`, so
+> `structural.rego` / `config.STRUCTURAL_TYPES` keep working. A `DataField`\> with zero bindings is a hidden field; a `FormElement` may bind multiple
+> data fields (e.g. `date_range`). `FieldDefinition` remains as a Python alias
+> for `DataField` for backward compatibility. See
+> `PLAN_split_form_tree_and_data_fields.md`.
+
 ---
 
 ## 1. Evaluation model

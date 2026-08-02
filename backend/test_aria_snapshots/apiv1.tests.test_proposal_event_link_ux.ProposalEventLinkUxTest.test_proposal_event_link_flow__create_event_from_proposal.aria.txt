@@ -1,62 +1,29 @@
-- navigation "Main navigation":
-  - link "Event Coordinator – go to home":
-    - /url: /
-    - heading "Event Coordinator" [level=1]
-  - list:
-    - listitem: Coordinator
-    - listitem: Proposal Editor
-  - button "Switch to English" [pressed]: 🇬🇧
-  - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": proposaleventux-user
+- link "Event Coordinator – go to home":
+  - /url: /
+  - heading "Event Coordinator" [level=1]
+- button "Navigation":
+  - img
+- menubar:
+  - menuitem "Coordinator":
+    - link "Coordinator":
+      - /url: /coordinator
+  - menuitem "Proposal Editor":
+    - link "Proposal Editor":
+      - /url: /proposal-editor
+  - menuitem "Proposal Dashboard":
+    - link "Proposal Dashboard":
+      - /url: /proposal-dashboard
+  - menuitem "UDM Dashboard":
+    - link "UDM Dashboard":
+      - /url: /udm-dashboard
+  - menuitem "UDM Entities":
+    - link "UDM Entities":
+      - /url: /udm-entity
+- button "Switch to English" [pressed]: 🇬🇧
+- button "Auf Deutsch wechseln": 🇩🇪
+- button "User menu": proposaleventux-user
 - main:
-  - link "← Back":
-    - /url: /proposal-editor/<uuid>
-  - heading "My Title" [level=2]
-  - text: Number of Days 5 Time per day (HH:MM or minutes) 1:30 How often would you offer this event? 2 Submission Type workshop
-  - heading "Preferred Dates and Alternatives" [level=3]
-  - paragraph: Always
-  - heading "Linked Events (1)" [level=3]
-  - list:
-    - listitem:
-      - strong: My Title Session
-      - text: Draft Test Workshop Series <localized-datetime> – <localized-datetime>
-  - text: Series Test Workshop Series
-  - heading "Edit Event" [level=2]
-  - paragraph: My Title Session
-  - heading "Event Details" [level=3]
-  - form "Edit event details":
-    - text: Name
-    - textbox "Name": My Title Session
-    - text: Start Time
-    - textbox "Start Time": <iso-datetime>
-    - text: End Time
-    - textbox "End Time": <iso-datetime>
-    - text: Tag
-    - textbox "Tag":
-      - /placeholder: e.g., workshop, keynote, break
-    - checkbox "Span full days"
-    - text: Span full days
-    - paragraph: When checked, the event spans continuously over midnight (e.g. Mon 08:00 → Tue 16:00 shows as one block). When unchecked, multi-day events are split into daily blocks using the same daily start/end hours (e.g. Mon <time-range> and Tue <time-range>).
-    - text: Drag on the calendar to update start and end.
-    - button "Previous week": ‹
-    - text: <week-range>
-    - button "Next week": ›
-    - text: "New events for:"
-    - combobox "New events for:":
-      - option "Event Schedule" [selected]
-    - text: Event Schedule
-    - grid:
-      - text: Mon 4 May <hour-grid>
-      - button "My Title Session (internal-calendar), <time-range>": My Title Session (internal-calendar)
-      - button "My Title Session, <time-range>": My Title Session
-      - text: Tue 5 May <hour-grid> Wed 6 May <hour-grid> Thu 7 May <hour-grid> Fri 8 May <hour-grid> Sat 9 May <hour-grid> Sun 10 May <hour-grid>
-    - button "Save Changes" [disabled]
-  - heading "Workflow Status and Transitions" [level=3]
-  - text: "Status: Draft"
-  - button "Submit event" [disabled]
-  - button "▶ Event lifecycle diagram"
-  - heading "Calculated Prices" [level=3]
-  - paragraph: No calculated prices exist for this event yet.
-  - paragraph: You do not have permission to create calculated prices.
-  - heading "Synchronization Status" [level=3]
-  - paragraph: Changes to this event will be synchronized across all platforms.
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - paragraph: No active calls at the moment.
+  - button "Go to Coordinator →"

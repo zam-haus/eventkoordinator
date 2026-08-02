@@ -114,9 +114,16 @@ def _entity_preview_display(entity, viewable_slugs: set[str]) -> str:
             default_lang = lang.code
             break
 
+    # is_preview now lives on FormElement (not DataField). Resolve the set of
+    # data-field slugs whose bound FormElement is marked is_preview.
+    preview_slugs = set(
+        config_version.form_elements.filter(
+            is_preview=True, element_type="field"
+        ).values_list("bindings__data_field__slug", flat=True)
+    )
     preview_fields = [
         fd for fd in config_version.field_definitions.all()
-        if fd.is_preview and fd.slug in viewable_slugs
+        if fd.slug in preview_slugs and fd.slug in viewable_slugs
     ]
     if not preview_fields:
         return str(entity.id)

@@ -74,6 +74,10 @@ class ConfigVersion(MetaBase):
         with transaction.atomic():
             # Validate default combination before publishing
             self._validate_defaults_for_publish()
+            # Validate that every submodel field has a submodel config assigned.
+            # Drafts may contain orphaned submodel fields (saved to fix later),
+            # but a published config must not have any.
+            self._validate_submodels_for_publish()
 
             # Archive the current published version
             ConfigVersion.objects.filter(
@@ -161,33 +165,45 @@ class ConfigVersion(MetaBase):
         if errors:
             raise ValidationError(dict(errors))
 
+    def _validate_submodels_for_publish(self):
+        """A published config must not contain submodel fields without a
+        submodel_config. Drafts may have orphaned submodel fields (saved to
+        be fixed later), but publishing is blocked until each has a config."""
+        from django.core.exceptions import ValidationError
+        orphaned = [
+            fd.slug for fd in self.field_definitions.filter(
+                data_type__in=(
+                    DataField.DataType.SUBMODEL_SELECT,
+                    DataField.DataType.SUBMODEL_LIST,
+                ),
+                submodel_config__isnull=True,
+            )
+        ]
+        if orphaned:
+            raise ValidationError({
+                slug: ["submodel_config_version_id is required for submodel types before publishing"]
+                for slug in orphaned
+            })
+
     def _create_draft_copy(self):
         new_draft = ConfigVersion.objects.create(
             config=self.config,
             status=ConfigVersion.Status.DRAFT,
             notes="",
         )
-        field_map = {}  # old field id → new field
+        field_map = {}  # old data field id → new data field
         for old_field in self.field_definitions.all():
-            new_field = FieldDefinition.objects.create(
+            new_field = DataField.objects.create(
                 version=new_draft,
                 slug=old_field.slug,
                 data_type=old_field.data_type,
-                sort_order=old_field.sort_order,
                 is_localized=old_field.is_localized,
-                is_preview=old_field.is_preview,
-                parent_slug=old_field.parent_slug,
                 submodel_config=old_field.submodel_config,
                 workflow_version=old_field.workflow_version,
                 type_config=old_field.type_config,
             )
             field_map[old_field.pk] = new_field
-            # Copy translations
-            for t in old_field.translations.all():
-                FieldDefinitionTranslation.objects.create(
-                    field=new_field, language=t.language, label=t.label, help_text=t.help_text
-                )
-            # Copy defaults
+            # Copy defaults (translations now live on FormElement, not DataField)
             for d in old_field.defaults.all():
                 from userdefinedmodel.models.config import FieldDefaultValue
                 FieldDefaultValue.objects.create(
@@ -203,6 +219,38 @@ class ConfigVersion(MetaBase):
                     value_user=d.value_user,
                     value_group=d.value_group,
                 )
+
+        # Copy form elements (tree + widgets) with their translations and bindings
+        from userdefinedmodel.models.config import FormElement, FormElementTranslation, FormElementBinding
+        element_map = {}  # old element id → new element
+        # Two-pass: create elements (resolving parent after all exist), then translations + bindings.
+        old_elements = list(self.form_elements.all().order_by("sort_order", "id"))
+        for old_el in old_elements:
+            new_el = FormElement.objects.create(
+                version=new_draft,
+                slug=old_el.slug,
+                element_type=old_el.element_type,
+                parent=None,  # resolved in second pass
+                sort_order=old_el.sort_order,
+                is_preview=old_el.is_preview,
+                type_config=old_el.type_config,
+            )
+            element_map[old_el.pk] = new_el
+        for old_el in old_elements:
+            new_el = element_map[old_el.pk]
+            if old_el.parent_id:
+                new_el.parent = element_map.get(old_el.parent_id)
+                new_el.save(update_fields=["parent"])
+            for t in old_el.translations.all():
+                FormElementTranslation.objects.create(
+                    element=new_el, language=t.language, label=t.label, help_text=t.help_text
+                )
+            for b in old_el.bindings.all():
+                new_df = field_map.get(b.data_field_id)
+                if new_df:
+                    FormElementBinding.objects.create(
+                        form_element=new_el, data_field=new_df, role=b.role
+                    )
 
         # Copy single-field rules
         from userdefinedmodel.models.rules import SingleFieldValidationRule
@@ -244,7 +292,19 @@ class SlugIdSequence(MetaBase):
         return f"{self.prefix} (next={self.next_value})"
 
 
-class FieldDefinition(MetaBase):
+class DataField(MetaBase):
+    """Database/storage field definition: what a field IS and how its value is
+    stored. Carries no form-tree or rendering concern — that lives on
+    FormElement, linked through FormElementBinding (M:N). A DataField with
+    zero bindings is a hidden field: it exists in the schema and may hold
+    values but is never shown/edited via the form.
+
+    Backward-compat alias `FieldDefinition` is exported from models/__init__.py
+    so existing imports keep working during the transition.
+    """
+
+    # NOTE: keep the class name usable as `FieldDefinition` for callers that
+    # import the alias. The model's db_table is remapped by the migration.
     class DataType(models.TextChoices):
         TEXT_SHORT = "text_short"
         TEXT_LONG = "text_long"
@@ -270,32 +330,11 @@ class FieldDefinition(MetaBase):
         ENTITY_SELECT_MULTI = "entity_select_multi"
         SLUG_ID = "slug_id"
         WORKFLOW = "workflow"
-        # Structural / layout types (no data value)
-        TAB_CONTAINER = "tab_container"
-        TAB = "tab"
-        SAVE_BUTTON = "save_button"
-        HSTACK = "hstack"
-        HSTACK_GROUP = "hstack_group"
-        TAB_PREV = "tab_prev"
-        TAB_NEXT = "tab_next"
-
-    STRUCTURAL_TYPES = frozenset({
-        DataType.TAB_CONTAINER,
-        DataType.TAB,
-        DataType.SAVE_BUTTON,
-        DataType.HSTACK,
-        DataType.HSTACK_GROUP,
-        DataType.TAB_PREV,
-        DataType.TAB_NEXT,
-    })
 
     version = models.ForeignKey(ConfigVersion, on_delete=models.CASCADE, related_name="field_definitions")
     slug = models.SlugField(max_length=80)
     data_type = models.CharField(max_length=30, choices=DataType)
-    parent_slug = models.SlugField(max_length=80, blank=True, default="")
-    sort_order = models.PositiveSmallIntegerField(default=0)
     is_localized = models.BooleanField(default=False)
-    is_preview = models.BooleanField(default=False)
     submodel_config = models.ForeignKey(
         ConfigVersion,
         on_delete=models.CASCADE,
@@ -313,13 +352,125 @@ class FieldDefinition(MetaBase):
     type_config = models.JSONField(default=dict)
 
     class Meta:
-        ordering = ["sort_order", "id"]
+        ordering = ["id"]
         constraints = [
             UniqueConstraint(fields=["version", "slug"], name="unique_slug_in_version"),
         ]
 
     def __str__(self):
         return f"{self.version} / {self.slug}"
+
+
+# Backward-compat alias used throughout the codebase during the transition.
+# New code should reference DataField directly.
+FieldDefinition = DataField
+
+
+class FormElement(MetaBase):
+    """A node in the form tree. May be a structural control (tab, hstack, …) or
+    a widget bound to one or more DataFields via FormElementBinding.
+
+    `element_type` carries the structural vocabulary that used to live on
+    FieldDefinition.STRUCTURAL_TYPES, plus a generic `field` type that wraps a
+    bound data field, and multi-field widget types such as `date_range`.
+
+    For shape-compatibility with the Rego policy contract (input_version=1),
+    structural FormElements are still emitted into entity.fields with
+    element_type as data_type, so structural.rego / config.STRUCTURAL_TYPES
+    keep working unchanged.
+    """
+
+    class ElementType(models.TextChoices):
+        # Generic widget bound to one (or more) DataField(s)
+        FIELD = "field"
+        # Structural / layout types (no data value) — moved from FieldDefinition
+        TAB_CONTAINER = "tab_container"
+        TAB = "tab"
+        SAVE_BUTTON = "save_button"
+        HSTACK = "hstack"
+        HSTACK_GROUP = "hstack_group"
+        TAB_PREV = "tab_prev"
+        TAB_NEXT = "tab_next"
+        # Multi-field widget example (proves the M:N binding)
+        DATE_RANGE = "date_range"
+
+    STRUCTURAL_TYPES = frozenset({
+        ElementType.TAB_CONTAINER,
+        ElementType.TAB,
+        ElementType.SAVE_BUTTON,
+        ElementType.HSTACK,
+        ElementType.HSTACK_GROUP,
+        ElementType.TAB_PREV,
+        ElementType.TAB_NEXT,
+    })
+
+    version = models.ForeignKey(ConfigVersion, on_delete=models.CASCADE, related_name="form_elements")
+    slug = models.SlugField(max_length=80)
+    element_type = models.CharField(max_length=30, choices=ElementType)
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_preview = models.BooleanField(default=False)
+    type_config = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [
+            UniqueConstraint(fields=["version", "slug"], name="unique_element_slug_in_version"),
+        ]
+
+    def __str__(self):
+        return f"{self.version} / {self.slug}"
+
+
+class FormElementTranslation(MetaBase):
+    element = models.ForeignKey(FormElement, on_delete=models.CASCADE, related_name="translations")
+    language = models.CharField(max_length=10)
+    label = models.CharField(max_length=200, blank=True, default="")
+    help_text = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(
+                fields=["element", "language"],
+                name="unique_label_translation_per_element_language",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.element} [{self.language}]"
+
+
+class FormElementBinding(MetaBase):
+    """M:N link between a FormElement and the DataField(s) it reads/writes.
+
+    - A DataField with zero bindings is a hidden field.
+    - One FormElement with multiple bindings is a multi-field widget
+      (e.g. date_range bound to start_date + end_date).
+    - One DataField with multiple bindings is shown in several places
+      (e.g. a preview chip and a full editor).
+    `role` distinguishes bindings within a multi-field widget
+    ("from" / "to" / "" for single-binding).
+    """
+    form_element = models.ForeignKey(FormElement, on_delete=models.CASCADE, related_name="bindings")
+    data_field = models.ForeignKey(DataField, on_delete=models.PROTECT, related_name="form_element_bindings")
+    role = models.CharField(max_length=30, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(
+                fields=["form_element", "data_field", "role"],
+                name="unique_binding_per_element_field_role",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.form_element} → {self.data_field} ({self.role or 'single'})"
 
 
 class FieldDefinitionTranslation(MetaBase):
@@ -535,16 +686,17 @@ class FieldDefaultValue(TypedValue, MetaBase):
 
     # Types that cannot have defaults (per §2.8); SLUG_ID uses auto-generated sequence,
     # WORKFLOW initial state comes from is_initial on WorkflowState.
+    # (Structural types no longer live on DataField — they are FormElement types —
+    # so they are not listed here.)
     _NO_DEFAULT_TYPES = frozenset([
-        FieldDefinition.DataType.IMAGE,
-        FieldDefinition.DataType.FILE,
-        FieldDefinition.DataType.ENTITY_SELECT,
-        FieldDefinition.DataType.ENTITY_SELECT_MULTI,
-        FieldDefinition.DataType.SUBMODEL_SELECT,
-        FieldDefinition.DataType.SUBMODEL_LIST,
-        FieldDefinition.DataType.SLUG_ID,
-        FieldDefinition.DataType.WORKFLOW,
-        *FieldDefinition.STRUCTURAL_TYPES,
+        DataField.DataType.IMAGE,
+        DataField.DataType.FILE,
+        DataField.DataType.ENTITY_SELECT,
+        DataField.DataType.ENTITY_SELECT_MULTI,
+        DataField.DataType.SUBMODEL_SELECT,
+        DataField.DataType.SUBMODEL_LIST,
+        DataField.DataType.SLUG_ID,
+        DataField.DataType.WORKFLOW,
     ])
 
     def clean(self):

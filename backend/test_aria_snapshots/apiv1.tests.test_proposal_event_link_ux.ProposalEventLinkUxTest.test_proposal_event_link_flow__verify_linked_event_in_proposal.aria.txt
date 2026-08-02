@@ -1,44 +1,29 @@
-- navigation "Main navigation":
-  - link "Event Coordinator – go to home":
-    - /url: /
-    - heading "Event Coordinator" [level=1]
-  - list:
-    - listitem: Coordinator
-    - listitem: Proposal Editor
-  - button "Switch to English" [pressed]: 🇬🇧
-  - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": proposaleventux-user
+- link "Event Coordinator – go to home":
+  - /url: /
+  - heading "Event Coordinator" [level=1]
+- button "Navigation":
+  - img
+- menubar:
+  - menuitem "Coordinator":
+    - link "Coordinator":
+      - /url: /coordinator
+  - menuitem "Proposal Editor":
+    - link "Proposal Editor":
+      - /url: /proposal-editor
+  - menuitem "Proposal Dashboard":
+    - link "Proposal Dashboard":
+      - /url: /proposal-dashboard
+  - menuitem "UDM Dashboard":
+    - link "UDM Dashboard":
+      - /url: /udm-dashboard
+  - menuitem "UDM Entities":
+    - link "UDM Entities":
+      - /url: /udm-entity
+- button "Switch to English" [pressed]: 🇬🇧
+- button "Auf Deutsch wechseln": 🇩🇪
+- button "User menu": proposaleventux-user
 - main:
-  - complementary "Proposals":
-    - heading "Proposals" [level=2]
-    - button "Create New Proposal"
-    - listbox "Proposals":
-      - option "My Title Workshop" [selected]
-  - main "Proposals content":
-    - heading "Proposal Editor" [level=1]
-    - form "Proposal editor":
-      - tablist:
-        - tab "1 General"
-        - tab "2 Participants and Costs"
-        - tab "3 Scheduling"
-        - tab "4 Speakers"
-        - tab "5 Submission"
-        - tab "6 Date Arrangement" [selected]
-      - tabpanel:
-        - group:
-          - text: Linked Events (1)
-          - list:
-            - listitem:
-              - link "My Title Session":
-                - /url: /proposal/<uuid>/event/<uuid>
-              - text: "Series: Test Workshop Series <localized-datetime> – <localized-datetime>"
-          - text: Series
-          - textbox "Series":
-            - /placeholder: Filter series...
-          - combobox "Series":
-            - option "-- Select series --" [selected]
-            - option "Test Workshop Series"
-          - button "Create New Event" [disabled]
-      - button "← Back"
-      - button "Save Proposal" [disabled]
-      - group: Edit history last changed just now
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - paragraph: No active calls at the moment.
+  - button "Go to Coordinator →"

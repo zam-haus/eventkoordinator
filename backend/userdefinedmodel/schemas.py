@@ -81,6 +81,14 @@ STRUCTURAL_DATA_TYPES = frozenset({
     DataType.TAB_NEXT,
 })
 
+#: Binding roles preset per widget element type (no freetext roles). The user
+#: picks the bound data field for each role from a dropdown. Structural elements
+#: have no entry here (they cannot bind).
+_BINDING_ROLES: dict[str, list[str]] = {
+    "field": [""],
+    "date_range": ["from", "to"],
+}
+
 
 class ConfigVersionStatus(str, Enum):
     DRAFT = "draft"; PUBLISHED = "published"; ARCHIVED = "archived"
@@ -197,13 +205,15 @@ _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
 # ─── FieldDefinition schemas ──────────────────────────────────────────────────
 
 class FieldDefinitionIn(Schema):
+    """A DATA field definition (storage semantics only). Form-tree concerns
+    (sort_order, is_preview, parent, labels) live on FormElementIn.
+    Backward-compat: kept under the FieldDefinitionIn name for the API shape.
+    Legacy fields (sort_order, is_preview, parent_slug, labels, help_texts) are
+    accepted for round-trip with old clients but ignored — they belong to the
+    bound FormElement, which replace_draft creates 1:1 from them in legacy mode."""
     slug: Slug
     data_type: DataType
-    sort_order: int = Field(0, ge=0, le=_MAX_SORT_ORDER)
     is_localized: bool = False
-    is_preview: bool = False
-    labels: Optional[LocalizedLabel] = None
-    help_texts: LocalizedHelpText = Field(default_factory=dict)
     type_config: dict[str, Any] = Field(default_factory=dict)
     default: Optional[Any] = None
     submodel_config_version_id: Optional[uuid.UUID] = None
@@ -211,14 +221,19 @@ class FieldDefinitionIn(Schema):
     # Present in the as-input/bundle export shape (ConfigDraftExportOut) so the
     # round-trip is accepted; replace_draft resolves by workflow_version_id.
     workflow_definition_id: Optional[uuid.UUID] = None
+    # Legacy form-tree fields (accepted for backward-compat, ignored on storage).
+    sort_order: Optional[int] = None
+    is_preview: Optional[bool] = None
     parent_slug: Optional[Annotated[str, Field(max_length=_MAX_SLUG_LEN, pattern=r"^[a-z][a-z0-9_-]*$")]] = None
+    labels: Optional[LocalizedLabel] = None
+    help_texts: Optional[LocalizedHelpText] = None
     model_config = {"extra": "forbid"}
 
     @model_validator(mode="after")
     def validate_type_config(self) -> "FieldDefinitionIn":
         is_structural = self.data_type in STRUCTURAL_DATA_TYPES
-        if not is_structural and not self.labels:
-            raise ValueError("labels is required for data fields")
+        if is_structural:
+            raise ValueError("Structural types are not valid data fields; use a FormElement")
         cls = _TYPE_CONFIG_CLS.get(self.data_type)
         if cls is None:
             if self.type_config:
@@ -226,8 +241,10 @@ class FieldDefinitionIn(Schema):
         else:
             cls.model_validate(self.type_config)
         submodel_types = {DataType.SUBMODEL_SELECT, DataType.SUBMODEL_LIST}
-        if self.data_type in submodel_types and self.submodel_config_version_id is None:
-            raise ValueError("submodel_config_version_id required for submodel types")
+        # submodel_config_version_id is optional at the draft-save level so an
+        # orphaned submodel field can be saved and fixed later. The requirement
+        # that every submodel field has a config is enforced at PUBLISH time
+        # (ConfigVersion.publish), not here.
         if self.data_type not in submodel_types and self.submodel_config_version_id is not None:
             raise ValueError("submodel_config_version_id must be null for non-submodel types")
         if self.data_type == DataType.WORKFLOW and self.workflow_version_id is None:
@@ -237,20 +254,89 @@ class FieldDefinitionIn(Schema):
         return self
 
 
+class FormElementIn(Schema):
+    """A form-tree element: a structural control or a widget bound to one or
+    more data fields. Labels/help_text live here (B1)."""
+    slug: Slug
+    element_type: Annotated[str, Field(max_length=30)]
+    parent_slug: Optional[Annotated[str, Field(max_length=_MAX_SLUG_LEN, pattern=r"^[a-z][a-z0-9_-]*$")]] = None
+    sort_order: int = Field(0, ge=0, le=_MAX_SORT_ORDER)
+    is_preview: bool = False
+    labels: Optional[LocalizedLabel] = None
+    help_texts: LocalizedHelpText = Field(default_factory=dict)
+    type_config: dict[str, Any] = Field(default_factory=dict)
+    # Binding to one or more data fields (M:N). For a 'field' element this is
+    # typically one binding with role=""; for a 'date_range' element, two
+    # bindings with role="from"/"to". Structural elements have no bindings.
+    bindings: list["FormElementBindingIn"] = Field(default_factory=list)
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def validate_element(self) -> "FormElementIn":
+        is_structural = self.element_type in STRUCTURAL_DATA_TYPES
+        if is_structural and self.bindings:
+            raise ValueError("Structural elements cannot bind to data fields")
+        if self.element_type == "field" and not self.bindings:
+            raise ValueError("A 'field' element requires at least one binding")
+        # Labels are OPTIONAL: a field config may be saved/published without
+        # labels. The missing-label condition is surfaced as a warning badge in
+        # the admin UI (not a hard validation error).
+        # Binding roles are preset by element type (no freetext roles).
+        expected_roles = _BINDING_ROLES.get(self.element_type)
+        if expected_roles is not None:
+            actual_roles = [b.role for b in self.bindings]
+            if actual_roles != expected_roles:
+                raise ValueError(
+                    f"bindings for '{self.element_type}' must use roles "
+                    f"{expected_roles!r} (got {actual_roles!r})"
+                )
+        return self
+
+
+class FormElementBindingIn(Schema):
+    data_field_slug: Slug
+    role: Annotated[str, Field(max_length=30, pattern=r"^[a-z0-9_-]*$")] = ""
+    model_config = {"extra": "forbid"}
+
+
+class FormElementBindingOut(Schema):
+    data_field_slug: str
+    role: str = ""
+
+
 class FieldDefinitionOut(Schema):
+    """A DATA field (storage semantics). The form-tree fields below are OPTIONAL
+    and only populated in the backward-compat `ConfigVersionOut.fields` merge
+    (which lifts them from the bound FormElement); they are absent on the
+    canonical `data_fields` list."""
     id: uuid.UUID
     slug: str
     data_type: str
-    sort_order: int
     is_localized: bool
-    is_preview: bool
-    label: dict[str, str]
-    help_text: dict[str, str]
     type_config: dict[str, Any]
     submodel_config: Optional["ConfigVersionOut"] = None
     workflow_version: Optional["WorkflowVersionOut"] = None
     default: Optional[Any] = None
+    # Backward-compat form-tree fields (populated only in the `fields` merge):
+    sort_order: int = 0
+    is_preview: bool = False
+    label: dict[str, str] = Field(default_factory=dict)
+    help_text: dict[str, str] = Field(default_factory=dict)
     parent_slug: Optional[str] = None
+
+
+class FormElementOut(Schema):
+    """A form-tree element (structural control or widget bound to data fields)."""
+    id: uuid.UUID
+    slug: str
+    element_type: str
+    parent_slug: Optional[str] = None
+    sort_order: int
+    is_preview: bool
+    label: dict[str, str]
+    help_text: dict[str, str]
+    type_config: dict[str, Any]
+    bindings: list[FormElementBindingOut] = Field(default_factory=list)
 
 # ─── Languages and FieldConfig schemas ───────────────────────────────────────
 
@@ -429,18 +515,33 @@ class WorkflowUpdateIn(Schema):
 
 class ConfigDraftIn(Schema):
     notes: Annotated[str, Field(max_length=_MAX_NOTES_LEN)] = ""
-    fields: list[FieldDefinitionIn] = Field(..., min_length=0, max_length=_MAX_FIELDS)
+    data_fields: list[FieldDefinitionIn] = Field(default_factory=list, max_length=_MAX_FIELDS)
+    form_elements: list[FormElementIn] = Field(default_factory=list, max_length=_MAX_FIELDS)
+    # Backward-compat: accept the legacy `fields` key (mixed data + structural)
+    # and split it into data_fields + form_elements during replace_draft.
+    fields: Optional[list[FieldDefinitionIn]] = None
     model_config = {"extra": "forbid"}
 
-    @field_validator("fields")
-    @classmethod
-    def unique_slugs(cls, fields: list[FieldDefinitionIn]) -> list[FieldDefinitionIn]:
+    @model_validator(mode="after")
+    def unique_slugs(self) -> "ConfigDraftIn":
         seen: set[str] = set()
-        for f in fields:
+        for f in self.data_fields:
             if f.slug in seen:
-                raise ValueError(f"duplicate slug '{f.slug}'")
+                raise ValueError(f"duplicate data field slug '{f.slug}'")
             seen.add(f.slug)
-        return fields
+        seen_el: set[str] = set()
+        for e in self.form_elements:
+            if e.slug in seen_el:
+                raise ValueError(f"duplicate form element slug '{e.slug}'")
+            seen_el.add(e.slug)
+        # Legacy `fields` (mixed shape): reject duplicate slugs too.
+        if self.fields is not None:
+            seen_legacy: set[str] = set()
+            for f in self.fields:
+                if f.slug in seen_legacy:
+                    raise ValueError(f"duplicate slug '{f.slug}'")
+                seen_legacy.add(f.slug)
+        return self
 
 
 class ConfigVersionOut(Schema):
@@ -449,10 +550,18 @@ class ConfigVersionOut(Schema):
     notes: str
     published_at: Optional[str]
     languages: list[ConfigLanguageOut]
+    data_fields: list[FieldDefinitionOut]
+    form_elements: list[FormElementOut]
+    # Backward-compat computed view: the legacy flat `fields` list merging data
+    # fields (with their bound element's tree info) and structural elements, in
+    # the old FieldDefinitionOut shape. Always populated so older clients keep
+    # working without changes.
     fields: list[FieldDefinitionOut]
 
 
 FieldDefinitionOut.model_rebuild()
+FormElementIn.model_rebuild()
+FormElementOut.model_rebuild()
 WorkflowDefinitionOut.model_rebuild()
 WorkflowVersionOut.model_rebuild()
 
@@ -641,6 +750,7 @@ class BulkMigrationOut(Schema):
     user_defined_model_type_filter_id: Optional[uuid.UUID]
     total_entities: int; done_entities: int; failed_entities: int
     executed_at: Optional[str]
+    error_message: str = ""
 
 # ─── Staging file and autocomplete schemas ────────────────────────────────────
 
@@ -791,27 +901,43 @@ class PolicyEvalOut(Schema):
 # ─── Draft-as-input export schemas ───────────────────────────────────────────
 
 class FieldDefinitionDraftOut(Schema):
-    """FieldDefinition serialised in the same shape that FieldDefinitionIn accepts,
+    """A DATA field serialised in the shape that FieldDefinitionIn accepts,
     so the output can be fed back into PUT .../draft/ without modification."""
     slug: str
     data_type: str
-    sort_order: int
     is_localized: bool
-    is_preview: bool
-    labels: Optional[dict[str, str]] = None
-    help_texts: dict[str, str]
     type_config: dict[str, Any]
     default: Optional[Any] = None
     submodel_config_version_id: Optional[uuid.UUID] = None
     workflow_version_id: Optional[uuid.UUID] = None
     workflow_definition_id: Optional[uuid.UUID] = None
+
+
+class FormElementBindingDraftOut(Schema):
+    data_field_slug: str
+    role: str = ""
+
+
+class FormElementDraftOut(Schema):
+    """A FormElement serialised in the shape that FormElementIn accepts."""
+    slug: str
+    element_type: str
     parent_slug: Optional[str] = None
+    sort_order: int
+    is_preview: bool
+    labels: Optional[dict[str, str]] = None
+    help_texts: dict[str, str]
+    type_config: dict[str, Any]
+    bindings: list[FormElementBindingDraftOut] = Field(default_factory=list)
 
 
 class ConfigDraftExportOut(Schema):
     """ConfigVersion serialised in ConfigDraftIn shape for round-trip export."""
     notes: str
-    fields: list[FieldDefinitionDraftOut]
+    data_fields: list[FieldDefinitionDraftOut] = Field(default_factory=list)
+    form_elements: list[FormElementDraftOut] = Field(default_factory=list)
+    # Backward-compat: legacy `fields` key (mixed shape) for older clients.
+    fields: Optional[list[FieldDefinitionDraftOut]] = None
 
 
 # ─── Bundle export / import schemas ──────────────────────────────────────────

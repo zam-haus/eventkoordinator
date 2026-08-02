@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { UdfMarkdown } from './UdfMarkdown'
 import { useTranslation } from 'react-i18next'
 import { Tree } from 'primereact/tree'
 import type { TreeNode } from 'primereact/treenode'
-import type { TreeDragDropEvent } from 'primereact/tree'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { MultiSelect, type MultiSelectChangeEvent } from 'primereact/multiselect'
@@ -40,6 +39,8 @@ import {
   type ConfigVersionOut,
   type FieldDefinitionIn,
   type FieldDefinitionOut,
+  type FormElementIn,
+  type FormElementOut,
   type PolicyOut,
   type UDMTypeOut,
   type DataType,
@@ -56,7 +57,6 @@ import { WorkflowEditor } from './WorkflowEditor'
 import styles from './UdmAdminPage.module.css'
 
 type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle' | 'workflow'
-type ConfigView = 'list' | 'detail'
 
 // ── Policy evaluator: field-grant tree ────────────────────────────────────────
 // Renders the entity tree from the evaluator's input document and marks every
@@ -129,9 +129,6 @@ const DATA_TYPES: DataType[] = [
 ]
 
 const STRUCTURAL_TYPES: DataType[] = ['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next']
-const STRUCTURAL_SET = new Set<string>(STRUCTURAL_TYPES)
-// Types that can have child fields via parent_slug
-const PARENT_TYPES = new Set<string>(['tab_container', 'tab', 'hstack', 'hstack_group'])
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -157,17 +154,26 @@ function SubmodelVersionPicker({ value, onChange, allConfigs }: SubmodelVersionP
   const [versions, setVersions] = useState<import('./apiUdm').ConfigVersionListItem[]>([])
   const [loadingVersions, setLoadingVersions] = useState(false)
 
-  // When a config is chosen, load its versions
+  // When a config is chosen, load its versions and default to the latest
+  // published version (the up-to-date submodel schema), if no value is set.
   useEffect(() => {
     if (!selectedConfigId) { setVersions([]); return }
     setLoadingVersions(true)
     import('./apiUdm').then(({ udmListConfigVersions }) =>
       udmListConfigVersions(selectedConfigId)
-        .then(setVersions)
+        .then(vs => {
+          setVersions(vs)
+          // Default to the most recent published version when none is selected.
+          if (!value) {
+            const published = vs.filter(v => v.status === 'published')
+              .sort((a, b) => (b.published_at ?? '').localeCompare(a.published_at ?? ''))
+            if (published[0]) onChange(published[0].id)
+          }
+        })
         .catch(() => setVersions([]))
         .finally(() => setLoadingVersions(false))
     )
-  }, [selectedConfigId])
+  }, [selectedConfigId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // If we have a current value but no selectedConfigId, try to derive the config
   // by finding which config owns the version (via published/draft lookup — best effort)
@@ -404,10 +410,6 @@ function FieldEditor({ field, onChange, onRemove, languages, allConfigs, noHeade
   const [choicesText, setChoicesText] = useState<string | null>(null)
 
   const setF = (updates: Partial<FieldDefinitionIn>) => onChange({ ...field, ...updates })
-  const setLabel = (lang: string, val: string) =>
-    setF({ labels: { ...field.labels, [lang]: val } })
-  const setHelpText = (lang: string, val: string) =>
-    setF({ help_texts: { ...(field.help_texts ?? {}), [lang]: val } })
 
   const tc = field.type_config ?? {}
 
@@ -458,36 +460,13 @@ function FieldEditor({ field, onChange, onRemove, languages, allConfigs, noHeade
               </select>
             </div>
             <div className={styles.formGroup}>
-              <label className={styles.label}>Sort Order</label>
-              <input className={styles.input} type="number" value={field.sort_order}
-                onChange={e => setF({ sort_order: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div className={styles.formGroup}>
               <label className={styles.label}>Flags</label>
               <label className={styles.checkbox}>
                 <input type="checkbox" checked={field.is_localized}
                   onChange={e => setF({ is_localized: e.target.checked })} />
                 Localized
               </label>
-              <label className={styles.checkbox}>
-                <input type="checkbox" checked={field.is_preview ?? false}
-                  onChange={e => setF({ is_preview: e.target.checked })} />
-                Preview (shown in collapsed submodel cards and entity dropdowns)
-              </label>
             </div>
-
-            {languages.map(lang => (
-              <div key={lang} className={styles.formGroup} style={{ minWidth: '200px' }}>
-                <label className={styles.label}>Label [{lang}] *</label>
-                <input className={styles.input} value={(field.labels ?? {})[lang] ?? ''}
-                  onChange={e => setLabel(lang, e.target.value)}
-                  placeholder={`Label in ${lang}`} />
-                <label className={styles.label} style={{ marginTop: '0.25rem' }}>Help [{lang}]</label>
-                <input className={styles.input} value={(field.help_texts ?? {})[lang] ?? ''}
-                  onChange={e => setHelpText(lang, e.target.value)}
-                  placeholder={`Help text in ${lang}`} />
-              </div>
-            ))}
 
             {/* Type config: choices for select */}
             {(field.data_type === 'select_single' || field.data_type === 'select_multi') && (
@@ -609,586 +588,6 @@ function FieldEditor({ field, onChange, onRemove, languages, allConfigs, noHeade
     </div>
   )
 }
-
-// ── Draft Editor ──────────────────────────────────────────────────────────────
-
-interface DraftEditorProps {
-  configId: string
-  languages: string[]
-  onSaved: (v: ConfigVersionOut) => void
-  allConfigs: FieldConfigOut[]
-}
-
-// ── Tree helpers (single source of truth: TreeNode[]) ─────────────────────────
-
-let _uid = 0
-function genKey() { return `k-${++_uid}` }
-
-type NodeData = { field: FieldDefinitionIn }
-
-// Convert flat field list (from API) to PrimeReact TreeNode[]
-function fieldsToNodes(fields: FieldDefinitionIn[]): TreeNode[] {
-  const sorted = [...fields].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-  const childMap = new Map<string, FieldDefinitionIn[]>()
-  const roots: FieldDefinitionIn[] = []
-
-  for (const f of sorted) {
-    if (f.parent_slug) {
-      ;(childMap.get(f.parent_slug) ?? (childMap.set(f.parent_slug, []), childMap.get(f.parent_slug)!)).push(f)
-    } else {
-      roots.push(f)
-    }
-  }
-
-  function toNode(f: FieldDefinitionIn): TreeNode {
-    const children = (childMap.get(f.slug) ?? []).map(toNode)
-    const canHaveChildren = PARENT_TYPES.has(f.data_type)
-    return {
-      key: genKey(),
-      label: f.slug || '(new)',
-      data: { field: f } satisfies NodeData,
-      children: children.length > 0 ? children : (canHaveChildren ? [] : undefined),
-      leaf: !canHaveChildren || children.length === 0,
-      draggable: f.data_type !== 'tab_container',
-      droppable: canHaveChildren,
-    }
-  }
-
-  return roots.map(toNode)
-}
-
-// Convert TreeNode[] back to flat field list for API, deriving parent_slug and sort_order from tree position
-function nodesToFields(nodes: TreeNode[]): FieldDefinitionIn[] {
-  const out: FieldDefinitionIn[] = []
-  let so = 0
-
-  function walk(list: TreeNode[], parentSlug: string | null) {
-    for (const node of list) {
-      const field = (node.data as NodeData).field
-      out.push({ ...field, sort_order: so++, parent_slug: parentSlug })
-      if (node.children && node.children.length > 0) {
-        walk(node.children, field.slug)
-      }
-    }
-  }
-
-  walk(nodes, null)
-  return out
-}
-
-// Recursively update a node by key
-function updateNodeByKey(nodes: TreeNode[], key: string, updatedField: FieldDefinitionIn): TreeNode[] {
-  return nodes.map(n => {
-    if (n.key === key) {
-      return {
-        ...n,
-        label: updatedField.slug || '(new)',
-        data: { field: updatedField },
-        // When slug changes, we need to re-check droppable/leaf
-        droppable: PARENT_TYPES.has(updatedField.data_type),
-        leaf: !PARENT_TYPES.has(updatedField.data_type) || (n.children?.length ?? 0) === 0,
-      }
-    }
-    if (n.children) return { ...n, children: updateNodeByKey(n.children, key, updatedField) }
-    return n
-  })
-}
-
-// Recursively remove a node by key
-function removeNodeByKey(nodes: TreeNode[], key: string): TreeNode[] {
-  return nodes
-    .filter(n => n.key !== key)
-    .map(n => n.children ? { ...n, children: removeNodeByKey(n.children, key) } : n)
-}
-
-
-// Find expanded keys for structural container nodes
-function getInitialExpanded(nodes: TreeNode[]): Record<string, boolean> {
-  const out: Record<string, boolean> = {}
-  function walk(list: TreeNode[]) {
-    for (const n of list) {
-      const f = (n.data as NodeData)?.field
-      if (f && PARENT_TYPES.has(f.data_type)) out[n.key as string] = true
-      if (n.children) walk(n.children)
-    }
-  }
-  walk(nodes)
-  return out
-}
-
-function makeNewDataField(languages: string[]): FieldDefinitionIn {
-  const labels: Record<string, string> = {}
-  languages.forEach(l => { labels[l] = '' })
-  return { slug: '', data_type: 'text_short', sort_order: 0, is_localized: false, is_preview: false, labels, type_config: {}, default: null }
-}
-
-// Auto-generate unique slugs for structural fields based on existing nodes
-function makeStructuralField(dt: DataType, nodes: TreeNode[]): FieldDefinitionIn {
-  const allFields = nodesToFields(nodes)
-  const usedSlugs = new Set(allFields.map(f => f.slug))
-  const base = dt.replace(/_/g, '-')
-  let slug = base
-  let n = 1
-  while (usedSlugs.has(slug)) { slug = `${base}-${++n}` }
-  return { slug, data_type: dt, sort_order: 0, is_localized: false, is_preview: false, labels: null, type_config: {}, default: null }
-}
-
-// ── Structural field editor ────────────────────────────────────────────────────
-
-interface StructuralFieldEditorProps {
-  field: FieldDefinitionIn
-  onChange: (f: FieldDefinitionIn) => void
-}
-
-function StructuralFieldEditor({ field, onChange }: StructuralFieldEditorProps) {
-  const tc = field.type_config ?? {}
-  const setTc = (updates: Record<string, unknown>) => onChange({ ...field, type_config: { ...tc, ...updates } })
-
-  const slugRow = (
-    <div>
-      <label className={styles.label}>Slug</label>
-      <input className={styles.input} value={field.slug} onChange={e => onChange({ ...field, slug: e.target.value })} placeholder={field.data_type} />
-    </div>
-  )
-
-  if (field.data_type === 'tab_container') {
-    return (
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {slugRow}
-        <div style={{ flex: 2 }}>
-          <label className={styles.label}>Title (optional)</label>
-          <input className={styles.input} value={(tc['title'] as string) ?? ''} onChange={e => setTc({ title: e.target.value })} placeholder="e.g. Form Sections" />
-        </div>
-      </div>
-    )
-  }
-
-  if (field.data_type === 'tab') {
-    return (
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {slugRow}
-        <div style={{ flex: 2 }}>
-          <label className={styles.label}>Tab Title *</label>
-          <input className={styles.input} value={(tc['title'] as string) ?? ''} onChange={e => setTc({ title: e.target.value })} placeholder="e.g. General" />
-        </div>
-      </div>
-    )
-  }
-
-  if (field.data_type === 'save_button') {
-    return (
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {slugRow}
-        <div style={{ flex: 2 }}>
-          <label className={styles.label}>Label</label>
-          <input className={styles.input} value={(tc['label'] as string) ?? ''} onChange={e => setTc({ label: e.target.value })} placeholder="Save" />
-        </div>
-        <div>
-          <label className={styles.label}>Variant</label>
-          <select className={styles.select} value={(tc['variant'] as string) ?? 'primary'}
-            onChange={e => setTc({ variant: e.target.value })}>
-            <option value="primary">Primary</option>
-            <option value="success">Success</option>
-          </select>
-        </div>
-      </div>
-    )
-  }
-
-  if (field.data_type === 'hstack') {
-    return (
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {slugRow}
-        <div style={{ color: '#888', fontSize: '0.78rem', alignSelf: 'flex-end' }}>Add hstack_group children via tree</div>
-      </div>
-    )
-  }
-
-  if (field.data_type === 'hstack_group') {
-    return (
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {slugRow}
-        <div>
-          <label className={styles.label}>Alignment</label>
-          <select className={styles.select} value={(tc['align'] as string) ?? 'left'}
-            onChange={e => setTc({ align: e.target.value })}>
-            <option value="left">Left</option>
-            <option value="center">Center</option>
-            <option value="right">Right</option>
-          </select>
-        </div>
-      </div>
-    )
-  }
-
-  if (field.data_type === 'tab_prev' || field.data_type === 'tab_next') {
-    return (
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {slugRow}
-        <div style={{ flex: 2 }}>
-          <label className={styles.label}>Label (optional)</label>
-          <input className={styles.input} value={(tc['label'] as string) ?? ''} onChange={e => setTc({ label: e.target.value })}
-            placeholder={field.data_type === 'tab_prev' ? '← Previous' : 'Next →'} />
-        </div>
-      </div>
-    )
-  }
-
-  return null
-}
-
-// ── DraftEditor ───────────────────────────────────────────────────────────────
-
-function DraftEditor({ configId, languages, onSaved, allConfigs }: DraftEditorProps) {
-  const [draft, setDraft] = useState<ConfigVersionOut | null>(null)
-  const [notes, setNotes] = useState('')
-  const [nodes, setNodes] = useState<TreeNode[]>([])
-  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({})
-  const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({})
-  const [editingKey, setEditingKey] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [publishing, setPublishing] = useState(false)
-  const [errors, setErrors] = useState<string[]>([])
-  const [success, setSuccess] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    try {
-      const v = await udmGetDraftVersion(configId)
-      setDraft(v)
-      setNotes(v.notes)
-      const ns = fieldsToNodes(v.fields.map(fdToIn))
-      setNodes(ns)
-      setExpandedKeys(getInitialExpanded(ns))
-    } catch {
-      setDraft(null)
-      setNodes([])
-    }
-  }, [configId])
-
-  useEffect(() => { void load() }, [load])
-
-  function fdToIn(fd: FieldDefinitionOut): FieldDefinitionIn {
-    const isStructural = STRUCTURAL_SET.has(fd.data_type)
-    return {
-      slug: fd.slug,
-      data_type: fd.data_type as DataType,
-      sort_order: fd.sort_order,
-      is_localized: fd.is_localized,
-      is_preview: fd.is_preview,
-      labels: isStructural ? null : (fd.label as Record<string, string>),
-      help_texts: fd.help_text as Record<string, string>,
-      type_config: fd.type_config as Record<string, unknown>,
-      default: fd.default ?? null,
-      submodel_config_version_id: fd.submodel_config?.version_id ?? null,
-      workflow_version_id: (fd as FieldDefinitionOut & { workflow_version?: { id?: string } }).workflow_version?.id ?? null,
-      parent_slug: fd.parent_slug ?? null,
-    }
-  }
-
-  // ── Mutations (all operate on TreeNode[]) ─────────────────────────────────────
-
-  function addField(parentKey?: string) {
-    const field = makeNewDataField(languages)
-    addNode(field, parentKey)
-  }
-
-  function addStructural(dt: DataType, parentKey?: string) {
-    const field = makeStructuralField(dt, nodes)
-    addNode(field, parentKey)
-  }
-
-  function addNode(field: FieldDefinitionIn, parentKey?: string) {
-    const newNode: TreeNode = {
-      key: genKey(),
-      label: field.slug || '(new)',
-      data: { field } satisfies NodeData,
-      leaf: !PARENT_TYPES.has(field.data_type),
-      draggable: field.data_type !== 'tab_container',
-      droppable: PARENT_TYPES.has(field.data_type),
-      children: PARENT_TYPES.has(field.data_type) ? [] : undefined,
-    }
-
-    if (!parentKey) {
-      setNodes(prev => [...prev, newNode])
-    } else {
-      setNodes(prev => insertUnderKey(prev, parentKey, newNode))
-      setExpandedKeys(prev => ({ ...prev, [parentKey]: true }))
-    }
-  }
-
-  function insertUnderKey(nodeList: TreeNode[], parentKey: string, newNode: TreeNode): TreeNode[] {
-    return nodeList.map(n => {
-      if (n.key === parentKey) {
-        const children = [...(n.children ?? []), newNode]
-        return { ...n, children, leaf: false }
-      }
-      if (n.children) return { ...n, children: insertUnderKey(n.children, parentKey, newNode) }
-      return n
-    })
-  }
-
-  function handleDragDrop(e: TreeDragDropEvent) {
-    setNodes(e.value as TreeNode[])
-  }
-
-  function deleteSelected() {
-    let ns = nodes
-    for (const key of Object.keys(selectedKeys)) {
-      ns = removeNodeByKey(ns, key)
-    }
-    setNodes(ns)
-    setSelectedKeys({})
-    if (editingKey && selectedKeys[editingKey]) setEditingKey(null)
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    setErrors([])
-    setSuccess(null)
-    try {
-      const fields = nodesToFields(nodes)
-      const v = await udmReplaceDraft(configId, { notes, fields })
-      setDraft(v)
-      const ns = fieldsToNodes(v.fields.map(fdToIn))
-      setNodes(ns)
-      setExpandedKeys(prev => ({ ...getInitialExpanded(ns), ...prev }))
-      setSuccess('Draft saved.')
-      onSaved(v)
-    } catch (e) {
-      setErrors(e instanceof UdmApiError ? e.allMessages : [e instanceof Error ? e.message : 'Save failed'])
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handlePublish() {
-    setPublishing(true)
-    setErrors([])
-    setSuccess(null)
-    try {
-      const v = await udmPublishDraft(configId)
-      setDraft(v)
-      setSuccess('Published successfully.')
-      onSaved(v)
-    } catch (e) {
-      setErrors(e instanceof UdmApiError ? e.allMessages : [e instanceof Error ? e.message : 'Publish failed'])
-    } finally {
-      setPublishing(false)
-    }
-  }
-
-  // ── Node template ──────────────────────────────────────────────────────────────
-
-  function nodeTemplate(node: TreeNode) {
-    const field = (node.data as NodeData)?.field
-    if (!field) return <span>{node.label}</span>
-
-    const isStructural = STRUCTURAL_SET.has(field.data_type)
-    const isEditing = editingKey === node.key
-    const typeColors: Record<string, { bg: string; color: string }> = {
-      tab_container: { bg: '#dbeafe', color: '#1e40af' },
-      tab: { bg: '#e0f2fe', color: '#075985' },
-      hstack: { bg: '#fef9c3', color: '#854d0e' },
-      hstack_group: { bg: '#fef3c7', color: '#92400e' },
-      save_button: { bg: '#dcfce7', color: '#166534' },
-      tab_prev: { bg: '#f3e8ff', color: '#6b21a8' },
-      tab_next: { bg: '#f3e8ff', color: '#6b21a8' },
-    }
-    const colors = typeColors[field.data_type] ?? { bg: '#f3f4f6', color: '#374151' }
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-        {/* Compact row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
-          <span style={{
-            background: colors.bg, color: colors.color,
-            fontSize: '0.65rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: '3px', flexShrink: 0,
-          }}>
-            {field.data_type}
-          </span>
-          <span style={{ fontWeight: 500, fontSize: '0.85rem', fontFamily: isStructural ? 'inherit' : 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {field.slug || <em style={{ color: '#bbb', fontStyle: 'italic' }}>new</em>}
-            {isStructural && (field.type_config as { title?: string })?.title
-              ? <span style={{ fontFamily: 'inherit', fontWeight: 400, color: '#666', marginLeft: '0.4rem' }}>
-                  {(field.type_config as { title?: string }).title}
-                </span>
-              : null}
-          </span>
-          <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
-            {/* Context-aware "Add child" buttons */}
-            {field.data_type === 'tab_container' && (
-              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Tab"
-                onClick={e => { e.stopPropagation(); addStructural('tab', node.key as string) }}>+ Tab</button>
-            )}
-            {field.data_type === 'tab' && (
-              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Field"
-                onClick={e => { e.stopPropagation(); addField(node.key as string) }}>+ Field</button>
-            )}
-            {field.data_type === 'hstack' && (
-              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add HStack Group"
-                onClick={e => { e.stopPropagation(); addStructural('hstack_group', node.key as string) }}>+ Group</button>
-            )}
-            {field.data_type === 'hstack_group' && (
-              <>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Save Button"
-                  onClick={e => { e.stopPropagation(); addStructural('save_button', node.key as string) }}>+ Save</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Previous Tab Button"
-                  onClick={e => { e.stopPropagation(); addStructural('tab_prev', node.key as string) }}>+ Prev</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Next Tab Button"
-                  onClick={e => { e.stopPropagation(); addStructural('tab_next', node.key as string) }}>+ Next</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                  style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }} title="Add Field"
-                  onClick={e => { e.stopPropagation(); addField(node.key as string) }}>+ Field</button>
-              </>
-            )}
-            <button
-              type="button"
-              className={`${styles.btn} ${styles.btnSecondary}`}
-              style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
-              onClick={e => { e.stopPropagation(); setEditingKey(isEditing ? null : node.key as string) }}
-            >
-              {isEditing ? '✕' : '✎'}
-            </button>
-            <button
-              type="button"
-              className={`${styles.btn} ${styles.btnDanger}`}
-              style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
-              onClick={e => { e.stopPropagation(); setNodes(prev => removeNodeByKey(prev, node.key as string)) }}
-            >✕</button>
-          </div>
-        </div>
-
-        {/* Inline editor */}
-        {isEditing && (
-          <div style={{ marginTop: '0.4rem', padding: '0.6rem', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}
-            onClick={e => e.stopPropagation()}>
-            {isStructural
-              ? <StructuralFieldEditor
-                  field={field}
-                  onChange={updated => setNodes(prev => updateNodeByKey(prev, node.key as string, updated))}
-                />
-              : <FieldEditor
-                  field={field}
-                  onChange={updated => setNodes(prev => updateNodeByKey(prev, node.key as string, updated))}
-                  onRemove={() => setNodes(prev => removeNodeByKey(prev, node.key as string))}
-                  languages={languages}
-                  allConfigs={allConfigs}
-                  noHeader
-                />
-            }
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────────────
-
-  const selectedCount = Object.keys(selectedKeys).length
-  const hasTabContainer = nodes.some(n => (n.data as NodeData)?.field?.data_type === 'tab_container')
-  const totalCount = nodesToFields(nodes).length
-
-  return (
-    <div>
-      <div className={styles.subsectionTitle}>Draft Version</div>
-      {draft ? (
-        <div>
-          <div className={styles.row}>
-            <div className={styles.formGroup} style={{ flex: 2 }}>
-              <label className={styles.label}>Change Notes</label>
-              <input className={styles.input} value={notes}
-                onChange={e => setNotes(e.target.value)} placeholder="Notes for this version" />
-            </div>
-          </div>
-
-          <div style={{ marginTop: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <span className={styles.subsectionTitle}>Fields ({totalCount})</span>
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
-                  onClick={() => addField()}>+ Field</button>
-                {!hasTabContainer && (
-                  <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
-                    onClick={() => addStructural('tab_container')}>+ Tab Container</button>
-                )}
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
-                  onClick={() => addStructural('save_button')}>+ Save Button</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
-                  onClick={() => addStructural('tab_prev')}>+ Tab Prev</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
-                  onClick={() => addStructural('tab_next')}>+ Tab Next</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
-                  onClick={() => addStructural('hstack')}>+ HStack</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
-                  onClick={() => addStructural('hstack_group')}>+ HStack Group</button>
-                {selectedCount > 0 && (
-                  <button type="button" className={`${styles.btn} ${styles.btnDanger}`} style={{ fontSize: '0.78rem' }}
-                    onClick={deleteSelected}>Delete {selectedCount} selected</button>
-                )}
-              </div>
-            </div>
-
-            <div style={{ fontSize: '0.73rem', color: '#94a3b8', marginBottom: '0.4rem' }}>
-              Drag to reorder · Click ✎ to edit inline · Click + to add children · Multiselect then Delete
-            </div>
-
-            {totalCount === 0 && (
-              <div className={styles.emptyState}>No fields yet. Use the buttons above to add fields or a tab container.</div>
-            )}
-
-            {totalCount > 0 && (
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
-                <Tree
-                  value={nodes}
-                  expandedKeys={expandedKeys}
-                  onToggle={e => setExpandedKeys(e.value as Record<string, boolean>)}
-                  selectionMode="multiple"
-                  selectionKeys={selectedKeys}
-                  onSelectionChange={e => setSelectedKeys(e.value as Record<string, boolean>)}
-                  dragdropScope="field-config"
-                  onDragDrop={handleDragDrop}
-                  nodeTemplate={nodeTemplate}
-                  style={{ fontSize: '0.85rem' }}
-                  pt={{
-                    node: { style: { borderLeft: '3px solid transparent' } },
-                  }}
-                />
-              </div>
-            )}
-          </div>
-
-          {errors.length > 0 && (
-            <div className={styles.error} style={{ marginTop: '0.75rem' }}>
-              {errors.map((msg, i) => <div key={i}>{msg}</div>)}
-            </div>
-          )}
-          {success && <div className={styles.success} style={{ marginTop: '0.5rem' }}>{success}</div>}
-
-          <div className={styles.row} style={{ marginTop: '1rem' }}>
-            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-              onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving…' : 'Save Draft'}
-            </button>
-            <button type="button" className={`${styles.btn} ${styles.btnSuccess}`}
-              onClick={handlePublish} disabled={publishing}>
-              {publishing ? 'Publishing…' : 'Publish Draft'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className={styles.emptyState}>No draft version exists.</div>
-      )}
-    </div>
-  )
-}
-
-
 // ── Config Detail ─────────────────────────────────────────────────────────────
 
 interface ConfigDetailProps {
@@ -1389,7 +788,7 @@ function ConfigDetail({ configId, onBack }: ConfigDetailProps) {
 
       {/* Draft editor */}
       <div className={styles.section}>
-        <DraftEditor
+        <ConfigDraftEditor
           configId={configId}
           languages={languages}
           allConfigs={allConfigs}
@@ -1423,11 +822,10 @@ function isUnused(cfg: FieldConfigOut) {
   return cfg.entity_count === 0 && cfg.type_ids.length === 0 && cfg.published_submodel_usage_count === 0
 }
 
-function ConfigsTab() {
+function ConfigsTab({ selectedConfigId = null }: { selectedConfigId?: string | null }) {
+  const navigate = useNavigate()
   const [configs, setConfigs] = useState<FieldConfigOut[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<ConfigView>('list')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
@@ -1479,11 +877,11 @@ function ConfigsTab() {
     }
   }
 
-  if (view === 'detail' && selectedId) {
+  if (selectedConfigId) {
     return (
       <ConfigDetail
-        configId={selectedId}
-        onBack={() => { setView('list'); void loadConfigs() }}
+        configId={selectedConfigId}
+        onBack={() => navigate('/udm-admin/configs')}
       />
     )
   }
@@ -1549,6 +947,7 @@ function ConfigsTab() {
       )}
 
       <div className={styles.section}>
+        <div className={styles.tableWrap}>
         <DataTable
           value={displayed}
           loading={loading}
@@ -1621,7 +1020,7 @@ function ConfigsTab() {
             body={(cfg: FieldConfigOut) => (
               <div className={styles.tableActions}>
                 <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                  onClick={() => { setSelectedId(cfg.id); setView('detail') }}>
+                  onClick={() => navigate(`/udm-admin/configs/${cfg.id}`)}>
                   Open
                 </button>
                 <button type="button" className={`${styles.btn} ${styles.btnDanger}`}
@@ -1632,6 +1031,7 @@ function ConfigsTab() {
             )}
           />
         </DataTable>
+        </div>
       </div>
     </div>
   )
@@ -2327,6 +1727,7 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
         {policies.length === 0 ? (
           <div className={styles.emptyState}>No policies assigned.</div>
         ) : (
+          <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead><tr><th>Slug</th><th>Actions</th></tr></thead>
             <tbody>
@@ -2341,6 +1742,7 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
               ))}
             </tbody>
           </table>
+          </div>
         )}
         <div className={styles.subsection}>
           <div className={styles.subsectionTitle}>Add Policy</div>
@@ -2504,19 +1906,971 @@ const VALID_TABS = new Set<AdminTab>(['configs', 'types', 'policies', 'migration
 
 export function UdmAdminPage() {
   useTranslation()
-  const { tab: tabParam } = useParams<{ tab?: string }>()
+  const { tab: tabParam, configId: configIdParam } = useParams<{ tab?: string; configId?: string }>()
   const tab: AdminTab = (tabParam && VALID_TABS.has(tabParam as AdminTab))
     ? (tabParam as AdminTab)
     : 'configs'
 
   return (
     <div className={styles.page}>
-      {tab === 'configs' && <ConfigsTab />}
+      {tab === 'configs' && <ConfigsTab selectedConfigId={configIdParam ?? null} />}
       {tab === 'types' && <TypesTab />}
       {tab === 'policies' && <PoliciesTab />}
       {tab === 'migrations' && <BulkMigrationTab />}
       {tab === 'bundle' && <BundleTab />}
       {tab === 'workflow' && <WorkflowEditor />}
+    </div>
+  )
+}
+
+// ── Split editors: Data Fields + Form Config (PLAN_split_form_tree_and_data_fields.md) ──
+
+interface ConfigDraftEditorProps {
+  configId: string
+  languages: string[]
+  allConfigs: FieldConfigOut[]
+  onSaved: (v: ConfigVersionOut) => void
+}
+
+/** Loads the draft once, holds data_fields + form_elements + notes in state,
+ *  and renders two editors (Data Fields / Form Config) with shared Save/Publish. */
+function ConfigDraftEditor({ configId, languages, allConfigs, onSaved }: ConfigDraftEditorProps) {
+  const [draft, setDraft] = useState<ConfigVersionOut | null>(null)
+  const [notes, setNotes] = useState('')
+  const [dataFields, setDataFields] = useState<FieldDefinitionIn[]>([])
+  const [formElements, setFormElements] = useState<FormElementIn[]>([])
+  const [saving, setSaving] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [errors, setErrors] = useState<string[]>([])
+  const [success, setSuccess] = useState<string | null>(null)
+  const [subTab, setSubTab] = useState<'data' | 'form' | 'preview'>('data')
+
+  const load = useCallback(async () => {
+    try {
+      const v = await udmGetDraftVersion(configId)
+      setDraft(v)
+      setNotes(v.notes)
+      setDataFields(v.data_fields.map(dfOutToIn))
+      setFormElements(v.form_elements.map(elOutToIn))
+    } catch {
+      setDraft(null)
+      setDataFields([])
+      setFormElements([])
+    }
+  }, [configId])
+
+  useEffect(() => { void load() }, [load])
+
+  function dfOutToIn(fd: FieldDefinitionOut): FieldDefinitionIn {
+    return {
+      slug: fd.slug,
+      data_type: fd.data_type as DataType,
+      is_localized: fd.is_localized,
+      type_config: fd.type_config as Record<string, unknown>,
+      default: fd.default ?? null,
+      submodel_config_version_id: fd.submodel_config?.version_id ?? null,
+      workflow_version_id: (fd as FieldDefinitionOut & { workflow_version?: { id?: string } }).workflow_version?.id ?? null,
+      // legacy form-tree fields are ignored on the data-field side
+      sort_order: 0, is_preview: false, parent_slug: null,
+      labels: null, help_texts: {},
+    }
+  }
+
+  function elOutToIn(el: FormElementOut): FormElementIn {
+    // Coerce empty label/help_text dicts to null — the backend's LocalizedLabel
+    // requires min_length=1, so {} is rejected. null means "no labels".
+    const labelDict = el.label as Record<string, string> | undefined
+    const hasLabels = labelDict && Object.keys(labelDict).length > 0
+      && Object.values(labelDict).some(v => (v ?? '').trim() !== '')
+    const helpDict = el.help_text as Record<string, string> | undefined
+    const hasHelp = helpDict && Object.keys(helpDict).length > 0
+    return {
+      slug: el.slug,
+      element_type: el.element_type,
+      parent_slug: el.parent_slug ?? null,
+      sort_order: el.sort_order,
+      is_preview: el.is_preview,
+      labels: hasLabels ? labelDict! : null,
+      help_texts: hasHelp ? helpDict! : {},
+      type_config: el.type_config as Record<string, unknown>,
+      bindings: (el.bindings ?? []).map(b => ({ data_field_slug: b.data_field_slug, role: b.role })),
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setErrors([])
+    setSuccess(null)
+    try {
+      const v = await udmReplaceDraft(configId, { notes, data_fields: dataFields, form_elements: formElements })
+      setDraft(v)
+      setDataFields(v.data_fields.map(dfOutToIn))
+      setFormElements(v.form_elements.map(elOutToIn))
+      setSuccess('Draft saved.')
+      onSaved(v)
+    } catch (e) {
+      setErrors(e instanceof UdmApiError ? e.allMessages : [e instanceof Error ? e.message : 'Save failed'])
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handlePublish() {
+    setPublishing(true)
+    setErrors([])
+    setSuccess(null)
+    try {
+      const v = await udmPublishDraft(configId)
+      setDraft(v)
+      setSuccess('Published successfully.')
+      onSaved(v)
+    } catch (e) {
+      setErrors(e instanceof UdmApiError ? e.allMessages : [e instanceof Error ? e.message : 'Publish failed'])
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  if (!draft) return <div className={styles.emptyState}>Loading draft…</div>
+
+  return (
+    <div>
+      <div className={styles.subsectionTitle}>Draft Version</div>
+      <div className={styles.row}>
+        <div className={styles.formGroup} style={{ flex: 2 }}>
+          <label className={styles.label}>Change Notes</label>
+          <input className={styles.input} value={notes}
+            onChange={e => setNotes(e.target.value)} placeholder="Notes for this version" />
+        </div>
+      </div>
+
+      {/* Sub-tab switch */}
+      <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0 0.8rem', borderBottom: '2px solid #e2e8f0' }}>
+        {(['data', 'form', 'preview'] as const).map(st => (
+          <button key={st} type="button"
+            className={`${styles.btn} ${subTab === st ? styles.btnPrimary : styles.btnSecondary}`}
+            style={{
+              fontSize: '0.9rem', fontWeight: 600, padding: '0.45rem 0.9rem',
+              borderBottom: subTab === st ? '3px solid #2563eb' : '3px solid transparent',
+              borderRadius: '4px 4px 0 0', marginBottom: '-2px',
+            }}
+            onClick={() => setSubTab(st)}>
+            {st === 'data' ? '📋 Data Fields' : st === 'form' ? '🎨 Form Config' : '👁 Preview Config'}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '-0.4rem 0 0.8rem' }}>
+        {subTab === 'data'
+          ? 'Define storage: field types, localization, defaults, validation. Not shown in the form until bound (Form Config tab).'
+          : subTab === 'form'
+          ? 'Build the form tree: drag data fields and widgets from the right sidebar into the tree.'
+          : 'Build the preview tree: elements here (is_preview=true) define how an entity is summarized in lists/cards. Stored like a form, separate from the main form tree.'}
+      </div>
+
+      {subTab === 'data' ? (
+        <DataFieldsEditor
+          dataFields={dataFields}
+          onChange={setDataFields}
+          languages={languages}
+          allConfigs={allConfigs}
+          formElements={formElements}
+        />
+      ) : subTab === 'form' ? (
+        <FormConfigEditor
+          formElements={formElements.filter(e => !e.is_preview)}
+          onChange={els => setFormElements([...els, ...formElements.filter(e => e.is_preview)])}
+          dataFields={dataFields}
+          languages={languages}
+        />
+      ) : (
+        <FormConfigEditor
+          formElements={formElements.filter(e => e.is_preview)}
+          onChange={els => setFormElements([...formElements.filter(e => !e.is_preview), ...els.map(e => ({ ...e, is_preview: true }))])}
+          dataFields={dataFields}
+          languages={languages}
+          isPreview
+        />
+      )}
+
+      {errors.length > 0 && (
+        <div className={styles.error} style={{ marginTop: '0.75rem' }}>
+          {errors.map((msg, i) => <div key={i}>{msg}</div>)}
+        </div>
+      )}
+      {success && <div className={styles.success} style={{ marginTop: '0.75rem' }}>{success}</div>}
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Save Draft'}
+        </button>
+        <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={handlePublish} disabled={publishing}>
+          {publishing ? 'Publishing…' : 'Publish'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Data Fields editor (storage semantics) ─────────────────────────────────────
+
+interface DataFieldsEditorProps {
+  dataFields: FieldDefinitionIn[]
+  onChange: (fields: FieldDefinitionIn[]) => void
+  languages: string[]
+  allConfigs: FieldConfigOut[]
+  formElements: FormElementIn[]
+}
+
+// Value-bearing data field types grouped for the sidebar (structural types excluded).
+const DATA_FIELD_CATEGORIES: { label: string; types: DataType[] }[] = [
+  { label: 'Text', types: ['text_short', 'text_long', 'text_markdown', 'text_richtext'] },
+  { label: 'Number', types: ['integer', 'float'] },
+  { label: 'Date & Time', types: ['date', 'time', 'datetime'] },
+  { label: 'Choice', types: ['select_single', 'select_multi'] },
+  { label: 'Reference', types: ['user_select', 'user_select_multi', 'group_select', 'group_select_multi', 'entity_select', 'entity_select_multi', 'submodel_select', 'submodel_list'] },
+  { label: 'File', types: ['image', 'file'] },
+  { label: 'Special', types: ['boolean', 'slug_id', 'workflow'] },
+]
+
+function DataFieldsEditor({ dataFields, onChange, languages, allConfigs, formElements }: DataFieldsEditorProps) {
+  const [editingSlug, setEditingSlug] = useState<string | null>(null)
+  const [dragType, setDragType] = useState<DataType | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+
+  // Data fields referenced by at least one FormElement binding.
+  const referencedSlugs = new Set<string>()
+  for (const el of formElements) {
+    for (const b of el.bindings ?? []) referencedSlugs.add(b.data_field_slug)
+  }
+
+  function addDataFieldOfType(dt: DataType, atIndex?: number) {
+    const f: FieldDefinitionIn = {
+      slug: '', data_type: dt, is_localized: false, is_preview: false,
+      labels: null, help_texts: {}, type_config: {}, default: null,
+    }
+    if (atIndex === undefined) {
+      onChange([...dataFields, f])
+    } else {
+      const next = [...dataFields]
+      next.splice(atIndex, 0, f)
+      onChange(next)
+    }
+    setEditingSlug('')
+  }
+
+  function addDataField() {
+    addDataFieldOfType('text_short')
+  }
+
+  function updateField(slug: string, updated: FieldDefinitionIn) {
+    onChange(dataFields.map(f => (f.slug === slug ? updated : f)))
+    if (slug !== updated.slug) setEditingSlug(updated.slug)
+  }
+
+  function removeField(slug: string) {
+    onChange(dataFields.filter(f => f.slug !== slug))
+  }
+
+  function handleAreaDrop(e: React.DragEvent) {
+    e.preventDefault()
+    if (dragType) {
+      // If a drop line was hovered, insert there; otherwise append to end.
+      addDataFieldOfType(dragType, dropIndex ?? undefined)
+      setDragType(null)
+    }
+    setDropIndex(null)
+  }
+
+  function handleListLineDrop(e: React.DragEvent, index: number) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (dragType) {
+      addDataFieldOfType(dragType, index)
+      setDragType(null)
+    }
+    setDropIndex(null)
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+      {/* Field list (left) */}
+      <div
+        style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
+        onDragOver={e => { if (dragType) e.preventDefault() }}
+        onDrop={handleAreaDrop}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span className={styles.subsectionTitle}>Data Fields ({dataFields.length})</span>
+          <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ fontSize: '0.78rem' }}
+            onClick={addDataField}>+ Data Field</button>
+        </div>
+        <div style={{ fontSize: '0.73rem', color: '#94a3b8' }}>
+          Data fields define storage semantics (type, localization, defaults, validation). Drag a type from the right sidebar, or click + Data Field. Not shown in the form until bound (Form Config tab).
+        </div>
+        {dataFields.length === 0 && !dragType && (
+          <div className={styles.emptyState}>No data fields yet. Drag a field type from the right sidebar.</div>
+        )}
+        {dataFields.length === 0 && dragType && (
+          <DropLine depth={0} active={dropIndex === 0}
+            onDragOver={e => { e.preventDefault(); setDropIndex(0) }}
+            onDrop={e => handleListLineDrop(e, 0)} />
+        )}
+        {dataFields.map((f, i) => (
+          <div key={`df-${i}`}>
+            {dragType && (
+              <DropLine depth={0} active={dropIndex === i}
+                onDragOver={e => { e.preventDefault(); setDropIndex(i) }}
+                onDrop={e => handleListLineDrop(e, i)} />
+            )}
+            <div className={styles.card}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{
+                background: '#f3f4f6', color: '#374151',
+                fontSize: '0.65rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: '3px',
+              }}>{f.data_type}</span>
+              {f.slug && !referencedSlugs.has(f.slug) && (
+                <span title="Not bound to any form element (hidden in the form)"
+                  style={{
+                    background: '#fef3c7', color: '#92400e',
+                    fontSize: '0.6rem', fontWeight: 600, padding: '0.08rem 0.35rem', borderRadius: '3px',
+                    border: '1px solid #fcd34d',
+                  }}>⚠ unreferenced</span>
+              )}
+              <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {f.slug || <em style={{ color: '#bbb' }}>new</em>}
+              </span>
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+                onClick={() => setEditingSlug(editingSlug === (f.slug || '') ? null : (f.slug || ''))}>
+                {editingSlug === (f.slug || '') ? '✕' : '✎'}
+              </button>
+              <button type="button" className={`${styles.btn} ${styles.btnDanger}`}
+                style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+                onClick={() => removeField(f.slug)}>✕</button>
+            </div>
+            {editingSlug === (f.slug || '') && (
+              <div style={{ marginTop: '0.5rem', padding: '0.6rem', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                <FieldEditor
+                  field={f}
+                  onChange={updated => updateField(f.slug, updated)}
+                  onRemove={() => removeField(f.slug)}
+                  languages={languages}
+                allConfigs={allConfigs}
+                noHeader
+              />
+            </div>
+            )}
+            </div>
+            {dragType && (
+              <DropLine depth={0} active={dropIndex === i + 1}
+                onDragOver={e => { e.preventDefault(); setDropIndex(i + 1) }}
+                onDrop={e => handleListLineDrop(e, i + 1)} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Sidebar (right): field type library */}
+      <div className={styles.sidebar}>
+        <div className={styles.subsectionTitle} style={{ fontSize: '0.85rem' }}>Field Types</div>
+        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '0.5rem' }}>Drag onto the list, or click to add →</div>
+        {DATA_FIELD_CATEGORIES.map(cat => (
+          <div key={cat.label}>
+            <div style={{ fontWeight: 600, fontSize: '0.72rem', color: '#475569', margin: '0.5rem 0 0.2rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              {cat.label}
+            </div>
+            {cat.types.map(t => (
+              <div key={t}
+                draggable
+                onDragStart={() => setDragType(t)}
+                onDragEnd={() => { setDragType(null); setDropIndex(null) }}
+                onClick={() => addDataFieldOfType(t)}
+                title={`Add a ${t} data field`}
+                style={{
+                  padding: '0.3rem 0.4rem', margin: '0.2rem 0', background: '#fff',
+                  border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'grab',
+                  fontSize: '0.78rem', fontFamily: 'monospace',
+                }}>
+                {t}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Form Config editor (form tree + sidebar drag-drop) ──────────────────────────
+
+interface FormConfigEditorProps {
+  formElements: FormElementIn[]
+  onChange: (els: FormElementIn[]) => void
+  dataFields: FieldDefinitionIn[]
+  languages: string[]
+  /** When true, new elements created in this editor are marked is_preview=true
+   * (used by the Preview Config tab, which edits a separate is_preview tree). */
+  isPreview?: boolean
+}
+
+const STRUCTURAL_ELEMENT_TYPES = ['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next'] as const
+const PARENT_ELEMENT_TYPES = new Set(['tab_container', 'tab', 'hstack', 'hstack_group'])
+const WIDGET_ELEMENT_TYPES = ['field', 'date_range'] as const
+
+/** Binding roles preset per widget element type. Each entry lists the roles a
+ * binding of that element must use (in order). The user picks the bound data
+ * field for each role from a dropdown — no freetext roles. */
+const BINDING_ROLES: Record<string, string[]> = {
+  field: [''],
+  date_range: ['from', 'to'],
+}
+
+interface ElNodeData { el: FormElementIn }
+type ElTreeNode = TreeNode & { data?: ElNodeData }
+
+/** A "drop here" line rendered between elements. `path` describes the insertion
+ * point as a list of child indices (e.g. [] = root end, [1] = after root[1],
+ * [0,2] = inside root[0] after its 2nd child). `onDrop` is called with the path. */
+function DropLine({ depth, active, onDragOver, onDrop }: {
+  depth: number
+  active: boolean
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: (e: React.DragEvent) => void
+}) {
+  return (
+    <div
+      className={`${styles.dropLine} ${active ? styles.over : ''}`}
+      style={{ marginLeft: depth * 1.4 }}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {active && <span>drop here</span>}
+    </div>
+  )
+}
+
+function FormConfigEditor({ formElements, onChange, dataFields, languages, isPreview = false }: FormConfigEditorProps) {
+  const [nodes, setNodes] = useState<ElTreeNode[]>([])
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({})
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [dragKind, setDragKind] = useState<{ kind: 'datafield' | 'widget'; slug?: string; elementType?: string } | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
+  // Track the last formElements array we emitted via onChange. The rebuild
+  // effect skips when the incoming prop is our own echo, so typing in the
+  // inline editor doesn't tear down the tree and lose focus.
+  const lastEmittedRef = useRef<FormElementIn[] | null>(null)
+
+  // Structural signature: only slug/parent/type/order matter. Field *values*
+  // (labels, help_texts, bindings) are intentionally excluded so that editing
+  // them in the inline editor (which echoes back through onChange) does NOT
+  // trigger a tree rebuild that would unmount the input and steal focus.
+  function structSig(els: FormElementIn[]): string {
+    return els.map(e => `${e.slug}|${e.parent_slug ?? ''}|${e.element_type}|${e.sort_order}`).join(';')
+  }
+
+  // Rebuild the tree when the incoming formElements structure changes from an
+  // EXTERNAL source (load/save, add/remove/reorder). Skips value-only echoes
+  // to keep the inline editor mounted and focused while the user types.
+  useEffect(() => {
+    if (formElements === lastEmittedRef.current) return
+    // Same structure as the current tree? Skip the rebuild (only field values
+    // changed, which the inline editor already holds in local node state).
+    const currentEls = nodesToEls(nodes)
+    if (structSig(formElements) === structSig(currentEls)) {
+      lastEmittedRef.current = formElements
+      return
+    }
+    const ns = elsToNodes(formElements)
+    setNodes(ns)
+    lastEmittedRef.current = formElements
+    // Auto-expand all parent nodes so the tree is open by default.
+    const exp: Record<string, boolean> = {}
+    function walk(list: ElTreeNode[]) {
+      for (const n of list) {
+        const el = (n.data as ElNodeData)!.el
+        if (PARENT_ELEMENT_TYPES.has(el.element_type)) exp[n.key as string] = true
+        if (n.children) walk(n.children as ElTreeNode[])
+      }
+    }
+    walk(ns)
+    setExpandedKeys(exp)
+  }, [formElements]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Propagate tree changes up. Record the emitted array so the rebuild
+  // effect recognizes it as our own echo and skips (preserves focus).
+  function commit(ns: ElTreeNode[]) {
+    setNodes(ns)
+    const els = nodesToEls(ns)
+    lastEmittedRef.current = els
+    onChange(els)
+  }
+
+  function elsToNodes(els: FormElementIn[]): ElTreeNode[] {
+    const roots: ElTreeNode[] = []
+    const made: Record<string, ElTreeNode> = {}
+    // First pass: create nodes keyed by slug (stable identity across edits,
+    // so typing in the inline editor doesn't unmount/remount the input and
+    // lose focus). A slug is unique within a form tree.
+    for (const el of els) {
+      const n: ElTreeNode = {
+        key: el.slug,
+        label: el.slug,
+        data: { el },
+        leaf: !PARENT_ELEMENT_TYPES.has(el.element_type),
+        draggable: el.element_type !== 'tab_container',
+        droppable: PARENT_ELEMENT_TYPES.has(el.element_type),
+        children: PARENT_ELEMENT_TYPES.has(el.element_type) ? [] : undefined,
+      }
+      made[el.slug] = n
+    }
+    // Second pass: link parents
+    for (const el of els) {
+      const n = made[el.slug]
+      if (el.parent_slug && made[el.parent_slug]) {
+        const parent = made[el.parent_slug]
+        ;(parent.children ?? (parent.children = [])).push(n)
+      } else {
+        roots.push(n)
+      }
+    }
+    return roots
+  }
+
+  function nodesToEls(ns: ElTreeNode[]): FormElementIn[] {
+    const out: FormElementIn[] = []
+    function walk(list: ElTreeNode[], parentSlug: string | null) {
+      list.forEach((n, i) => {
+        const el = (n.data as ElNodeData)!.el
+        out.push({ ...el, parent_slug: parentSlug, sort_order: i })
+      })
+      for (const n of list) {
+        const el = (n.data as ElNodeData)!.el
+        if (n.children?.length) walk(n.children as ElTreeNode[], el.slug)
+      }
+    }
+    walk(ns, null)
+    return out
+  }
+
+  function updateElNodeByKey(ns: ElTreeNode[], key: string, updated: FormElementIn): ElTreeNode[] {
+    return ns.map(n => {
+      if (n.key === key) {
+        const rebuilt: ElTreeNode = {
+          ...n, label: updated.slug, data: { el: updated },
+          leaf: !PARENT_ELEMENT_TYPES.has(updated.element_type),
+          draggable: updated.element_type !== 'tab_container',
+          droppable: PARENT_ELEMENT_TYPES.has(updated.element_type),
+        }
+        return rebuilt
+      }
+      if (n.children) return { ...n, children: updateElNodeByKey(n.children as ElTreeNode[], key, updated) }
+      return n
+    })
+  }
+
+  function removeElNodeByKey(ns: ElTreeNode[], key: string): ElTreeNode[] {
+    return ns
+      .filter(n => n.key !== key)
+      .map(n => (n.children ? { ...n, children: removeElNodeByKey(n.children as ElTreeNode[], key) } : n))
+  }
+
+  /** Find the [rootIndex, childIndex...] path of a node by key, or null. */
+  function pathOfKey(ns: ElTreeNode[], key: string): number[] | null {
+    for (let i = 0; i < ns.length; i++) {
+      if (ns[i].key === key) return [i]
+      if (ns[i].children) {
+        const sub = pathOfKey(ns[i].children as ElTreeNode[], key)
+        if (sub) return [i, ...sub]
+      }
+    }
+    return null
+  }
+
+  /** Insert a node before the node with the given key (same parent). */
+  function insertBeforeKey(ns: ElTreeNode[], key: string, node: ElTreeNode): ElTreeNode[] {
+    const path = pathOfKey(ns, key)
+    if (!path) return [...ns, node]
+    const parentPath = path.slice(0, -1)
+    const idx = path[path.length - 1]
+    return insertAtPathKey(ns, [...parentPath, idx], node)
+  }
+
+  /** Insert a node after the node with the given key (same parent). */
+  function insertAfterKey(ns: ElTreeNode[], key: string, node: ElTreeNode): ElTreeNode[] {
+    const path = pathOfKey(ns, key)
+    if (!path) return [...ns, node]
+    const parentPath = path.slice(0, -1)
+    const idx = path[path.length - 1]
+    return insertAtPathKey(ns, [...parentPath, idx + 1], node)
+  }
+
+  /** Insert at a numeric index path (helper for insertBefore/AfterKey). */
+  function insertAtPathKey(ns: ElTreeNode[], path: number[], node: ElTreeNode): ElTreeNode[] {
+    if (path.length === 0) return [...ns, node]
+    const [head, ...rest] = path
+    if (rest.length === 0) {
+      const out = [...ns]
+      out.splice(head, 0, node)
+      return out
+    }
+    return ns.map((n, i) => {
+      if (i === head && n.children) {
+        return { ...n, children: insertAtPathKey(n.children as ElTreeNode[], rest, node) }
+      }
+      return n
+    })
+  }
+
+  function makeElementNode(elementType: string, slugBase: string, bindings: FormElementIn['bindings'] = []): ElTreeNode {
+    const usedSlugs = new Set(nodesToEls(nodes).map(e => e.slug))
+    let slug = slugBase, n = 1
+    while (usedSlugs.has(slug)) { slug = `${slugBase}-${++n}` }
+    // Labels start null (user fills them via the inline editor). The backend
+    // LocalizedLabel requires min_length=1 with non-empty values, so an empty
+    // dict would be rejected on save.
+    const el: FormElementIn = {
+      slug, element_type: elementType,
+      sort_order: 0, is_preview: isPreview,
+      labels: null,
+      help_texts: {}, type_config: {}, bindings,
+    }
+    return {
+      key: slug, label: slug, data: { el },
+      leaf: !PARENT_ELEMENT_TYPES.has(elementType),
+      draggable: elementType !== 'tab_container',
+      droppable: PARENT_ELEMENT_TYPES.has(elementType),
+      children: PARENT_ELEMENT_TYPES.has(elementType) ? [] : undefined,
+    }
+  }
+
+  // Sidebar data-field lists: unreferenced first, then referenced.
+  const referencedSlugs = new Set<string>()
+  for (const el of nodesToEls(nodes)) {
+    for (const b of el.bindings ?? []) referencedSlugs.add(b.data_field_slug)
+  }
+  const unreferencedDataFields = dataFields.filter(f => !referencedSlugs.has(f.slug))
+  const referencedDataFields = dataFields.filter(f => referencedSlugs.has(f.slug))
+
+  function handleDragStart(e: React.DragEvent, kind: 'datafield' | 'widget', id: string) {
+    setDragKind({ kind, slug: kind === 'datafield' ? id : undefined, elementType: kind === 'widget' ? id : undefined })
+    e.dataTransfer.effectAllowed = 'copy'
+    // PrimeReact Tree drop is HTML5 DnD; setting data lets the Tree's drop zone accept.
+    e.dataTransfer.setData('text/plain', id)
+  }
+
+  function makeNodeFromDrag(d: { kind: 'datafield' | 'widget'; slug?: string; elementType?: string }): ElTreeNode | null {
+    if (d.kind === 'datafield' && d.slug) {
+      // Dragging a data field in → create a 'field' element bound to it.
+      const df = dataFields.find(f => f.slug === d.slug)
+      if (!df) return null
+      return makeElementNode('field', df.slug, [{ data_field_slug: df.slug, role: '' }])
+    }
+    if (d.kind === 'widget' && d.elementType) {
+      if (d.elementType === 'field') return makeElementNode('field', 'field')
+      if (d.elementType === 'date_range') return makeElementNode('date_range', 'date-range')
+      // structural
+      return makeElementNode(d.elementType, d.elementType.replace(/_/g, '-'))
+    }
+    return null
+  }
+
+  function nodeTemplate(node: ElTreeNode) {
+    const el = (node.data as ElNodeData)?.el
+    if (!el) return <span>{node.label}</span>
+
+    const isStructural = (STRUCTURAL_ELEMENT_TYPES as readonly string[]).includes(el.element_type)
+    const isEditing = editingKey === node.key
+    const typeColors: Record<string, { bg: string; color: string }> = {
+      tab_container: { bg: '#dbeafe', color: '#1e40af' },
+      tab: { bg: '#e0f2fe', color: '#075985' },
+      hstack: { bg: '#fef9c3', color: '#854d0e' },
+      hstack_group: { bg: '#fef3c7', color: '#92400e' },
+      save_button: { bg: '#dcfce7', color: '#166534' },
+      tab_prev: { bg: '#f3e8ff', color: '#6b21a8' },
+      tab_next: { bg: '#f3e8ff', color: '#6b21a8' },
+      field: { bg: '#f3f4f6', color: '#374151' },
+      date_range: { bg: '#fae8ff', color: '#86198f' },
+    }
+    const colors = typeColors[el.element_type] ?? { bg: '#f3f4f6', color: '#374151' }
+    const bindingSlugs = (el.bindings ?? []).map(b => b.data_field_slug).join(', ')
+    const key = node.key as string
+    const isParent = PARENT_ELEMENT_TYPES.has(el.element_type)
+
+    // Warning badges: missing labels, or missing help-text translations.
+    const labelDict = el.labels as Record<string, string> | null
+    const hasAnyLabel = !!labelDict && Object.values(labelDict).some(v => (v ?? '').trim() !== '')
+    const helpDict = el.help_texts as Record<string, string> | null
+    const helpLangs = helpDict ? Object.keys(helpDict).filter(l => (helpDict[l] ?? '').trim() !== '') : []
+    const hasAnyHelp = helpLangs.length > 0
+    const missingHelpLangs = hasAnyHelp ? languages.filter(l => !helpLangs.includes(l)) : []
+    const missingLabel = !isStructural && !hasAnyLabel
+    const missingHelp = !isStructural && hasAnyHelp && missingHelpLangs.length > 0
+    const warnings: string[] = []
+    if (missingLabel) warnings.push('missing label')
+    if (missingHelp) warnings.push(`missing help translation: ${missingHelpLangs.join(', ')}`)
+
+    const dropLine = (position: 'before' | 'after') => {
+      if (!dragKind) return null
+      const overKey = `${position}:${key}`
+      return (
+        <div
+          key={overKey}
+          className={`${styles.dropLine} ${dragOverKey === overKey ? styles.over : ''}`}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOverKey(overKey) }}
+          onDrop={e => {
+            e.preventDefault(); e.stopPropagation()
+            if (!dragKind) { setDragOverKey(null); return }
+            const nn = makeNodeFromDrag(dragKind)
+            if (nn) commit(position === 'before' ? insertBeforeKey(nodes, key, nn) : insertAfterKey(nodes, key, nn))
+            setDragKind(null); setDragOverKey(null)
+          }}
+        >
+          {dragOverKey === overKey && <span style={{ fontSize: '0.68rem', color: '#2563eb' }}>drop here</span>}
+        </div>
+      )
+    }
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        {dropLine('before')}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
+          <span style={{
+            background: colors.bg, color: colors.color,
+            fontSize: '0.65rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: '3px', flexShrink: 0,
+          }}>{el.element_type}</span>
+          {warnings.length > 0 && (
+            <span style={{
+              background: '#fef3c7', color: '#b45309',
+              fontSize: '0.62rem', fontWeight: 700, padding: '0.08rem 0.35rem',
+              borderRadius: '3px', flexShrink: 0, cursor: 'help',
+            }} title={warnings.join('; ')}>
+              ⚠
+            </span>
+          )}
+          <span style={{ fontWeight: 500, fontSize: '0.85rem', fontFamily: isStructural ? 'inherit' : 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {el.slug}
+            {bindingSlugs && <span style={{ fontWeight: 400, color: '#666', marginLeft: '0.4rem' }}>→ {bindingSlugs}</span>}
+          </span>
+          {isParent && (
+            <span style={{ fontSize: '0.65rem', color: '#94a3b8' }} title="Drop into to add as a child">
+              ◦ child
+            </span>
+          )}
+          <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+              style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+              onClick={e => { e.stopPropagation(); setEditingKey(isEditing ? null : key) }}>
+              {isEditing ? '✕' : '✎'}
+            </button>
+            <button type="button" className={`${styles.btn} ${styles.btnDanger}`}
+              style={{ padding: '0.08rem 0.35rem', fontSize: '0.7rem' }}
+              onClick={e => { e.stopPropagation(); commit(removeElNodeByKey(nodes, key)) }}>✕</button>
+          </div>
+        </div>
+        {isEditing && (
+          <div style={{ marginTop: '0.4rem', padding: '0.6rem', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}
+            onClick={e => e.stopPropagation()}>
+            <FormElementEditor
+              el={el}
+              dataFields={dataFields}
+              languages={languages}
+              onChange={updated => commit(updateElNodeByKey(nodes, key, updated))}
+            />
+          </div>
+        )}
+        {dropLine('after')}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+      {/* Tree (left) */}
+      <div
+        style={{ flex: 1, minWidth: 0 }}
+        onDragOver={e => { if (dragKind) e.preventDefault() }}
+        onDrop={e => {
+          e.preventDefault()
+          if (!dragKind) { setDragOverKey(null); return }
+          // Insert at the last-hovered drop-line position if known, else root.
+          const nn = makeNodeFromDrag(dragKind)
+          if (nn) {
+            if (dragOverKey) {
+              const [pos, key] = dragOverKey.split(':') as [string, string]
+              commit(pos === 'before' ? insertBeforeKey(nodes, key, nn) : insertAfterKey(nodes, key, nn))
+            } else {
+              commit([...nodes, nn])
+            }
+          }
+          setDragKind(null); setDragOverKey(null)
+        }}
+      >
+        <div style={{ fontSize: '0.73rem', color: '#94a3b8', marginBottom: '0.4rem' }}>
+          Drag fields from the sidebar →. Drop on a “drop here” line to insert at that point. Click ✎ to edit bindings/labels.
+        </div>
+        {nodes.length === 0 && (
+          <div
+            className={styles.emptyState}
+            onDragOver={e => { if (dragKind) e.preventDefault() }}
+            onDrop={e => {
+              e.preventDefault()
+              if (dragKind) { const nn = makeNodeFromDrag(dragKind); if (nn) commit([...nodes, nn]); setDragKind(null); setDragOverKey(null) }
+            }}
+          >No form elements yet. Drag a data field or a widget from the right sidebar.</div>
+        )}
+        {nodes.length > 0 && (
+          <div className={styles.treeBox}>
+            <Tree
+              value={nodes}
+              expandedKeys={expandedKeys}
+              onToggle={e => setExpandedKeys(e.value as Record<string, boolean>)}
+              nodeTemplate={nodeTemplate}
+              style={{ fontSize: '0.85rem' }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Sidebar (right) */}
+      <div className={styles.sidebar}>
+        <div className={styles.subsectionTitle} style={{ fontSize: '0.85rem' }}>Library</div>
+        <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '0.5rem' }}>Drag into the form tree →</div>
+
+        {/* Unreferenced data fields */}
+        <div style={{ fontWeight: 600, fontSize: '0.75rem', color: '#475569', margin: '0.4rem 0 0.2rem' }}>
+          Unreferenced data fields ({unreferencedDataFields.length})
+        </div>
+        {unreferencedDataFields.length === 0 && <div style={{ fontSize: '0.72rem', color: '#aaa' }}>— none —</div>}
+        {unreferencedDataFields.map(f => (
+          <div key={f.slug}
+            draggable
+            onDragStart={e => handleDragStart(e, 'datafield', f.slug)}
+            onDragEnd={() => { setDragKind(null); setDragOverKey(null) }}
+            style={{ padding: '0.3rem 0.4rem', margin: '0.2rem 0', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'grab', fontSize: '0.8rem' }}>
+            <span style={{ fontFamily: 'monospace' }}>{f.slug}</span>
+            <span style={{ color: '#888', fontSize: '0.68rem', marginLeft: '0.3rem' }}>{f.data_type}</span>
+          </div>
+        ))}
+
+        {/* Referenced data fields */}
+        <div style={{ fontWeight: 600, fontSize: '0.75rem', color: '#475569', margin: '0.6rem 0 0.2rem' }}>
+          Referenced data fields ({referencedDataFields.length})
+        </div>
+        {referencedDataFields.length === 0 && <div style={{ fontSize: '0.72rem', color: '#aaa' }}>— none —</div>}
+        {referencedDataFields.map(f => (
+          <div key={f.slug}
+            draggable
+            onDragStart={e => handleDragStart(e, 'datafield', f.slug)}
+            onDragEnd={() => { setDragKind(null); setDragOverKey(null) }}
+            style={{ padding: '0.3rem 0.4rem', margin: '0.2rem 0', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'grab', fontSize: '0.8rem', opacity: 0.7 }}>
+            <span style={{ fontFamily: 'monospace' }}>{f.slug}</span>
+            <span style={{ color: '#888', fontSize: '0.68rem', marginLeft: '0.3rem' }}>{f.data_type}</span>
+          </div>
+        ))}
+
+        {/* Unconfigured widget types */}
+        <div style={{ fontWeight: 600, fontSize: '0.75rem', color: '#475569', margin: '0.8rem 0 0.2rem' }}>
+          Widgets & layout
+        </div>
+        {[...WIDGET_ELEMENT_TYPES, ...STRUCTURAL_ELEMENT_TYPES].map(t => (
+          <div key={t}
+            draggable
+            onDragStart={e => handleDragStart(e, 'widget', t)}
+            onDragEnd={() => { setDragKind(null); setDragOverKey(null) }}
+            style={{ padding: '0.3rem 0.4rem', margin: '0.2rem 0', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'grab', fontSize: '0.8rem' }}>
+            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#6b7280' }}>{t}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Inline FormElement editor (labels, bindings, type_config) ──────────────────
+
+interface FormElementEditorProps {
+  el: FormElementIn
+  dataFields: FieldDefinitionIn[]
+  languages: string[]
+  onChange: (el: FormElementIn) => void
+}
+
+function FormElementEditor({ el, dataFields, languages, onChange }: FormElementEditorProps) {
+  const isStructural = (STRUCTURAL_ELEMENT_TYPES as readonly string[]).includes(el.element_type)
+  const isWidget = el.element_type === 'field' || el.element_type === 'date_range'
+
+  function setBindings(bindings: FormElementIn['bindings']) {
+    onChange({ ...el, bindings: bindings ?? [] })
+  }
+
+  // Roles are preset by element type (no freetext). Normalize the bindings to
+  // exactly the expected roles, preserving any existing data_field_slug for a
+  // matching role. Extra/unknown roles are dropped.
+  const roles = BINDING_ROLES[el.element_type] ?? []
+  const existingByRole = new Map((el.bindings ?? []).map(b => [b.role, b.data_field_slug]))
+  const presetBindings = roles.map(r => ({
+    data_field_slug: existingByRole.get(r) ?? '',
+    role: r,
+  }))
+  function setBindingForRole(role: string, dataFieldSlug: string) {
+    setBindings(presetBindings.map(b => (b.role === role ? { ...b, data_field_slug: dataFieldSlug } : b)))
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div className={styles.formGroup}>
+        <label className={styles.label}>Slug</label>
+        <input className={styles.input} value={el.slug}
+          onChange={e => onChange({ ...el, slug: e.target.value })} />
+      </div>
+
+      {isWidget && (
+        <div>
+          <label className={styles.label} style={{ margin: '0.3rem 0' }}>Bindings (data fields)</label>
+          {presetBindings.map(b => (
+            <div key={b.role} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
+              <span style={{ flex: '0 0 4rem', fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
+                {b.role === '' ? 'field' : b.role}
+              </span>
+              <select className={styles.select} value={b.data_field_slug}
+                onChange={e => setBindingForRole(b.role, e.target.value)} style={{ flex: 1 }}>
+                <option value="">— select data field —</option>
+                {dataFields.map(f => <option key={f.slug} value={f.slug}>{f.slug} ({f.data_type})</option>)}
+              </select>
+            </div>
+          ))}
+          {el.element_type === 'date_range' && (
+            <div style={{ fontSize: '0.7rem', color: '#888' }}>Bind two <code>date</code> fields as <b>from</b> and <b>to</b>.</div>
+          )}
+        </div>
+      )}
+
+      {!isStructural && (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: '0.78rem', margin: '0.3rem 0' }}>Labels</div>
+          {languages.map(lang => (
+            <div key={lang} className={styles.formGroup}>
+              <label className={styles.label}>{lang}</label>
+              <input className={styles.input} value={(el.labels ?? {})[lang] ?? ''}
+                onChange={e => onChange({ ...el, labels: { ...(el.labels ?? {}), [lang]: e.target.value } })} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isStructural && (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: '0.78rem', margin: '0.3rem 0' }}>Help Text</div>
+          {languages.map(lang => (
+            <div key={lang} className={styles.formGroup}>
+              <label className={styles.label}>{lang}</label>
+              <input className={styles.input} value={(el.help_texts ?? {})[lang] ?? ''}
+                placeholder={`Help text (${lang})`}
+                onChange={e => onChange({ ...el, help_texts: { ...(el.help_texts ?? {}), [lang]: e.target.value } })} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

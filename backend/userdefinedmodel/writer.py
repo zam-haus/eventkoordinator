@@ -151,9 +151,10 @@ def apply_patch(
         if field is None:
             unknown_slugs.append(slug)
             continue
-        if field.data_type in FieldDefinition.STRUCTURAL_TYPES:
-            # Layout fields have no value; silently skip them
-            continue
+        # Layout/structural elements have no value; silently skip them. (Structural
+        # types now live on FormElement, but a data field is never structural,
+        # so this is a defensive no-op for any stray structural slug sent as a
+        # changed_field — it would not be in field_map anyway.)
         if field.data_type == FieldDefinition.DataType.SUBMODEL_LIST:
             submodel_changes[slug] = value
         elif field.data_type == FieldDefinition.DataType.WORKFLOW:

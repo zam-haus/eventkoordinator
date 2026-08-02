@@ -41,7 +41,7 @@
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   padding: 1.25rem;
-  margin-bottom: 1rem;
+  margin: 1rem;
 }
 
 .sectionTitle {
@@ -163,6 +163,13 @@
   font-size: 0.9rem;
 }
 
+.tableWrap {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0.5rem 0 1rem;
+}
+
 .table th,
 .table td {
   padding: 0.6rem 0.75rem;
@@ -260,7 +267,8 @@
   color: #0066cc;
   cursor: pointer;
   font-size: 0.9rem;
-  padding: 0;
+  padding: 0.4rem 0.6rem;
+  margin: 0.2rem 0;
   text-decoration: underline;
 }
 
@@ -268,6 +276,67 @@
   margin-top: 1.25rem;
   padding-top: 1.25rem;
   border-top: 1px solid #eee;
+}
+
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.6rem 0;
+  background: #fff;
+}
+
+.treeBox {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 0.75rem;
+  margin: 0.6rem 0;
+  background: #fff;
+}
+
+.dropLine {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 1.1rem;
+  margin: 0.2rem 0;
+  color: #94a3b8;
+  font-size: 0.68rem;
+  border-radius: 3px;
+  transition: background 0.1s, color 0.1s;
+  cursor: copy;
+}
+.dropLine::before,
+.dropLine::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: #e2e8f0;
+  border-radius: 1px;
+}
+.dropLine.over {
+  background: #dbeafe;
+  color: #2563eb;
+  height: 1.8rem;
+  margin: 0.25rem 0;
+}
+.dropLine.over::before,
+.dropLine.over::after {
+  background: #2563eb;
+  height: 2px;
+}
+
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.6rem 0;
+  background: #fafbfc;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .subsectionTitle {

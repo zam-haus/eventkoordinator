@@ -46,7 +46,7 @@ class FieldEdit(MetaBase):
         max_length=20, choices=ChangeKind, default=ChangeKind.FIELD_VALUE
     )
     field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

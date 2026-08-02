@@ -34,6 +34,25 @@ from userdefinedmodel.tests.factories import (
 User = get_user_model()
 
 
+def _make_field_with_label(version, slug, data_type, label=None, language="en", is_localized=False, help_text="", **extra):
+    """Test helper: create a DataField + a 1:1 'field' FormElement bound to it,
+    plus a translation. Mimics the pre-split `FieldDefinition.objects.create` +
+    `FieldDefinitionTranslation.objects.create` pattern.
+    Extra kwargs (workflow_version, submodel_config, type_config) pass through
+    to DataField.objects.create."""
+    from userdefinedmodel.models import DataField, FormElement, FormElementTranslation, FormElementBinding
+    field = DataField.objects.create(version=version, slug=slug, data_type=data_type, is_localized=is_localized, **extra)
+    el = FormElement.objects.create(
+        version=version, slug=slug, element_type=FormElement.ElementType.FIELD,
+        sort_order=0, is_preview=False, type_config={},
+    )
+    FormElementBinding.objects.create(form_element=el, data_field=field, role="")
+    FormElementTranslation.objects.create(
+        element=el, language=language, label=label or slug.replace("_", " ").title(), help_text=help_text,
+    )
+    return field
+
+
 @override_settings(MIDDLEWARE=_TEST_MIDDLEWARE)
 class BaseAPITest(TestCase):
     databases = ["default"]
@@ -438,7 +457,7 @@ class ValidationRuleTests(BaseAPITest):
         version = PublishedConfigVersionFactory(config=config)
         field = FieldDefinitionFactory(version=version, slug="count", data_type="integer")
         MaxValueRule.objects.create(field=field, applies_to_save=True, max_value=Decimal("10"))
-        FieldDefinitionTranslationFactory(field=field)
+        # FieldDefinitionFactory auto-creates a 1:1 FormElement + translation.
 
         udm_type = UserDefinedModelTypeFactory(field_config=config)
         entity = UserDefinedModelEntityFactory(config_version=version, user_defined_model_type=udm_type)
@@ -742,11 +761,9 @@ class LocalizedFieldTests(BaseAPITest):
         ConfigLanguage.objects.create(config=self.config, code="en", label="English", is_default=True)
         ConfigLanguage.objects.create(config=self.config, code="de", label="Deutsch", is_default=False)
         self.version = ConfigVersion.objects.create(config=self.config, status="published")
-        self.field = FieldDefinition.objects.create(
-            version=self.version, slug="abstract", data_type="text_markdown",
-            sort_order=0, is_localized=True,
+        self.field = _make_field_with_label(
+            self.version, "abstract", "text_markdown", label="Abstract", is_localized=True,
         )
-        FieldDefinitionTranslation.objects.create(field=self.field, language="en", label="Abstract")
         self.udm_type = UserDefinedModelTypeFactory(name="Localized Type", field_config=self.config)
         self.entity = UserDefinedModelEntityFactory(
             config_version=self.version, user_defined_model_type=self.udm_type
@@ -802,24 +819,21 @@ class SubmodelTests(BaseAPITest):
         self.sub_config = FieldConfig.objects.create(name="Speaker Submodel Config")
         ConfigLanguage.objects.create(config=self.sub_config, code="en", label="English", is_default=True)
         self.sub_version = ConfigVersion.objects.create(config=self.sub_config, status="published")
-        self.name_field = FieldDefinition.objects.create(
-            version=self.sub_version, slug="name", data_type="text_short", sort_order=0
+        self.name_field = _make_field_with_label(
+            self.sub_version, "name", "text_short", label="Name",
         )
-        FieldDefinitionTranslation.objects.create(field=self.name_field, language="en", label="Name")
 
         self.config = FieldConfig.objects.create(name="Submodel Root Config")
         ConfigLanguage.objects.create(config=self.config, code="en", label="English", is_default=True)
         self.version = ConfigVersion.objects.create(config=self.config, status="published")
-        self.speakers_field = FieldDefinition.objects.create(
-            version=self.version, slug="speakers", data_type="submodel_list",
-            sort_order=0, submodel_config=self.sub_version,
+        self.speakers_field = _make_field_with_label(
+            self.version, "speakers", "submodel_list", label="Speakers",
+            submodel_config=self.sub_version,
         )
-        FieldDefinitionTranslation.objects.create(field=self.speakers_field, language="en", label="Speakers")
-        self.chair_field = FieldDefinition.objects.create(
-            version=self.version, slug="chair", data_type="submodel_select",
-            sort_order=1, submodel_config=self.sub_version,
+        self.chair_field = _make_field_with_label(
+            self.version, "chair", "submodel_select", label="Chair",
+            submodel_config=self.sub_version,
         )
-        FieldDefinitionTranslation.objects.create(field=self.chair_field, language="en", label="Chair")
 
         self.udm_type = UserDefinedModelTypeFactory(name="Submodel Type", field_config=self.config)
         self.entity = UserDefinedModelEntityFactory(
@@ -902,8 +916,7 @@ class MigrationTests(BaseAPITest):
         config2 = FieldConfig.objects.create(name="Config2")
         ConfigLanguage.objects.create(config=config2, code="en", label="English", is_default=True)
         v2 = ConfigVersion.objects.create(config=config2, status="published")
-        f2 = FieldDefinition.objects.create(version=v2, slug="content", data_type="text_short", sort_order=0)
-        FieldDefinitionTranslation.objects.create(field=f2, language="en", label="Content")
+        f2 = _make_field_with_label(v2, "content", "text_short", label="Content")
 
         resp = self.get(f"/entities/{entity.id}/migration-preview/?target_version={v2.id}")
         self.assertEqual(resp.status_code, 200)
@@ -925,10 +938,10 @@ class MigrationTests(BaseAPITest):
         config = FieldConfig.objects.create(name="Renamed Config")
         ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True)
         v_old = ConfigVersion.objects.create(config=config, status="archived")
-        old_field = FieldDefinition.objects.create(version=v_old, slug="old_name", data_type="text_short", sort_order=0)
+        old_field = FieldDefinition.objects.create(version=v_old, slug="old_name", data_type="text_short")
         FieldDefinitionTranslation.objects.create(field=old_field, language="en", label="Old")
         v_pub = ConfigVersion.objects.create(config=config, status="published")
-        new_field = FieldDefinition.objects.create(version=v_pub, slug="new_name", data_type="text_short", sort_order=0)
+        new_field = FieldDefinition.objects.create(version=v_pub, slug="new_name", data_type="text_short")
         FieldDefinitionTranslation.objects.create(field=new_field, language="en", label="New")
         udm_type = UserDefinedModelTypeFactory(name="Renamed Type", field_config=config)
         entity = UserDefinedModelEntityFactory(config_version=v_old, user_defined_model_type=udm_type)
@@ -1133,7 +1146,7 @@ class FieldDefaultValueCleanTests(BaseAPITest):
         config = FieldConfig.objects.create(name="Test")
         ConfigLanguage.objects.create(config=config, code="en", label="en", is_default=True)
         version = ConfigVersion.objects.create(config=config, status="draft")
-        field = FieldDefinition.objects.create(version=version, slug="photo", data_type="image", sort_order=0)
+        field = FieldDefinition.objects.create(version=version, slug="photo", data_type="image")
         d = FieldDefaultValue(field=field, language="")
         with self.assertRaises(ValidationError):
             d.clean()
@@ -1143,7 +1156,7 @@ class FieldDefaultValueCleanTests(BaseAPITest):
         config = FieldConfig.objects.create(name="Test2")
         ConfigLanguage.objects.create(config=config, code="en", label="en", is_default=True)
         version = ConfigVersion.objects.create(config=config, status="draft")
-        field = FieldDefinition.objects.create(version=version, slug="title", data_type="text_short", sort_order=0)
+        field = FieldDefinition.objects.create(version=version, slug="title", data_type="text_short")
         d = FieldDefaultValue(field=field, language="", value_text="Default title")
         d.clean()  # Should not raise
 
@@ -1156,11 +1169,11 @@ class BulkMigrationExecutionTests(BaseAPITest):
         config = FieldConfig.objects.create(name="BM Config")
         ConfigLanguage.objects.create(config=config, code="en", label="en", is_default=True)
         v1 = ConfigVersion.objects.create(config=config, status="published")
-        f1 = FieldDefinition.objects.create(version=v1, slug="title", data_type="text_short", sort_order=0)
+        f1 = FieldDefinition.objects.create(version=v1, slug="title", data_type="text_short")
         config2 = FieldConfig.objects.create(name="BM Config 2")
         ConfigLanguage.objects.create(config=config2, code="en", label="en", is_default=True)
         v2 = ConfigVersion.objects.create(config=config2, status="published")
-        f2 = FieldDefinition.objects.create(version=v2, slug="title", data_type="text_short", sort_order=0)
+        f2 = FieldDefinition.objects.create(version=v2, slug="title", data_type="text_short")
 
         resp = self.post("/bulk-migrations/", {
             "source_version_id": str(v1.id),
@@ -1203,8 +1216,7 @@ class DefaultValueMaterializationTests(BaseAPITest):
         config = FieldConfig.objects.create(name="Default Test Config")
         ConfigLanguage.objects.create(config=config, code="en", label="en", is_default=True)
         version = ConfigVersion.objects.create(config=config, status="published")
-        field = FieldDefinition.objects.create(version=version, slug="status_flag", data_type="boolean", sort_order=0)
-        FieldDefinitionTranslation.objects.create(field=field, language="en", label="Status Flag")
+        field = _make_field_with_label(version, "status_flag", "boolean", label="Status Flag")
         FieldDefaultValue.objects.create(field=field, language="", value_bool=True)
 
         udm_type = UserDefinedModelTypeFactory(name="Default Type", field_config=config)
@@ -1334,29 +1346,30 @@ class DraftAsInputTests(BaseAPITest):
         ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
         draft = ConfigVersionFactory(config=config, status="draft", notes="test notes")
         from userdefinedmodel.models import FieldDefinition, FieldDefinitionTranslation
-        fd = FieldDefinition.objects.create(
-            version=draft, slug="title", data_type="text_short", sort_order=0, type_config={},
-        )
-        FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Title", help_text="Enter title")
+        fd = _make_field_with_label(draft, "title", "text_short", label="Title", help_text="Enter title")
 
         resp = self.get(f"/configs/{config.id}/versions/draft/as-input/")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["notes"], "test notes")
-        self.assertEqual(len(data["fields"]), 1)
-        field = data["fields"][0]
+        self.assertEqual(len(data["data_fields"]), 1)
+        field = data["data_fields"][0]
         self.assertEqual(field["slug"], "title")
         self.assertEqual(field["data_type"], "text_short")
-        self.assertEqual(field["labels"], {"en": "Title"})
         self.assertIsNone(field["submodel_config_version_id"])
         self.assertIsNone(field["workflow_version_id"])
+        # Labels now live on form_elements (B1)
+        self.assertEqual(len(data["form_elements"]), 1)
+        el = data["form_elements"][0]
+        self.assertEqual(el["slug"], "title")
+        self.assertEqual(el["labels"], {"en": "Title"})
 
         # Round-trip: PUT the output back into replace_draft
         resp2 = self.put(f"/configs/{config.id}/versions/draft/", data)
         self.assertEqual(resp2.status_code, 200, resp2.json())
         result = resp2.json()
-        self.assertEqual(len(result["fields"]), 1)
-        self.assertEqual(result["fields"][0]["slug"], "title")
+        self.assertEqual(len(result["data_fields"]), 1)
+        self.assertEqual(result["data_fields"][0]["slug"], "title")
 
     def test_get_draft_as_input_with_workflow(self):
         """Workflow field references are exported as IDs, not nested objects."""
@@ -1365,15 +1378,13 @@ class DraftAsInputTests(BaseAPITest):
         ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
         draft = ConfigVersionFactory(config=config, status="draft")
         from userdefinedmodel.models import FieldDefinition, FieldDefinitionTranslation
-        fd = FieldDefinition.objects.create(
-            version=draft, slug="status", data_type="workflow",
-            sort_order=0, workflow_version=wf_ver, type_config={},
+        fd = _make_field_with_label(
+            draft, "status", "workflow", label="Status", workflow_version=wf_ver,
         )
-        FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Status")
 
         resp = self.get(f"/configs/{config.id}/versions/draft/as-input/")
         self.assertEqual(resp.status_code, 200)
-        field = resp.json()["fields"][0]
+        field = resp.json()["data_fields"][0]
         self.assertEqual(field["workflow_version_id"], str(wf_ver.id))
         self.assertIsNone(field["submodel_config_version_id"])
 
@@ -1381,6 +1392,107 @@ class DraftAsInputTests(BaseAPITest):
         config = FieldConfigFactory()
         resp = self.get(f"/configs/{config.id}/versions/draft/as-input/")
         self.assertEqual(resp.status_code, 404)
+
+
+# ─── FormElement / DataField split (M:N binding) tests ──────────────────────────
+
+class FormElementBindingTests(BaseAPITest):
+    """Verify the split: hidden data fields, one element→many fields, many
+    elements→one field (PLAN_split_form_tree_and_data_fields.md §F1)."""
+
+    def test_hidden_data_field_has_zero_bindings(self):
+        """A DataField with no bound FormElement is hidden: it exists in the
+        schema but is not rendered/edited via the form."""
+        from userdefinedmodel.models import DataField, FormElement, FormElementBinding
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
+        version = PublishedConfigVersionFactory(config=config)
+        # Create a data field with NO form element (hidden)
+        DataField.objects.create(version=version, slug="secret", data_type="text_short")
+        resp = self.get(f"/configs/{config.id}/versions/published/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        slugs = {f["slug"] for f in data["data_fields"]}
+        self.assertIn("secret", slugs, "hidden data field is in data_fields")
+        # No form element binds to it
+        bound = FormElementBinding.objects.filter(data_field__slug="secret").count()
+        self.assertEqual(bound, 0, "hidden field has zero bindings")
+        # It does NOT appear in the backward-compat `fields` merge (no element)
+        compat_slugs = {f["slug"] for f in data["fields"]}
+        self.assertNotIn("secret", compat_slugs, "hidden field absent from legacy fields merge")
+
+    def test_one_form_element_binds_two_data_fields(self):
+        """A date_range FormElement binds to two date DataFields (role=from/to)."""
+        from userdefinedmodel.models import DataField, FormElement, FormElementBinding
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
+        version = PublishedConfigVersionFactory(config=config)
+        start = DataField.objects.create(version=version, slug="start_date", data_type="date")
+        end = DataField.objects.create(version=version, slug="end_date", data_type="date")
+        el = FormElement.objects.create(
+            version=version, slug="date_range_1", element_type=FormElement.ElementType.DATE_RANGE,
+            sort_order=0, is_preview=False, type_config={},
+        )
+        FormElementBinding.objects.create(form_element=el, data_field=start, role="from")
+        FormElementBinding.objects.create(form_element=el, data_field=end, role="to")
+        resp = self.get(f"/configs/{config.id}/versions/published/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        el_out = next(e for e in data["form_elements"] if e["slug"] == "date_range_1")
+        self.assertEqual(el_out["element_type"], "date_range")
+        roles = {b["role"]: b["data_field_slug"] for b in el_out["bindings"]}
+        self.assertEqual(roles, {"from": "start_date", "to": "end_date"})
+
+    def test_two_form_elements_bind_one_data_field(self):
+        """Two FormElements bind the same DataField (e.g. a preview + an editor)."""
+        from userdefinedmodel.models import DataField, FormElement, FormElementBinding
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
+        version = PublishedConfigVersionFactory(config=config)
+        title = DataField.objects.create(version=version, slug="title", data_type="text_short")
+        # Two elements bound to the same data field
+        el1 = FormElement.objects.create(
+            version=version, slug="title_editor", element_type=FormElement.ElementType.FIELD,
+            sort_order=0, is_preview=False, type_config={},
+        )
+        el2 = FormElement.objects.create(
+            version=version, slug="title_preview", element_type=FormElement.ElementType.FIELD,
+            sort_order=1, is_preview=True, type_config={},
+        )
+        FormElementBinding.objects.create(form_element=el1, data_field=title, role="")
+        FormElementBinding.objects.create(form_element=el2, data_field=title, role="")
+        resp = self.get(f"/configs/{config.id}/versions/published/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        # One data field
+        self.assertEqual(len(data["data_fields"]), 1)
+        # Two form elements, both binding "title"
+        bound_to_title = [
+            e for e in data["form_elements"]
+            if any(b["data_field_slug"] == "title" for b in e["bindings"])
+        ]
+        self.assertEqual(len(bound_to_title), 2)
+
+    def test_structural_element_has_no_bindings(self):
+        """A structural FormElement (tab) carries no data and has no bindings."""
+        from userdefinedmodel.models import FormElement
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config, code="en", label="English", is_default=True)
+        version = PublishedConfigVersionFactory(config=config)
+        FormElement.objects.create(
+            version=version, slug="main_tabs", element_type=FormElement.ElementType.TAB_CONTAINER,
+            sort_order=0, is_preview=False, type_config={},
+        )
+        resp = self.get(f"/configs/{config.id}/versions/published/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        el_out = next(e for e in data["form_elements"] if e["slug"] == "main_tabs")
+        self.assertEqual(el_out["element_type"], "tab_container")
+        self.assertEqual(el_out["bindings"], [])
+        # Backward-compat merge: structural element appears as a pseudo data field
+        compat = next(f for f in data["fields"] if f["slug"] == "main_tabs")
+        self.assertEqual(compat["data_type"], "tab_container")
+
 
 
 # ─── ZIP bundle tests ─────────────────────────────────────────────────────────
@@ -1397,11 +1509,9 @@ class BundleExportTests(BaseAPITest):
         ConfigLanguage.objects.create(config=config, code="en", label="English", is_default=True)
         version = ConfigVersion.objects.create(config=config, status="published")
         ConfigVersion.objects.create(config=config, status="draft")
-        fd = FieldDefinition.objects.create(
-            version=version, slug="status", data_type="workflow",
-            sort_order=0, workflow_version=wf_ver, type_config={},
+        fd = _make_field_with_label(
+            version, "status", "workflow", label="Status", workflow_version=wf_ver,
         )
-        FieldDefinitionTranslation.objects.create(field=fd, language="en", label="Status")
         udm_type = UserDefinedModelType.objects.create(name="Bundle Type", field_config=config)
         policy = Policy.objects.create(slug=f"bundle-policy-{udm_type.id}", source=ALLOW_ALL_POLICY)
         UserDefinedModelTypePolicy.objects.create(
@@ -1808,11 +1918,9 @@ class BundleExportTests(BaseAPITest):
         parent_cfg = FieldConfig.objects.create(name="Export Test Parent")
         ConfigLanguage.objects.create(config=parent_cfg, code="en", label="English", is_default=True)
         parent_pub = ConfigVersion.objects.create(config=parent_cfg, status="published")
-        fd_sub = FieldDefinition.objects.create(
-            version=parent_pub, slug="items", data_type="submodel_list",
-            sort_order=0, submodel_config=child_pub, type_config={},
+        fd_sub = _make_field_with_label(
+            parent_pub, "items", "submodel_list", label="Items", submodel_config=child_pub,
         )
-        FieldDefinitionTranslation.objects.create(field=fd_sub, language="en", label="Items")
 
         udmt = UserDefinedModelType.objects.create(name="Export Test Type", field_config=parent_cfg)
 
@@ -1825,7 +1933,7 @@ class BundleExportTests(BaseAPITest):
         self.assertIn(str(child_cfg.id), bundle_cfg_ids)
 
         parent_fc = next(fc for fc in raw_bundle["field_configs"] if fc["id"] == str(parent_cfg.id))
-        fd_map = {fd["slug"]: fd for fd in parent_fc["draft"]["fields"]}
+        fd_map = {fd["slug"]: fd for fd in parent_fc["draft"]["data_fields"]}
 
         self.assertEqual(
             fd_map["items"]["submodel_config_version_id"], str(child_cfg.id),
@@ -1921,8 +2029,8 @@ class PolicyEvaluatorTests(BaseAPITest):
     def _make_entity_with_submodel_workflow(self):
         from userdefinedmodel.models import FieldDefinition, SubmodelInstance
         entity, udm_type, version, config = make_entity_with_type()
-        parent_field = FieldDefinition.objects.create(
-            version=version, slug="items", data_type="submodel_list", sort_order=1,
+        parent_field = _make_field_with_label(
+            version, "items", "submodel_list", label="Items",
         )
         # child schema (own config version) with a workflow field
         _, child_version, _, _ = make_simple_config(required=False)

@@ -395,8 +395,15 @@ def entity_history(
             slug = fe.field.slug if fe.field else None
             label = None
             if fe.field:
-                trans = fe.field.translations.first()
-                label = trans.label if trans else slug
+                # Labels now live on FormElement (B1). Resolve via the bound
+                # element's translation; fall back to the slug.
+                from userdefinedmodel.models import FormElementTranslation
+                trans = (
+                    FormElementTranslation.objects
+                    .filter(element__bindings__data_field=fe.field)
+                    .first()
+                )
+                label = trans.label if trans and trans.label else slug
             from userdefinedmodel.models.history import FieldEdit
             is_policy_action = fe.change_kind in (
                 FieldEdit.ChangeKind.POLICY_PRE_ACTION,

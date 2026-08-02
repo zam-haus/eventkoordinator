@@ -770,6 +770,7 @@ export function BulkMigrationTab() {
                 <span style={{ fontSize: '0.85rem', color: '#555' }}>
                   Status: <strong>{plan.status}</strong> · {plan.done_entities} done · {plan.failed_entities} failed
                   {plan.total_entities ? ` / ${plan.total_entities}` : ''}
+                  {plan.status === 'partial' && plan.error_message ? ` · error: ${plan.error_message}` : ''}
                 </span>
               )}
             </div>

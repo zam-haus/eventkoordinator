@@ -831,6 +831,11 @@ export interface components {
         BulkMigrationOut: {
             /** Done Entities */
             done_entities: number;
+            /**
+             * Error Message
+             * @default
+             */
+            error_message: string;
             /** Executed At */
             executed_at: string | null;
             /** Failed Entities */
@@ -871,15 +876,23 @@ export interface components {
          * @description ConfigVersion serialised in ConfigDraftIn shape for round-trip export.
          */
         ConfigDraftExportOut: {
+            /** Data Fields */
+            data_fields?: components["schemas"]["FieldDefinitionDraftOut"][];
             /** Fields */
-            fields: components["schemas"]["FieldDefinitionDraftOut"][];
+            fields?: components["schemas"]["FieldDefinitionDraftOut"][] | null;
+            /** Form Elements */
+            form_elements?: components["schemas"]["FormElementDraftOut"][];
             /** Notes */
             notes: string;
         };
         /** ConfigDraftIn */
         ConfigDraftIn: {
+            /** Data Fields */
+            data_fields?: components["schemas"]["FieldDefinitionIn"][];
             /** Fields */
-            fields: components["schemas"]["FieldDefinitionIn"][];
+            fields?: components["schemas"]["FieldDefinitionIn"][] | null;
+            /** Form Elements */
+            form_elements?: components["schemas"]["FormElementIn"][];
             /**
              * Notes
              * @default
@@ -916,8 +929,12 @@ export interface components {
         };
         /** ConfigVersionOut */
         ConfigVersionOut: {
+            /** Data Fields */
+            data_fields: components["schemas"]["FieldDefinitionOut"][];
             /** Fields */
             fields: components["schemas"]["FieldDefinitionOut"][];
+            /** Form Elements */
+            form_elements: components["schemas"]["FormElementOut"][];
             /** Languages */
             languages: components["schemas"]["ConfigLanguageOut"][];
             /** Notes */
@@ -1156,7 +1173,7 @@ export interface components {
         };
         /**
          * FieldDefinitionDraftOut
-         * @description FieldDefinition serialised in the same shape that FieldDefinitionIn accepts,
+         * @description A DATA field serialised in the shape that FieldDefinitionIn accepts,
          *     so the output can be fed back into PUT .../draft/ without modification.
          */
         FieldDefinitionDraftOut: {
@@ -1164,24 +1181,10 @@ export interface components {
             data_type: string;
             /** Default */
             default?: unknown | null;
-            /** Help Texts */
-            help_texts: {
-                [key: string]: string;
-            };
             /** Is Localized */
             is_localized: boolean;
-            /** Is Preview */
-            is_preview: boolean;
-            /** Labels */
-            labels?: {
-                [key: string]: string;
-            } | null;
-            /** Parent Slug */
-            parent_slug?: string | null;
             /** Slug */
             slug: string;
-            /** Sort Order */
-            sort_order: number;
             /** Submodel Config Version Id */
             submodel_config_version_id?: string | null;
             /** Type Config */
@@ -1193,7 +1196,15 @@ export interface components {
             /** Workflow Version Id */
             workflow_version_id?: string | null;
         };
-        /** FieldDefinitionIn */
+        /**
+         * FieldDefinitionIn
+         * @description A DATA field definition (storage semantics only). Form-tree concerns
+         *     (sort_order, is_preview, parent, labels) live on FormElementIn.
+         *     Backward-compat: kept under the FieldDefinitionIn name for the API shape.
+         *     Legacy fields (sort_order, is_preview, parent_slug, labels, help_texts) are
+         *     accepted for round-trip with old clients but ignored — they belong to the
+         *     bound FormElement, which replace_draft creates 1:1 from them in legacy mode.
+         */
         FieldDefinitionIn: {
             data_type: components["schemas"]["DataType"];
             /** Default */
@@ -1201,17 +1212,14 @@ export interface components {
             /** Help Texts */
             help_texts?: {
                 [key: string]: string;
-            };
+            } | null;
             /**
              * Is Localized
              * @default false
              */
             is_localized: boolean;
-            /**
-             * Is Preview
-             * @default false
-             */
-            is_preview: boolean;
+            /** Is Preview */
+            is_preview?: boolean | null;
             /** Labels */
             labels?: {
                 [key: string]: string;
@@ -1220,11 +1228,8 @@ export interface components {
             parent_slug?: string | null;
             /** Slug */
             slug: string;
-            /**
-             * Sort Order
-             * @default 0
-             */
-            sort_order: number;
+            /** Sort Order */
+            sort_order?: number | null;
             /** Submodel Config Version Id */
             submodel_config_version_id?: string | null;
             /** Type Config */
@@ -1236,14 +1241,20 @@ export interface components {
             /** Workflow Version Id */
             workflow_version_id?: string | null;
         };
-        /** FieldDefinitionOut */
+        /**
+         * FieldDefinitionOut
+         * @description A DATA field (storage semantics). The form-tree fields below are OPTIONAL
+         *     and only populated in the backward-compat `ConfigVersionOut.fields` merge
+         *     (which lifts them from the bound FormElement); they are absent on the
+         *     canonical `data_fields` list.
+         */
         FieldDefinitionOut: {
             /** Data Type */
             data_type: string;
             /** Default */
             default?: unknown | null;
             /** Help Text */
-            help_text: {
+            help_text?: {
                 [key: string]: string;
             };
             /**
@@ -1253,17 +1264,23 @@ export interface components {
             id: string;
             /** Is Localized */
             is_localized: boolean;
-            /** Is Preview */
+            /**
+             * Is Preview
+             * @default false
+             */
             is_preview: boolean;
             /** Label */
-            label: {
+            label?: {
                 [key: string]: string;
             };
             /** Parent Slug */
             parent_slug?: string | null;
             /** Slug */
             slug: string;
-            /** Sort Order */
+            /**
+             * Sort Order
+             * @default 0
+             */
             sort_order: number;
             submodel_config?: components["schemas"]["ConfigVersionOut"] | null;
             /** Type Config */
@@ -1313,6 +1330,138 @@ export interface components {
             language: string;
             /** Value */
             value: unknown;
+        };
+        /** FormElementBindingDraftOut */
+        FormElementBindingDraftOut: {
+            /** Data Field Slug */
+            data_field_slug: string;
+            /**
+             * Role
+             * @default
+             */
+            role: string;
+        };
+        /** FormElementBindingIn */
+        FormElementBindingIn: {
+            /** Data Field Slug */
+            data_field_slug: string;
+            /**
+             * Role
+             * @default
+             */
+            role: string;
+        };
+        /** FormElementBindingOut */
+        FormElementBindingOut: {
+            /** Data Field Slug */
+            data_field_slug: string;
+            /**
+             * Role
+             * @default
+             */
+            role: string;
+        };
+        /**
+         * FormElementDraftOut
+         * @description A FormElement serialised in the shape that FormElementIn accepts.
+         */
+        FormElementDraftOut: {
+            /** Bindings */
+            bindings?: components["schemas"]["FormElementBindingDraftOut"][];
+            /** Element Type */
+            element_type: string;
+            /** Help Texts */
+            help_texts: {
+                [key: string]: string;
+            };
+            /** Is Preview */
+            is_preview: boolean;
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            } | null;
+            /** Parent Slug */
+            parent_slug?: string | null;
+            /** Slug */
+            slug: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Type Config */
+            type_config: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * FormElementIn
+         * @description A form-tree element: a structural control or a widget bound to one or
+         *     more data fields. Labels/help_text live here (B1).
+         */
+        FormElementIn: {
+            /** Bindings */
+            bindings?: components["schemas"]["FormElementBindingIn"][];
+            /** Element Type */
+            element_type: string;
+            /** Help Texts */
+            help_texts?: {
+                [key: string]: string;
+            };
+            /**
+             * Is Preview
+             * @default false
+             */
+            is_preview: boolean;
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            } | null;
+            /** Parent Slug */
+            parent_slug?: string | null;
+            /** Slug */
+            slug: string;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /** Type Config */
+            type_config?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * FormElementOut
+         * @description A form-tree element (structural control or widget bound to data fields).
+         */
+        FormElementOut: {
+            /** Bindings */
+            bindings?: components["schemas"]["FormElementBindingOut"][];
+            /** Element Type */
+            element_type: string;
+            /** Help Text */
+            help_text: {
+                [key: string]: string;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Preview */
+            is_preview: boolean;
+            /** Label */
+            label: {
+                [key: string]: string;
+            };
+            /** Parent Slug */
+            parent_slug?: string | null;
+            /** Slug */
+            slug: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Type Config */
+            type_config: {
+                [key: string]: unknown;
+            };
         };
         /** GroupAutocompleteItem */
         GroupAutocompleteItem: {

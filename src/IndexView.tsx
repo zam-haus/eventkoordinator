@@ -94,6 +94,16 @@ export function IndexView() {
             element={<SyncDiff />}
           />
           <Route
+            path="/udm-admin/configs/:configId"
+            element={
+              permissionsLoading ? null : permissions?.is_staff ? <UdmAdminPage /> : (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
+                  <p style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>{t('common.accessDenied')}</p>
+                </div>
+              )
+            }
+          />
+          <Route
             path="/udm-admin/:tab?"
             element={
               permissionsLoading ? null : permissions?.is_staff ? <UdmAdminPage /> : (

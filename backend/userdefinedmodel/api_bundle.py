@@ -286,7 +286,7 @@ def _extract_bundle_from_zip(zip_bytes: bytes) -> tuple[dict | None, dict[str, s
 def export_bundle_zip(request, payload: BundleExportIn):
     """Export a ZIP bundle: UDM_BUNDLE.json + policies/<slug>.rego for each policy."""
     from django.http import HttpResponse
-    if denied := _require_perms(request, "userdefinedmodel.view_fieldconfig", "userdefinedmodel.view_fielddefinition"):
+    if denied := _require_perms(request, "userdefinedmodel.view_fieldconfig", "userdefinedmodel.view_datafield"):
         return denied
     zip_bytes = _build_bundle_zip(payload.scope_type_ids)
     response = HttpResponse(zip_bytes, content_type="application/zip")
@@ -330,7 +330,7 @@ def import_bundle_zip(
     if denied := _require_perms(
         request,
         "userdefinedmodel.change_fieldconfig",
-        "userdefinedmodel.change_fielddefinition",
+        "userdefinedmodel.change_datafield",
         "userdefinedmodel.change_policy",
     ):
         return denied
@@ -413,7 +413,6 @@ def import_bundle_zip(
                 )
                 draft.notes = fc_data["draft"].get("notes", "")
                 draft.save(update_fields=["notes"])
-                draft.field_definitions.all().delete()
                 _apply_draft_fields(draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids, pending_submodel_refs)
                 config_id_map[cfg_id] = cfg
                 drafts_to_publish.append(draft)
@@ -427,12 +426,30 @@ def import_bundle_zip(
                 _apply_draft_fields(new_draft, fc_data["draft"], workflow_id_map, config_id_map, bundle_config_ids, pending_submodel_refs)
                 drafts_to_publish.append(new_draft)
 
-        # Publish drafts leaf-first (topo order: submodels before their parents)
+        # Publish drafts leaf-first (topo order: submodels before their parents).
+        # After each draft publishes, resolve any pending submodel_config refs
+        # that point to it, so parent configs that reference it have a non-null
+        # submodel_config by the time they publish (publish() enforces that
+        # submodel fields have a config).
+        published_cfg_to_version: dict = {}
         for draft in drafts_to_publish:
             draft.publish()
+            published_cfg_to_version[str(draft.config_id)] = draft
+            # Resolve pending refs pointing to this freshly-published config.
+            still_pending = []
+            for fd, cfg_id in pending_submodel_refs:
+                if cfg_id == str(draft.config_id):
+                    try:
+                        fd.submodel_config = draft
+                        fd.save(update_fields=["submodel_config"])
+                    except Exception:
+                        pass
+                else:
+                    still_pending.append((fd, cfg_id))
+            pending_submodel_refs[:] = still_pending
 
-        # Resolve submodel_config references that were deferred because the submodel
-        # config's published version didn't exist when the field definitions were created.
+        # Resolve any remaining submodel_config references (e.g. pointing to
+        # configs published earlier in a previous import).
         for fd, cfg_id in pending_submodel_refs:
             sub_cfg = config_id_map.get(cfg_id)
             if not sub_cfg:
@@ -752,7 +769,7 @@ def _toposort_configs(fc_by_id: dict) -> list[str]:
         visited.add(cfg_id)
         fc_data = fc_by_id.get(cfg_id)
         if fc_data:
-            for fd in fc_data.get("draft", {}).get("fields", []):
+            for fd in (fc_data.get("draft", {}).get("data_fields") or []):
                 sub_id = fd.get("submodel_config_version_id")
                 if sub_id and str(sub_id) in fc_by_id:
                     # submodel_config_version_id is a FieldConfig UUID in this bundle
@@ -784,66 +801,124 @@ def _apply_draft_fields(
     the caller to resolve after all drafts have been published.
     """
     from userdefinedmodel.models import (
-        ConfigVersion, FieldDefinition, FieldDefinitionTranslation,
+        ConfigVersion, DataField, FormElement, FormElementTranslation, FormElementBinding,
     )
+    draft.form_elements.all().delete()  # cascades to bindings + translations
     draft.field_definitions.all().delete()
-    for fd_data in draft_data.get("fields", []):
-        # Remap workflow: bundle uses workflow_definition_id (WorkflowDefinition.id);
-        # workflow_id_map maps WorkflowDefinition.id → WorkflowVersion (published).
-        wf_def_id = fd_data.get("workflow_definition_id") or fd_data.get("workflow_version_id")
+
+    # Support both the new shape (data_fields + form_elements) and the legacy
+    # shape (fields: mixed data + structural).
+    data_fields = draft_data.get("data_fields") or []
+    form_elements = draft_data.get("form_elements") or []
+    legacy_fields = draft_data.get("fields")
+    if legacy_fields is not None and not data_fields and not form_elements:
+        structural_set = {"tab_container","tab","save_button","hstack","hstack_group","tab_prev","tab_next"}
+        for fd_data in legacy_fields:
+            if fd_data.get("data_type") in structural_set:
+                form_elements.append({
+                    "slug": fd_data["slug"],
+                    "element_type": fd_data["data_type"],
+                    "parent_slug": fd_data.get("parent_slug"),
+                    "sort_order": fd_data.get("sort_order", 0),
+                    "is_preview": fd_data.get("is_preview", False),
+                    "labels": fd_data.get("labels"),
+                    "help_texts": fd_data.get("help_texts") or {},
+                    "type_config": fd_data.get("type_config") or {},
+                    "bindings": [],
+                })
+            else:
+                data_fields.append(fd_data)
+                form_elements.append({
+                    "slug": fd_data["slug"],
+                    "element_type": "field",
+                    "parent_slug": fd_data.get("parent_slug"),
+                    "sort_order": fd_data.get("sort_order", 0),
+                    "is_preview": fd_data.get("is_preview", False),
+                    "labels": fd_data.get("labels"),
+                    "help_texts": fd_data.get("help_texts") or {},
+                    "type_config": {},
+                    "bindings": [{"data_field_slug": fd_data["slug"], "role": ""}],
+                })
+
+    def _resolve_wf(wf_def_id):
         resolved_wf_ver = None
         if wf_def_id:
             wf_def_id_str = str(wf_def_id)
             if wf_def_id_str in workflow_id_map:
-                # Was created/cloned during this import; value is already a WorkflowVersion
                 resolved_wf_ver = workflow_id_map[wf_def_id_str]
             else:
-                # Try as WorkflowDefinition.id: find its published version
                 from userdefinedmodel.models import WorkflowVersion
                 resolved_wf_ver = WorkflowVersion.objects.filter(
                     workflow_id=wf_def_id_str, status=WorkflowVersion.Status.PUBLISHED
                 ).first()
                 if resolved_wf_ver is None:
-                    # Try as direct WorkflowVersion.id
                     resolved_wf_ver = WorkflowVersion.objects.filter(id=wf_def_id_str).first()
+        return resolved_wf_ver
 
-        # Remap submodel config version.
-        # The bundle may store either a real ConfigVersion UUID or a FieldConfig UUID
-        # (the latter when the submodel config is also part of this bundle and its
-        # published version doesn't exist yet at draft-creation time).
-        sub_ver_id = fd_data.get("submodel_config_version_id")
+    def _resolve_sub(sub_ver_id):
         resolved_sub_ver = None
         deferred_cfg_id = None
         if sub_ver_id:
             sub_ver_id_str = str(sub_ver_id)
             if sub_ver_id_str in config_id_map:
-                # FieldConfig UUID — defer to post-publish fixup
                 deferred_cfg_id = sub_ver_id_str
             else:
                 resolved_sub_ver = _resolve_submodel_version(sub_ver_id_str, config_id_map, bundle_config_ids)
+        return resolved_sub_ver, deferred_cfg_id
 
-        fd = FieldDefinition.objects.create(
+    # Create data fields
+    field_map = {}
+    for fd_data in data_fields:
+        wf_def_id = fd_data.get("workflow_definition_id") or fd_data.get("workflow_version_id")
+        resolved_wf_ver = _resolve_wf(wf_def_id)
+        resolved_sub_ver, deferred_cfg_id = _resolve_sub(fd_data.get("submodel_config_version_id"))
+
+        fd = DataField.objects.create(
             version=draft,
             slug=fd_data["slug"],
             data_type=fd_data["data_type"],
-            sort_order=fd_data.get("sort_order", 0),
             is_localized=fd_data.get("is_localized", False),
-            is_preview=fd_data.get("is_preview", False),
-            parent_slug=fd_data.get("parent_slug") or "",
             submodel_config=resolved_sub_ver,
             workflow_version=resolved_wf_ver,
             type_config=fd_data.get("type_config") or {},
         )
-        for lang, label in (fd_data.get("labels") or {}).items():
-            help_text = (fd_data.get("help_texts") or {}).get(lang, "")
-            FieldDefinitionTranslation.objects.create(field=fd, language=lang, label=label, help_text=help_text)
-
+        field_map[fd_data["slug"]] = fd
         if deferred_cfg_id is not None and pending_submodel_refs is not None:
             pending_submodel_refs.append((fd, deferred_cfg_id))
 
         default = fd_data.get("default")
         if default is not None:
             _create_field_default(fd, default, fd_data.get("is_localized", False))
+
+    # Create form elements + translations + bindings
+    element_map = {}
+    for el_data in form_elements:
+        el = FormElement.objects.create(
+            version=draft,
+            slug=el_data["slug"],
+            element_type=el_data["element_type"],
+            parent=None,
+            sort_order=el_data.get("sort_order", 0),
+            is_preview=el_data.get("is_preview", False),
+            type_config=el_data.get("type_config") or {},
+        )
+        element_map[el_data["slug"]] = el
+        for lang, label in (el_data.get("labels") or {}).items():
+            help_text = (el_data.get("help_texts") or {}).get(lang, "")
+            FormElementTranslation.objects.create(element=el, language=lang, label=label, help_text=help_text)
+        for b in el_data.get("bindings") or []:
+            df = field_map.get(b["data_field_slug"])
+            if df is not None:
+                FormElementBinding.objects.create(form_element=el, data_field=df, role=b.get("role", ""))
+
+    # Resolve parents
+    for el_data in form_elements:
+        parent_slug = el_data.get("parent_slug")
+        if parent_slug:
+            parent = element_map.get(parent_slug)
+            if parent is not None:
+                element_map[el_data["slug"]].parent = parent
+                element_map[el_data["slug"]].save(update_fields=["parent"])
 
 
 def _resolve_submodel_version(sub_ver_id: str, config_id_map: dict, bundle_config_ids: set):
@@ -980,6 +1055,7 @@ def create_bulk_migration(request, payload: BulkMigrationCreateIn):
         done_entities=plan.done_entities,
         failed_entities=plan.failed_entities,
         executed_at=plan.executed_at.isoformat() if plan.executed_at else None,
+        error_message=plan.error_message or "",
     )
 
 
@@ -1001,6 +1077,7 @@ def get_bulk_migration(request, plan_id: uuid.UUID):
         done_entities=plan.done_entities,
         failed_entities=plan.failed_entities,
         executed_at=plan.executed_at.isoformat() if plan.executed_at else None,
+        error_message=plan.error_message or "",
     )
 
 

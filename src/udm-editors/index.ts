@@ -15,6 +15,7 @@ import './EntitySelectEditor'
 import './FileEditor'
 import './WorkflowCellEditor'
 import './SubmodelEditor'
+import './DateRangeEditor'
 
 // Import all preview renderer files — side effects register each renderer with the preview registry
 import './TextPreview'

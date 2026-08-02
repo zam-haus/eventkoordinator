@@ -252,13 +252,56 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
         )
         draft.notes = payload.notes
         draft.save()
+        draft.form_elements.all().delete()  # cascades to bindings + translations
         draft.field_definitions.all().delete()
 
-        # Validate SLUG_ID prefix uniqueness before creating field definitions
-        from userdefinedmodel.schemas import DataType as SchemaDataType
+        from userdefinedmodel.models import (
+            DataField, FormElement, FormElementTranslation, FormElementBinding,
+        )
+        from userdefinedmodel.schemas import DataType as SchemaDataType, FormElementIn, FormElementBindingIn
         from userdefinedmodel.models.config import SlugIdSequence
+
+        # Backward-compat: if the legacy `fields` key was sent (mixed data +
+        # structural), split it into data_fields + form_elements.
+        data_fields_in = list(payload.data_fields)
+        form_elements_in = list(payload.form_elements)
+        if payload.fields is not None:
+            # Legacy shape: each entry is a data field; structural types go to
+            # form_elements, data types to data_fields + a 1:1 'field' element.
+            STRUCTURAL = SchemaDataType.__members__  # value set
+            structural_set = {dt for dt in SchemaDataType if dt.value in {
+                "tab_container","tab","save_button","hstack","hstack_group","tab_prev","tab_next",
+            }}
+            for fd_in in payload.fields:
+                if fd_in.data_type in structural_set:
+                    form_elements_in.append(FormElementIn(
+                        slug=fd_in.slug,
+                        element_type=fd_in.data_type.value,
+                        parent_slug=fd_in.parent_slug,
+                        sort_order=fd_in.sort_order or 0,
+                        is_preview=fd_in.is_preview or False,
+                        labels=fd_in.labels,
+                        help_texts=fd_in.help_texts or {},
+                        type_config=fd_in.type_config,
+                        bindings=[],
+                    ))
+                else:
+                    data_fields_in.append(fd_in)
+                    form_elements_in.append(FormElementIn(
+                        slug=fd_in.slug,
+                        element_type="field",
+                        parent_slug=fd_in.parent_slug,
+                        sort_order=fd_in.sort_order or 0,
+                        is_preview=fd_in.is_preview or False,
+                        labels=fd_in.labels,
+                        help_texts=fd_in.help_texts or {},
+                        type_config={},
+                        bindings=[FormElementBindingIn(data_field_slug=fd_in.slug, role="")],
+                    ))
+
+        # Validate SLUG_ID prefix uniqueness before creating data fields
         slug_id_prefixes: dict[str, str] = {}  # slug → prefix
-        for fd_in in payload.fields:
+        for fd_in in data_fields_in:
             if fd_in.data_type == SchemaDataType.SLUG_ID:
                 prefix = (fd_in.type_config or {}).get("prefix", "")
                 if prefix in slug_id_prefixes.values():
@@ -269,14 +312,25 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
             if conflict:
                 raise ApiError(400, {"detail": f"Prefix '{prefix}' is already claimed by another config"})
 
+        # Create data fields
         field_map = {}
-        for fd_in in payload.fields:
+        for fd_in in data_fields_in:
             submodel_config = None
             if fd_in.submodel_config_version_id:
+                # Accept either a ConfigVersion id or a FieldConfig id; for a
+                # FieldConfig id, default to its latest published version (the
+                # up-to-date submodel schema) unless a specific version is given.
+                sid = fd_in.submodel_config_version_id
                 try:
-                    submodel_config = ConfigVersion.objects.get(id=fd_in.submodel_config_version_id)
+                    submodel_config = ConfigVersion.objects.get(id=sid)
                 except ConfigVersion.DoesNotExist:
-                    raise ApiError(400, {"detail": f"ConfigVersion {fd_in.submodel_config_version_id} not found"})
+                    # Try as a FieldConfig id → resolve to latest published version.
+                    pub = ConfigVersion.objects.filter(
+                        config_id=sid, status=ConfigVersion.Status.PUBLISHED
+                    ).order_by("-published_at").first()
+                    if pub is None:
+                        raise ApiError(400, {"detail": f"ConfigVersion/Config {sid} not found or has no published version"})
+                    submodel_config = pub
 
             workflow_version = None
             if fd_in.workflow_version_id:
@@ -285,30 +339,54 @@ def replace_draft(request, config_id: uuid.UUID, payload: ConfigDraftIn):
                 except WorkflowVersion.DoesNotExist:
                     raise ApiError(400, {"detail": f"WorkflowVersion {fd_in.workflow_version_id} not found"})
 
-            fd = FieldDefinition.objects.create(
+            fd = DataField.objects.create(
                 version=draft,
                 slug=fd_in.slug,
                 data_type=fd_in.data_type.value,
-                sort_order=fd_in.sort_order,
                 is_localized=fd_in.is_localized,
-                is_preview=fd_in.is_preview,
-                parent_slug=fd_in.parent_slug or "",
                 submodel_config=submodel_config,
                 workflow_version=workflow_version,
                 type_config=fd_in.type_config,
             )
             field_map[fd_in.slug] = fd
 
-            for lang, label in (fd_in.labels or {}).items():
-                help_text = fd_in.help_texts.get(lang, "")
-                FieldDefinitionTranslation.objects.create(
-                    field=fd, language=lang, label=label, help_text=help_text
-                )
-
             if fd_in.default is not None:
                 err = _create_field_default(fd, fd_in.default, fd_in.is_localized)
                 if err:
                     raise ApiError(400, {"errors": {fd_in.slug: [err]}})
+
+        # Create form elements + translations + bindings
+        element_map = {}
+        for el_in in form_elements_in:
+            el = FormElement.objects.create(
+                version=draft,
+                slug=el_in.slug,
+                element_type=el_in.element_type,
+                parent=None,  # resolved after all exist
+                sort_order=el_in.sort_order,
+                is_preview=el_in.is_preview,
+                type_config=el_in.type_config,
+            )
+            element_map[el_in.slug] = el
+            for lang, label in (el_in.labels or {}).items():
+                help_text = el_in.help_texts.get(lang, "")
+                FormElementTranslation.objects.create(
+                    element=el, language=lang, label=label, help_text=help_text
+                )
+            for b in el_in.bindings:
+                df = field_map.get(b.data_field_slug)
+                if df is None:
+                    raise ApiError(400, {"detail": f"Form element '{el_in.slug}' binds to unknown data field '{b.data_field_slug}'"})
+                FormElementBinding.objects.create(form_element=el, data_field=df, role=b.role)
+
+        # Resolve parents (slug -> FK) after all elements exist
+        for el_in in form_elements_in:
+            if el_in.parent_slug:
+                parent = element_map.get(el_in.parent_slug)
+                if parent is None:
+                    raise ApiError(400, {"detail": f"Form element '{el_in.slug}' has unknown parent '{el_in.parent_slug}'"})
+                element_map[el_in.slug].parent = parent
+                element_map[el_in.slug].save(update_fields=["parent"])
 
         # Claim or re-confirm SLUG_ID sequence ownership for this config
         for slug, prefix in slug_id_prefixes.items():

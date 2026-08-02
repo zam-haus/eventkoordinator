@@ -55,13 +55,13 @@ class MigrationFieldMapping(MetaBase):
         related_name="field_mappings",
     )
     source_field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.PROTECT,
         related_name="+",
     )
     action = models.CharField(max_length=10, choices=UserDefinedModelEntityMigration.Action)
     target_field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -107,6 +107,7 @@ class BulkMigrationPlan(MetaBase):
     total_entities = models.PositiveIntegerField(default=0)
     done_entities = models.PositiveIntegerField(default=0)
     failed_entities = models.PositiveIntegerField(default=0)
+    error_message = models.TextField(blank=True, default="")
 
     def __str__(self):
         return f"BulkMigrationPlan {self.id} ({self.status})"
@@ -115,13 +116,13 @@ class BulkMigrationPlan(MetaBase):
 class BulkMigrationFieldMapping(MetaBase):
     plan = models.ForeignKey(BulkMigrationPlan, on_delete=models.CASCADE, related_name="field_mappings")
     source_field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.PROTECT,
         related_name="+",
     )
     action = models.CharField(max_length=10, choices=UserDefinedModelEntityMigration.Action)
     target_field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -137,7 +138,7 @@ class BulkMigrationSubmodelMapping(MetaBase):
     its child nodes should be migrated."""
     plan = models.ForeignKey(BulkMigrationPlan, on_delete=models.CASCADE, related_name="submodel_mappings")
     source_parent_field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.PROTECT,
         related_name="+",
     )
@@ -157,13 +158,13 @@ class BulkMigrationSubmodelFieldMapping(MetaBase):
         BulkMigrationSubmodelMapping, on_delete=models.CASCADE, related_name="field_mappings"
     )
     source_field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.PROTECT,
         related_name="+",
     )
     action = models.CharField(max_length=10, choices=UserDefinedModelEntityMigration.Action)
     target_field = models.ForeignKey(
-        "userdefinedmodel.FieldDefinition",
+        "userdefinedmodel.DataField",
         on_delete=models.PROTECT,
         null=True,
         blank=True,

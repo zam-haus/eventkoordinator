@@ -13,7 +13,11 @@ from userdefinedmodel.models import (
     ConfigLanguage,
     ConfigVersion,
     FieldDefinition,
+    DataField,
     FieldDefinitionTranslation,
+    FormElement,
+    FormElementTranslation,
+    FormElementBinding,
     FieldDefaultValue,
     SlugIdSequence,
     WorkflowDefinition,
@@ -178,7 +182,27 @@ class FieldDefinitionInline(admin.TabularInline):
     model = FieldDefinition
     fk_name = "version"
     extra = 0
-    fields = ("slug", "data_type", "parent_slug", "sort_order", "is_localized", "is_preview")
+    fields = ("slug", "data_type", "is_localized")
+    show_change_link = True
+
+
+class FormElementTranslationInline(admin.TabularInline):
+    model = FormElementTranslation
+    extra = 0
+    fields = ("language", "label", "help_text")
+
+
+class FormElementBindingInline(admin.TabularInline):
+    model = FormElementBinding
+    extra = 0
+    fields = ("data_field", "role")
+
+
+class FormElementInline(admin.TabularInline):
+    model = FormElement
+    fk_name = "version"
+    extra = 0
+    fields = ("slug", "element_type", "parent", "sort_order", "is_preview")
     show_change_link = True
 
 
@@ -216,7 +240,7 @@ class ConfigVersionAdmin(PolymorphicInlineSupportMixin, admin.ModelAdmin):
     list_filter = ("status", "config")
     search_fields = ("config__name", "notes")
     readonly_fields = ("published_at", "created_at", "updated_at", "used_as_submodel_in", "entity_node_count")
-    inlines = [FieldDefinitionInline, MultiFieldRuleInline]
+    inlines = [FieldDefinitionInline, FormElementInline, MultiFieldRuleInline]
 
     @admin.display(description="Used as submodel in fields")
     def used_as_submodel_in(self, obj):
@@ -247,8 +271,8 @@ class ConfigVersionAdmin(PolymorphicInlineSupportMixin, admin.ModelAdmin):
 
 @admin.register(FieldDefinition)
 class FieldDefinitionAdmin(PolymorphicInlineSupportMixin, admin.ModelAdmin):
-    list_display = ("slug", "data_type", "version", "sort_order", "is_localized", "is_preview")
-    list_filter = ("data_type", "is_localized", "is_preview", "version__config")
+    list_display = ("slug", "data_type", "version", "is_localized")
+    list_filter = ("data_type", "is_localized", "version__config")
     search_fields = ("slug", "version__config__name")
     readonly_fields = ("created_at", "updated_at", "referenced_by_child_nodes", "referenced_by_field_values")
     inlines = [FieldDefinitionTranslationInline, FieldDefaultValueInline, SingleFieldRuleInline]
@@ -268,6 +292,22 @@ class FieldDefinitionAdmin(PolymorphicInlineSupportMixin, admin.ModelAdmin):
 class SlugIdSequenceAdmin(admin.ModelAdmin):
     list_display = ("prefix", "next_value", "owner_config")
     search_fields = ("prefix",)
+
+
+@admin.register(FormElement)
+class FormElementAdmin(admin.ModelAdmin):
+    list_display = ("slug", "element_type", "version", "parent", "sort_order", "is_preview")
+    list_filter = ("element_type", "is_preview", "version__config")
+    search_fields = ("slug", "version__config__name")
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [FormElementTranslationInline, FormElementBindingInline]
+
+
+@admin.register(FormElementBinding)
+class FormElementBindingAdmin(admin.ModelAdmin):
+    list_display = ("form_element", "data_field", "role")
+    list_filter = ("role",)
+    search_fields = ("form_element__slug", "data_field__slug")
 
 
 # ─── Workflow ────────────────────────────────────────────────────────────────

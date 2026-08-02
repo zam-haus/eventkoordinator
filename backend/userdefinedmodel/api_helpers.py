@@ -175,18 +175,20 @@ def _serialize_workflow(wf_def, version) -> WorkflowDefinitionOut:
 
 
 def _serialize_config_version(version) -> ConfigVersionOut:
-    fields_out = []
+    from userdefinedmodel.models import FormElement, FormElementTranslation, FormElementBinding
+    from userdefinedmodel.schemas import FormElementOut, FormElementBindingOut
+
+    data_fields_out = []
+    # Map data field slug -> FieldDefinitionOut for the backward-compat merge.
+    df_out_by_slug: dict[str, FieldDefinitionOut] = {}
     for fd in version.field_definitions.prefetch_related(
-        "translations", "defaults",
+        "defaults",
         "workflow_version__workflow__versions",
         "workflow_version__states__translations",
         "workflow_version__transitions__translations",
         "workflow_version__transitions__from_state",
         "workflow_version__transitions__to_state",
     ).all():
-        label_dict = {t.language: t.label for t in fd.translations.all()}
-        help_dict = {t.language: t.help_text for t in fd.translations.all()}
-
         defaults_qs = list(fd.defaults.all())
         default_val = None
         if defaults_qs:
@@ -197,21 +199,85 @@ def _serialize_config_version(version) -> ConfigVersionOut:
 
         workflow_ver_out = _serialize_workflow_version(fd.workflow_version) if fd.workflow_version else None
 
-        fields_out.append(FieldDefinitionOut(
+        out = FieldDefinitionOut(
             id=fd.id,
             slug=fd.slug,
             data_type=fd.data_type,
-            sort_order=fd.sort_order,
             is_localized=fd.is_localized,
-            is_preview=fd.is_preview,
-            label=label_dict,
-            help_text=help_dict,
             type_config=fd.type_config or {},
             default=default_val,
             submodel_config=_serialize_config_version(fd.submodel_config) if fd.submodel_config else None,
             workflow_version=workflow_ver_out,
-            parent_slug=fd.parent_slug or None,
-        ))
+        )
+        data_fields_out.append(out)
+        df_out_by_slug[fd.slug] = out
+
+    # Form elements (tree + widgets) with translations + bindings.
+    form_elements_out = []
+    # Build a slug -> FormElementOut map for parent resolution + backward-compat.
+    el_out_by_slug: dict[str, FormElementOut] = {}
+    elements = list(version.form_elements.prefetch_related(
+        "translations", "bindings__data_field",
+    ).order_by("sort_order", "id").all())
+    for el in elements:
+        label_dict = {t.language: t.label for t in el.translations.all()}
+        help_dict = {t.language: t.help_text for t in el.translations.all()}
+        bindings_out = [
+            FormElementBindingOut(data_field_slug=b.data_field.slug, role=b.role)
+            for b in el.bindings.all()
+        ]
+        el_out = FormElementOut(
+            id=el.id,
+            slug=el.slug,
+            element_type=el.element_type,
+            parent_slug=el.parent.slug if el.parent_id else None,
+            sort_order=el.sort_order,
+            is_preview=el.is_preview,
+            label=label_dict,
+            help_text=help_dict,
+            type_config=el.type_config or {},
+            bindings=bindings_out,
+        )
+        form_elements_out.append(el_out)
+        el_out_by_slug[el.slug] = el_out
+
+    # Backward-compat `fields` merge: emit one entry per form element in the old
+    # FieldDefinitionOut shape. Structural elements appear as their own entries
+    # (data_type = element_type); 'field' elements appear as their bound data
+    # field (with tree info + labels lifted from the element).
+    fields_compat = []
+    for el_out in form_elements_out:
+        if el_out.element_type == "field" and el_out.bindings:
+            df = df_out_by_slug.get(el_out.bindings[0].data_field_slug)
+            if df is None:
+                continue
+            fields_compat.append(FieldDefinitionOut(
+                id=df.id, slug=df.slug, data_type=df.data_type,
+                is_localized=df.is_localized, type_config=df.type_config,
+                submodel_config=df.submodel_config, workflow_version=df.workflow_version,
+                default=df.default,
+                sort_order=el_out.sort_order, is_preview=el_out.is_preview,
+                label=el_out.label, help_text=el_out.help_text,
+                parent_slug=el_out.parent_slug,
+            ))
+        else:
+            # Structural element: emit as a pseudo data field with its element_type.
+            # For multi-field widgets (e.g. date_range), fold the binding→data-field
+            # slugs into type_config so the legacy entity editor (which iterates
+            # `fields`) can render the paired editor with the right values.
+            tc = dict(el_out.type_config or {})
+            if el_out.bindings:
+                tc["bindings"] = [
+                    {"role": b.role, "data_field_slug": b.data_field_slug}
+                    for b in el_out.bindings
+                ]
+            fields_compat.append(FieldDefinitionOut(
+                id=el_out.id, slug=el_out.slug, data_type=el_out.element_type,
+                is_localized=False, type_config=tc,
+                sort_order=el_out.sort_order, is_preview=el_out.is_preview,
+                label=el_out.label, help_text=el_out.help_text,
+                parent_slug=el_out.parent_slug,
+            ))
 
     return ConfigVersionOut(
         version_id=version.id,
@@ -222,7 +288,9 @@ def _serialize_config_version(version) -> ConfigVersionOut:
             ConfigLanguageOut(code=l.code, label=l.label, is_default=l.is_default, sort_order=l.sort_order)
             for l in version.config.languages.all()
         ],
-        fields=fields_out,
+        data_fields=data_fields_out,
+        form_elements=form_elements_out,
+        fields=fields_compat,
     )
 
 
@@ -269,11 +337,12 @@ def _serialize_version_as_draft_in(version, bundle_config_ids=None) -> ConfigDra
     export the FieldConfig UUID instead of the ConfigVersion UUID, so the importer can
     correctly re-link to the newly published version after import.
     """
-    fields_out = []
-    for fd in version.field_definitions.select_related("workflow_version__workflow", "submodel_config__config").prefetch_related("translations", "defaults").all():
-        label_dict = {t.language: t.label for t in fd.translations.all()}
-        help_dict = {t.language: t.help_text for t in fd.translations.all() if t.help_text}
+    from userdefinedmodel.schemas import FormElementDraftOut, FormElementBindingDraftOut
 
+    data_fields_out = []
+    for fd in version.field_definitions.select_related(
+        "workflow_version__workflow", "submodel_config__config"
+    ).prefetch_related("defaults").all():
         defaults_qs = list(fd.defaults.all())
         default_val = None
         if defaults_qs:
@@ -294,20 +363,40 @@ def _serialize_version_as_draft_in(version, bundle_config_ids=None) -> ConfigDra
             sub_id = fd.submodel_config.config_id
 
         wf_def_id = fd.workflow_version.workflow_id if fd.workflow_version_id else None
-        fields_out.append(FieldDefinitionDraftOut(
+        data_fields_out.append(FieldDefinitionDraftOut(
             slug=fd.slug,
             data_type=fd.data_type,
-            sort_order=fd.sort_order,
             is_localized=fd.is_localized,
-            is_preview=fd.is_preview,
-            labels=label_dict if label_dict else None,
-            help_texts=help_dict,
             type_config=fd.type_config or {},
             default=default_val,
             submodel_config_version_id=sub_id,
             workflow_version_id=fd.workflow_version_id,
             workflow_definition_id=wf_def_id,
-            parent_slug=fd.parent_slug or None,
         ))
 
-    return ConfigDraftExportOut(notes=version.notes, fields=fields_out)
+    # Form elements with translations + bindings.
+    form_elements_out = []
+    for el in version.form_elements.prefetch_related("translations", "bindings__data_field").order_by("sort_order", "id").all():
+        label_dict = {t.language: t.label for t in el.translations.all()}
+        help_dict = {t.language: t.help_text for t in el.translations.all() if t.help_text}
+        bindings_out = [
+            FormElementBindingDraftOut(data_field_slug=b.data_field.slug, role=b.role)
+            for b in el.bindings.all()
+        ]
+        form_elements_out.append(FormElementDraftOut(
+            slug=el.slug,
+            element_type=el.element_type,
+            parent_slug=el.parent.slug if el.parent_id else None,
+            sort_order=el.sort_order,
+            is_preview=el.is_preview,
+            labels=label_dict if label_dict else None,
+            help_texts=help_dict,
+            type_config=el.type_config or {},
+            bindings=bindings_out,
+        ))
+
+    return ConfigDraftExportOut(
+        notes=version.notes,
+        data_fields=data_fields_out,
+        form_elements=form_elements_out,
+    )

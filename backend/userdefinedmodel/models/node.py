@@ -158,7 +158,7 @@ class UserDefinedModelEntityNode(MetaBase):
         return val
 
     def to_policy_document(self) -> dict:
-        # Seed null entries for every field defined in the config version so that
+        # Seed null entries for every DATA field defined in the config version so that
         # policy rules can reference any field slug, even before a value is set.
         fields_data = {
             fd.slug: {
@@ -168,6 +168,18 @@ class UserDefinedModelEntityNode(MetaBase):
             }
             for fd in self.config_version.field_definitions.all()
         }
+        # Shape-compat (C1): also emit STRUCTURAL FormElements into entity.fields
+        # with element_type as data_type and a null value, so structural.rego /
+        # config.STRUCTURAL_TYPES keep working unchanged (input_version=1).
+        from userdefinedmodel.models.config import FormElement
+        for el in self.config_version.form_elements.filter(
+            element_type__in=FormElement.STRUCTURAL_TYPES
+        ):
+            fields_data[el.slug] = {
+                "data_type": el.element_type,
+                "localized": False,
+                "value": None,
+            }
         for fv in self.field_values.select_related("field").all():
             slug = fv.field.slug
             val = self._json_safe_value(fv.get_value())

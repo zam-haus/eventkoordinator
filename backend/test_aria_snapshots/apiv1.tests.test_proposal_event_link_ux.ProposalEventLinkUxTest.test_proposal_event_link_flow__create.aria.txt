@@ -1,14 +1,27 @@
-- navigation "Main navigation":
-  - link "Event Coordinator – go to home":
-    - /url: /
-    - heading "Event Coordinator" [level=1]
-  - list:
-    - listitem: Coordinator
-    - listitem: Proposal Editor
-    - listitem: Proposal Dashboard
-  - button "Switch to English" [pressed]: 🇬🇧
-  - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": proposaleventux-user
+- link "Event Coordinator – go to home":
+  - /url: /
+  - heading "Event Coordinator" [level=1]
+- button "Navigation":
+  - img
+- menubar:
+  - menuitem "Coordinator":
+    - link "Coordinator":
+      - /url: /coordinator
+  - menuitem "Proposal Editor":
+    - link "Proposal Editor":
+      - /url: /proposal-editor
+  - menuitem "Proposal Dashboard":
+    - link "Proposal Dashboard":
+      - /url: /proposal-dashboard
+  - menuitem "UDM Dashboard":
+    - link "UDM Dashboard":
+      - /url: /udm-dashboard
+  - menuitem "UDM Entities":
+    - link "UDM Entities":
+      - /url: /udm-entity
+- button "Switch to English" [pressed]: 🇬🇧
+- button "Auf Deutsch wechseln": 🇩🇪
+- button "User menu": proposaleventux-user
 - main:
   - heading "Current Calls" [level=1]
   - paragraph: Submit a proposal for a workshop, course, or talk.
