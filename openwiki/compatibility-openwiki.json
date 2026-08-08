@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-08-08T07:43:01.038Z",
+  "bundle": {
+    "name": "openwiki",
+    "okfVersion": null
+  },
+  "report": {
+    "schemaVersion": 1,
+    "findings": [
+      {
+        "ruleId": "okf.conformance.concept-frontmatter",
+        "category": "parser",
+        "level": "error",
+        "basis": "okf-conformance",
+        "file": "INSTRUCTIONS.md",
+        "conceptId": "INSTRUCTIONS",
+        "message": "INSTRUCTIONS.md: missing YAML frontmatter block",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> CODE_OF_CONDUCT.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> CONTRIBUTING.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> LICENSE.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> api/autocomplete.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> api/bundle.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> api/staging.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backend/models/config.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backend/models/migration.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backend/models/node.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backend/models/policy.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backend/models/rules.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backend/models/udmtype.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backend/models/workflow.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> backlog.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> concepts/policies.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> concepts/udm.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> frontend/event_editor.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> frontend/udm_bundle_tab.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> frontend/udm_migration.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> frontend/workflow_editor.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> maintenance/metrics.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "README.md",
+        "conceptId": "README",
+        "message": "README.md: link target not found -> quickstart.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "backend/models/overview.md",
+        "conceptId": "backend/models/overview",
+        "message": "backend/models/overview.md: link target not found -> ../architecture/overview.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.conformance.link-target",
+        "category": "link",
+        "level": "warning",
+        "basis": "okf-conformance",
+        "file": "backend/models/overview.md",
+        "conceptId": "backend/models/overview",
+        "message": "backend/models/overview.md: link target not found -> ../backend/overview.md",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "api/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "architecture/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "backend/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "backend/models/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "concepts/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "frontend/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "maintenance/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "sync/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      },
+      {
+        "ruleId": "okf.portability.index-missing",
+        "category": "index",
+        "level": "advice",
+        "basis": "portability",
+        "file": "testing/index.md",
+        "conceptId": null,
+        "message": "Studio synthesized this navigation index; other consumers may not present the same structure.",
+        "repair": null
+      }
+    ],
+    "truncated": false
+  },
+  "redactions": [
+    "bundle.root",
+    "concept.body",
+    "frontmatter.values"
+  ]
+}
