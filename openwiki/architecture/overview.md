@@ -2,6 +2,15 @@
 type: architecture_documentation
 title: Architecture Overview
 description: High-level architecture overview of the OpenWiki application, including the UDM system, policy evaluation engine, frontend structure, and integration with external systems
+resource: /openwiki/architecture/overview.md
+tags: [architecture, system-design, udm, policy-engine]
+timestamp: 2024-01-01T00:00:00Z
+openwiki:
+  roles: [architecture]
+  change_kinds: [lifecycle]
+  source_paths: [/openwiki/architecture/overview.md]
+  invariants: [Architecture documentation must match actual implementation in source code]
+  validation_commands: [grep -r "api/udm/" backend/]
 ---
 
 # Architecture Overview
@@ -397,67 +406,8 @@ flowchart LR
     B --> E["PostgreSQL Cluster"]
     C --> E
     D --> E
-    
-    B --> F["Cache Layer"]
-    C --> F
-    D --> F
-    
-    F --> G["Rego Policy Cache"]
-    F --> H["Session Store"]
 ```
 
-## Deployment
-
-**Backend**: Django application with Gunicorn/ uwsgi
-
-**Frontend**: Static files served by Nginx
-
-**Database**: PostgreSQL with regular backups
-
-**Sync**: Background workers for asynchronous sync operations
-
-**Deployment Architecture**:
-
-```mermaid
-graph TD
-    A["Internet"] --> B["Nginx Reverse Proxy"]
-    B --> C["Static Files (Frontend)"]
-    B --> D["Gunicorn (Backend)"]
-    D --> E["PostgreSQL Database"]
-    D --> F["Redis Cache"]
-    D --> G["Celery Worker"]
-    G --> H["External Services"]
-    
-    style A fill:#f9f,stroke:#333
-    style B fill:#9ff,stroke:#333
-    style D fill:#9ff,stroke:#333
-```
-
-## Development
-
-**Testing**: Comprehensive test suite with pytest and Playwright
-
-**Documentation**: Inline documentation with OpenAPI schema
-
-**Monitoring**: Metrics and logging integration
-
-**Development Workflow**:
-
-```mermaid
-flowchart TD
-    A["Code Changes"] --> B["Unit Tests"]
-    B --> C{"Tests Pass?"}
-    C -->|Yes| D["Integration Tests"]
-    C -->|No| E["Fix Code"]
-    D --> F{"Integration Tests Pass?"}
-    F -->|Yes| G["Code Review"]
-    F -->|No| E
-    G --> H["Merge to Main"]
-    H --> I["CI/CD Pipeline"]
-    I --> J["Deployment to Staging"]
-    J --> K["UAT Testing"]
-    K --> L["Production Deployment"]
-```
 
 ## Documentation References
 
@@ -470,3 +420,4 @@ For more detailed information on specific components, see:
 - **[Testing Overview](../testing/overview.md)** - Testing strategy and documentation
 - **[Sync Overview](../sync/overview.md)** - External system integration
 - **[Publishing System](../concepts/publishing.md)** - Version and publishing management
+
