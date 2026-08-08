@@ -739,6 +739,11 @@ def execute_transition(
             root_entity=root_entity,
             saved_by=user,
         )
+        # Snapshot node summaries before pre-actions can change preview values,
+        # so history rows name the affected (sub)model as it was.
+        if root_entity is not None:
+            from userdefinedmodel.summaries import prime_node_summaries
+            prime_node_summaries(root_entity)
 
     pre_ctx = ActionContext(
         node=node,

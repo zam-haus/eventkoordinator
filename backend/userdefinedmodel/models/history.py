@@ -75,6 +75,19 @@ class FieldEdit(MetaBase):
         blank=True,
         related_name="+",
     )
+    # Preview parts identifying the affected (sub)model at the time of the edit:
+    # [{"slug": ..., "text": ...}]. Stored per-slug so the history endpoint can
+    # redact the parts whose field the viewer may not see.
+    affected_node_summary = models.JSONField(default=list, blank=True)
+
+    def save(self, *args, **kwargs):
+        # Populated here rather than at each call site: history rows are written
+        # from writer/engine/actions, and the summary must be the pre-write one,
+        # which summaries.py snapshots at the start of the patch.
+        if self._state.adding and self.affected_node_id and not self.affected_node_summary:
+            from userdefinedmodel.summaries import summary_parts_for
+            self.affected_node_summary = summary_parts_for(self.affected_node)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"FieldEdit {self.id} ({self.change_kind})"

@@ -1365,8 +1365,12 @@ export interface components {
         };
         /** FieldEditOut */
         FieldEditOut: {
+            /** Affected Node Field */
+            affected_node_field?: string | null;
             /** Affected Node Id */
             affected_node_id?: string | null;
+            /** Affected Node Summary */
+            affected_node_summary?: string | null;
             /** Change Kind */
             change_kind: string;
             /** Field Label */

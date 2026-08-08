@@ -322,6 +322,16 @@
   padding: 0.1rem 0;
 }
 
+/* "which (sub)model was changed" chip in front of a history line */
+.historyNodeChip {
+  font-size: 0.75rem;
+  color: #555;
+  background: #f0f0f0;
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  margin-right: 0.35rem;
+}
+
 .autocompleteWrapper {
   position: relative;
 }

@@ -787,6 +787,69 @@ class EditHistoryTests(BaseAPITest):
         self.assertIsNotNone(data["next"])
 
 
+class HistoryNodeSummaryTests(BaseAPITest):
+    """History rows identify the affected submodel item by the preview summary
+    it carried *before* the edit."""
+
+    def setUp(self):
+        super().setUp()
+        from userdefinedmodel.models import (
+            FieldConfig, ConfigLanguage, ConfigVersion, FormElement,
+        )
+        self.sub_config = FieldConfig.objects.create(name="Speaker Sub Config")
+        ConfigLanguage.objects.create(config=self.sub_config, code="en", label="English", is_default=True)
+        self.sub_version = ConfigVersion.objects.create(config=self.sub_config, status="published")
+        _make_field_with_label(self.sub_version, "name", "text_short", label="Name")
+        FormElement.objects.filter(version=self.sub_version, slug="name").update(is_preview=True)
+
+        self.config = FieldConfig.objects.create(name="Speaker Root Config")
+        ConfigLanguage.objects.create(config=self.config, code="en", label="English", is_default=True)
+        self.version = ConfigVersion.objects.create(config=self.config, status="published")
+        _make_field_with_label(
+            self.version, "speakers", "submodel_list", label="Speakers",
+            submodel_config=self.sub_version,
+        )
+        self.udm_type = UserDefinedModelTypeFactory(name="Speaker Type", field_config=self.config)
+        self.entity = UserDefinedModelEntityFactory(
+            config_version=self.version, user_defined_model_type=self.udm_type
+        )
+
+    def _edits(self):
+        resp = self.get(f"/entities/{self.entity.id}/history/")
+        self.assertEqual(resp.status_code, 200)
+        return [e for g in resp.json()["results"] for e in g["edits"]]
+
+    def test_submodel_edit_carries_old_summary(self):
+        resp = self.patch(f"/entities/{self.entity.id}/", {
+            "changed_fields": {"speakers": [{"op": "create", "fields": {"name": "Alice"}}]}
+        })
+        self.assertEqual(resp.status_code, 200, resp.content)
+        child_id = resp.json()["children"]["speakers"][0]["id"]
+
+        resp = self.patch(f"/entities/{self.entity.id}/", {
+            "changed_fields": {"speakers": [{"op": "update", "id": child_id, "fields": {"name": "Bob"}}]}
+        })
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        rename = next(e for e in self._edits() if e["new_value"] == "Bob")
+        # The summary names the item as it was *before* the rename.
+        self.assertEqual(rename["affected_node_summary"], "Alice")
+        self.assertEqual(rename["affected_node_field"], "speakers")
+
+    def test_created_item_summary_falls_back_to_new_values(self):
+        self.patch(f"/entities/{self.entity.id}/", {
+            "changed_fields": {"speakers": [{"op": "create", "fields": {"name": "Alice"}}]}
+        })
+        added = next(e for e in self._edits() if e["change_kind"] == "node_added")
+        self.assertEqual(added["affected_node_summary"], "Alice")
+
+    def test_root_edit_has_no_node_field(self):
+        _make_field_with_label(self.version, "title", "text_short", label="Title")
+        self.patch(f"/entities/{self.entity.id}/", {"changed_fields": {"title": "Root"}})
+        edit = next(e for e in self._edits() if e["field_slug"] == "title")
+        self.assertIsNone(edit["affected_node_field"])
+
+
 # ─── Policy document tests ────────────────────────────────────────────────────
 
 class PolicyDocumentTests(BaseAPITest):

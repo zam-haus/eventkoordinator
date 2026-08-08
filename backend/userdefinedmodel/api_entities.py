@@ -407,6 +407,7 @@ def entity_history(
 
     qs = EditGroup.objects.filter(root_entity=entity).prefetch_related(
         "field_edits__field__translations",
+        "field_edits__affected_node__parent_field",
         "field_edits__old_attachment",
         "field_edits__new_attachment",
         "saved_by",
@@ -423,10 +424,32 @@ def entity_history(
             # Hide value edits for fields the policy does not expose to this user.
             # Non-field edits (node add/remove) carry no field value and remain
             # visible so structural history stays coherent.
+            node_key = str(fe.affected_node_id) if fe.affected_node_id else str(entity.id)
             if fe.field is not None:
-                node_key = str(fe.affected_node_id) if fe.affected_node_id else str(entity.id)
-                if fe.field.slug not in viewable.get(node_key, []):
+                # Structural rows (item added/removed/reordered) name the parent's
+                # submodel field but point at the child node, so their grant lives
+                # on the parent — checking the child's grants would hide them all.
+                from userdefinedmodel.models.history import FieldEdit as _FE
+                if fe.change_kind in (
+                    _FE.ChangeKind.NODE_ADDED,
+                    _FE.ChangeKind.NODE_REMOVED,
+                    _FE.ChangeKind.NODE_REORDERED,
+                ):
+                    parent_id = getattr(fe.affected_node, "parent_node_id", None)
+                    grant_key = str(parent_id) if parent_id else str(group.node_id)
+                else:
+                    grant_key = node_key
+                if fe.field.slug not in viewable.get(grant_key, []):
                     continue
+            # Identify the affected (sub)model by the preview label it carried
+            # before the edit, redacted to the parts this user may see.
+            from userdefinedmodel.summaries import join_parts
+            node_summary = join_parts(fe.affected_node_summary, viewable.get(node_key, [])) or None
+            node_field = None
+            if fe.affected_node_id and fe.affected_node_id != entity.id:
+                parent_field = getattr(fe.affected_node, "parent_field", None)
+                node_field = parent_field.slug if parent_field else None
+
             slug = fe.field.slug if fe.field else None
             label = None
             if fe.field:
@@ -454,6 +477,8 @@ def entity_history(
                 old_file_name=fe.old_attachment.original_name if fe.old_attachment else None,
                 new_file_name=fe.new_attachment.original_name if fe.new_attachment else None,
                 affected_node_id=fe.affected_node_id,
+                affected_node_summary=node_summary,
+                affected_node_field=node_field,
             ))
 
         node_type = "entity"

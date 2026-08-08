@@ -183,6 +183,11 @@ def apply_patch(
     # references via the input.users/groups/linked_entities lookup maps.
     if _old_entity_doc is None:
         _old_entity_doc = root_entity.to_policy_document()
+        # Same top-level marker: snapshot pre-write node summaries once, before
+        # any value is touched, so history rows can name the affected (sub)model
+        # by how it looked before this save.
+        from userdefinedmodel.summaries import prime_node_summaries
+        prime_node_summaries(root_entity)
 
     if edit_group is None:
         edit_group = EditGroup.objects.create(node=node, root_entity=root_entity, saved_by=user)

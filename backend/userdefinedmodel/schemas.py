@@ -676,6 +676,12 @@ class FieldEditOut(Schema):
     old_file_url: Optional[str] = None
     new_file_url: Optional[str] = None
     affected_node_id: Optional[uuid.UUID] = None
+    # Preview label of the affected (sub)model as it was before this edit,
+    # with parts the viewer may not see already redacted. Empty when the node
+    # has no preview fields (or none with a value).
+    affected_node_summary: Optional[str] = None
+    # Slug of the parent submodel field the affected node hangs off, if any.
+    affected_node_field: Optional[str] = None
 
 
 class EditGroupOut(Schema):

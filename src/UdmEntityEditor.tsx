@@ -628,6 +628,20 @@ function renderPolicyAction(kind: string, newValue: unknown): React.ReactNode {
 
 // ── History panel ─────────────────────────────────────────────────────────────
 
+type HistoryEdit = EditHistoryOut['results'][number]['edits'][number]
+
+/** Names the submodel item an edit belongs to, by the preview summary it had
+ *  before the edit. Root-entity edits need no chip. */
+function HistoryNodeChip({ edit }: { edit: HistoryEdit }) {
+  if (!edit.affected_node_field) return null
+  return (
+    <span className={styles.historyNodeChip}>
+      {edit.affected_node_field}
+      {edit.affected_node_summary ? `: ${edit.affected_node_summary}` : ''}
+    </span>
+  )
+}
+
 function HistoryPanel({ entityId }: { entityId: string }) {
   const [history, setHistory] = useState<EditHistoryOut | null>(null)
   const [loading, setLoading] = useState(true)
@@ -650,10 +664,10 @@ function HistoryPanel({ entityId }: { entityId: string }) {
           <div className={styles.historyMeta}>
             {new Date(group.saved_at).toLocaleString()}{' '}
             {group.saved_by ? `by ${group.saved_by.display_name}` : ''}
-            {' · '}{group.node_type}
           </div>
           {group.edits.map((edit, i) => (
             <div key={i} className={styles.historyEdit}>
+              <HistoryNodeChip edit={edit} />
               {edit.change_kind === 'field_value' ? (
                 <span>
                   <strong>{edit.field_label ?? edit.field_slug}</strong>
