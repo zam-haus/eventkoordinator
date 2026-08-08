@@ -398,6 +398,10 @@ class FormElement(MetaBase):
         # bindings — rendered from the policy's `effective` output, not
         # backed by a FieldValue.
         MARKDOWN_DISPLAY = "markdown_display"
+        # Entities that reference the current one via an entity_select field
+        # (events-and-sync.md §1.5). type_config: {"source_type_ids": [...],
+        # "source_field_slug": "..."}. No data value, no bindings.
+        BACKLINK_LIST = "backlink_list"
 
     STRUCTURAL_TYPES = frozenset({
         ElementType.TAB_CONTAINER,

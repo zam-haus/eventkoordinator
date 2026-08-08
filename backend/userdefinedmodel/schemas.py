@@ -179,6 +179,20 @@ class TabNavTypeConfig(Schema):
     model_config = {"extra": "forbid"}
 
 
+class BacklinkListTypeConfig(Schema):
+    """events-and-sync.md §1.5: entities that reference the current one via
+    an entity_select field, filtered by referencing type(s) and field slug."""
+    source_type_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+    source_field_slug: Slug
+    model_config = {"extra": "forbid"}
+
+
+class MarkdownDisplayTypeConfig(Schema):
+    """events-and-sync.md §1.4: server-rendered read-only markdown, no data value."""
+    template: Annotated[str, Field(max_length=20_000)] = ""
+    model_config = {"extra": "forbid"}
+
+
 _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
     DataType.TEXT_SHORT: TextTypeConfig, DataType.TEXT_LONG: TextTypeConfig,
     DataType.TEXT_MARKDOWN: TextTypeConfig, DataType.TEXT_RICHTEXT: TextTypeConfig,
@@ -200,6 +214,15 @@ _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
     DataType.HSTACK_GROUP: HStackGroupTypeConfig,
     DataType.TAB_PREV: TabNavTypeConfig,
     DataType.TAB_NEXT: TabNavTypeConfig,
+}
+
+#: type_config validation for display-only FormElement types that hold no
+#: data field (unlike _TYPE_CONFIG_CLS, which is keyed by DataType for
+#: DataField values). Element types absent here (e.g. "field", "date_range")
+#: are unchecked free-form dicts, matching the pre-existing convention.
+_ELEMENT_TYPE_CONFIG_CLS: dict[str, type[Schema]] = {
+    "backlink_list": BacklinkListTypeConfig,
+    "markdown_display": MarkdownDisplayTypeConfig,
 }
 
 # ─── FieldDefinition schemas ──────────────────────────────────────────────────
@@ -278,6 +301,11 @@ class FormElementIn(Schema):
             raise ValueError("Structural elements cannot bind to data fields")
         if self.element_type == "field" and not self.bindings:
             raise ValueError("A 'field' element requires at least one binding")
+        config_cls = _ELEMENT_TYPE_CONFIG_CLS.get(self.element_type)
+        if config_cls is not None:
+            if self.bindings:
+                raise ValueError(f"'{self.element_type}' elements cannot bind to data fields")
+            config_cls.model_validate(self.type_config)
         # Labels are OPTIONAL: a field config may be saved/published without
         # labels. The missing-label condition is surfaced as a warning badge in
         # the admin UI (not a hard validation error).
@@ -663,6 +691,16 @@ class EntityOut(Schema):
     dashboard_columns: list[DashboardColumnOut] = []
     # markdown_display elements (§1.4), rendered server-side: {slug: markdown}.
     markdown_displays: dict[str, str] = {}
+
+
+class BacklinkOut(Schema):
+    """One entity referencing the queried one via an entity_select field
+    (events-and-sync.md §1.5)."""
+    id: uuid.UUID
+    type_id: Optional[uuid.UUID]
+    field_slug: str
+    workflow_state: Optional[str] = None
+    preview: str = ""
 
 # ─── Edit history schemas ─────────────────────────────────────────────────────
 

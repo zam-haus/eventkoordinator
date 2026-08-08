@@ -20,6 +20,7 @@ from userdefinedmodel.api_helpers import (
     _set_lock_timeout_ms,
 )
 from userdefinedmodel.schemas import (
+    BacklinkOut,
     EditGroupOut,
     EditHistoryOut,
     EntityCreateIn,
@@ -154,6 +155,62 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
     except PolicyError as e:
         return JsonResponse({"policy_messages": e.messages}, status=422)
     return 201, _entity_out_for_user(entity, request.user)
+
+
+@router.get("/entities/{entity_id}/backlinks/", response=list[BacklinkOut], auth=django_auth)
+def get_entity_backlinks(
+    request, entity_id: uuid.UUID,
+    source_type_ids: str = "", source_field_slug: str = "",
+):
+    """Entities referencing entity_id via an entity_select field
+    (events-and-sync.md §1.5), used by the `backlink_list` form element.
+
+    ``source_type_ids`` is a comma-separated list of UDMType ids (empty =
+    every type); ``source_field_slug`` restricts to one entity_select slug
+    (empty = every field). Policy-filtered: a backlink the requesting user
+    may not view is silently omitted, never surfaced as denied.
+    """
+    from userdefinedmodel.backlinks import find_backlinks
+    from userdefinedmodel.engine import evaluate_policy
+    from userdefinedmodel.models import FieldDefinition, FieldValue, UserDefinedModelEntity
+    from userdefinedmodel.summaries import compute_node_summary_parts, join_parts
+
+    try:
+        UserDefinedModelEntity.objects.get(id=entity_id)
+    except UserDefinedModelEntity.DoesNotExist:
+        return JsonResponse({"detail": "Not found"}, status=404)
+
+    type_filter = {t for t in source_type_ids.split(",") if t} or None
+
+    def _workflow_state(entity) -> Optional[str]:
+        fv = (
+            FieldValue.objects.filter(
+                node=entity, field__data_type=FieldDefinition.DataType.WORKFLOW, language="",
+            )
+            .select_related("value_workflow_state")
+            .first()
+        )
+        return fv.value_workflow_state.name if fv and fv.value_workflow_state else None
+
+    results = []
+    for bl in find_backlinks(entity_id):
+        if type_filter is not None and bl.type_id not in type_filter:
+            continue
+        if source_field_slug and bl.field_slug != source_field_slug:
+            continue
+        policy = evaluate_policy(bl.entity, request.user, "view", locale=_locale(request))
+        if not policy.allow:
+            continue
+        parts = compute_node_summary_parts(bl.entity)
+        allowed = policy.viewable_fields.get(str(bl.entity.id))
+        results.append({
+            "id": bl.entity.id,
+            "type_id": bl.type_id,
+            "field_slug": bl.field_slug,
+            "workflow_state": _workflow_state(bl.entity),
+            "preview": join_parts(parts, allowed_slugs=allowed),
+        })
+    return results
 
 
 @router.get("/entities/{entity_id}/", response=EntityOut, auth=django_auth)

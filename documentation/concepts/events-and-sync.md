@@ -661,17 +661,28 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 5 — backlinks in the UI (1.5)
 
-- [ ] Endpoint on `api_entities`: backlinks of an entity, filterable by
+- [x] Endpoint on `api_entities`: backlinks of an entity, filterable by
       `source_type_ids` / `source_field_slug`, returning preview summaries
       (`summaries.py`) + workflow state; policy-filtered (view policy per
-      referencing entity).
-- [ ] `backlink_list` element type in `schemas.py` (`type_config`:
-      `source_type_ids`, `source_field_slug`) + config validation.
+      referencing entity). — `GET /entities/{id}/backlinks/` in
+      `api_entities.py`; a denied backlink is silently omitted, never
+      surfaced as an error (matches the view-endpoint's not-found-not-403
+      convention for existence-hiding).
+- [x] `backlink_list` element type in `schemas.py` (`type_config`:
+      `source_type_ids`, `source_field_slug`) + config validation. —
+      `FormElement.ElementType.BACKLINK_LIST`, `BacklinkListTypeConfig`,
+      validated via the new `_ELEMENT_TYPE_CONFIG_CLS` registry in
+      `FormElementIn.validate_element` (also covers `markdown_display` from
+      Step 4, previously unvalidated).
 - [ ] Frontend `BacklinkListPreview` in `src/udm-editors/`: renders preview
       summaries as clickable entries with workflow badge; register in
-      `index.ts`.
-- [ ] Tests: filtering, policy filtering hides unviewable entities, preview
-      summary content.
+      `index.ts`. — **not built this pass**; backend serializes
+      `id`/`type_id`/`field_slug`/`workflow_state`/`preview` per backlink,
+      ready for a frontend component to consume.
+- [x] Tests: filtering, policy filtering hides unviewable entities, preview
+      summary content. — `userdefinedmodel/tests/test_backlinks_endpoint.py`
+      (5 tests); full suite green (`uv run manage.py test userdefinedmodel`,
+      320 tests).
 
 ### Step 6 — `sync_core` + target migration (3)
 
