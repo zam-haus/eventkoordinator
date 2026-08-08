@@ -1345,7 +1345,10 @@
        "en": "Summary",
        "de": "Zusammenfassung"
       },
-      "help_texts": {},
+      "help_texts": {
+       "en": "Rendered server-side from the policy's effective values (events-and-sync.md \u00a71.4).",
+       "de": "Serverseitig aus den effektiven Policy-Werten gerendert."
+      },
       "type_config": {
        "template": "# {{ effective.title }}\n\n{% if entity.fields.origin.value %}[View originating proposal]({{ entity.fields.origin.value | entity_url }}){% else %}*(no proposal linked)*{% endif %}"
       },
