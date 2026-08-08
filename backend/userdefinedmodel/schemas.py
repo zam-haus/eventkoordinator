@@ -661,6 +661,8 @@ class EntityOut(Schema):
     creatable_submodels: dict[str, dict[str, Any]] = {}
     policy_messages: list[Any] = []
     dashboard_columns: list[DashboardColumnOut] = []
+    # markdown_display elements (§1.4), rendered server-side: {slug: markdown}.
+    markdown_displays: dict[str, str] = {}
 
 # ─── Edit history schemas ─────────────────────────────────────────────────────
 

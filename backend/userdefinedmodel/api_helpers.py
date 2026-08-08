@@ -94,6 +94,7 @@ def _policy_allows(entity, user, action: str, **kwargs) -> bool:
 def _entity_out_for_user(entity, user, policy_messages: list | None = None, view_policy=None, locale=None) -> EntityOut:
     from userdefinedmodel.writer import serialize_node
     from userdefinedmodel.engine import evaluate_policy
+    from userdefinedmodel.display_templates import render_markdown_displays_for_entity
     policy = view_policy if view_policy is not None else evaluate_policy(entity, user, "view", locale=locale)
     # Per-node grants (§5): serialize_node is the single redaction point and
     # filters the WHOLE tree recursively — root and submodels alike, also when
@@ -106,6 +107,7 @@ def _entity_out_for_user(entity, user, policy_messages: list | None = None, view
     data["creatable_submodels"] = policy.creatable_submodels
     data["policy_messages"] = policy_messages or []
     data["dashboard_columns"] = policy.dashboard_columns
+    data["markdown_displays"] = render_markdown_displays_for_entity(entity.config_version, policy)
     return EntityOut(**data)
 
 

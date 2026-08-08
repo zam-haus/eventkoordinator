@@ -148,6 +148,22 @@ def pretty(value) -> str:
     return pprint.pformat(value, indent=4)
 
 
+def entity_url(entity_id) -> str:
+    """UDM entity id -> its frontend form URL (events-and-sync.md §1.6).
+
+    None/undefined -> "" so `{{ id | entity_url }}` in a broken/dangling
+    reference degrades to an empty link rather than raising. Reads
+    settings.FRONTEND_BASE_URL live (not the module-load-time DEFAULT_TIMEZONE
+    pattern) so test overrides via override_settings take effect.
+    """
+    if _is_missing(entity_id) or not entity_id:
+        return ""
+    from django.conf import settings as _settings
+
+    base = _settings.FRONTEND_BASE_URL.rstrip("/")
+    return f"{base}/udm-entity/{entity_id}"
+
+
 #: Filters that are safe to expose in the sandboxed mail environment.
 SAFE_FILTERS = {
     "timezone": tz_convert,
@@ -156,6 +172,7 @@ SAFE_FILTERS = {
     "htmlquote": htmlquote,
     "tojson": tojson,
     "textwrap": wrap,
+    "entity_url": entity_url,
 }
 
 #: Everything above plus filters that may leak repr() of arbitrary objects.

@@ -632,17 +632,32 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 4 — effective values + markdown display + `entity_url` (1.3, 1.4, 1.6)
 
-- [ ] Output convention: `effective` object in `PolicyEvaluationOutput`;
-      document the coalesce pattern in the policy docs/templates.
-- [ ] Markdown display field: type-config declares a Jinja template
+- [x] Output convention: `effective` object in `PolicyEvaluationOutput`;
+      document the coalesce pattern in the policy docs/templates. —
+      `effective` field added, unioned across modules in `udm.rego` like
+      `additional_result`.
+- [x] Markdown display field: type-config declares a Jinja template
       (mailtemplate engine) rendered server-side into a read-only display
       field; context = `effective`, `entity`, `linked`, `backlinks`, `sync`.
-- [ ] `entity_url` Jinja filter: entity id → frontend form URL (base URL from
+      — new `FormElement.ElementType.MARKDOWN_DISPLAY`, rendered by
+      `display_templates.render_markdown_displays_for_entity` (reuses
+      `mailtemplates.get_environment`/`jsonify_context`) into
+      `EntityOut.markdown_displays`. **`sync` context key deferred** — added
+      once `sync_core` (Step 6/7) exists to populate it. **Frontend
+      component/registration for the new element type is not yet wired** —
+      backend renders and serializes the markdown, but no React component
+      consumes `markdown_displays` in `src/udm-editors/` yet.
+- [x] `entity_url` Jinja filter: entity id → frontend form URL (base URL from
       settings); register in both markdown-display and mail template
       environments; frontend markdown renderer permits same-origin entity
-      routes.
-- [ ] Tests: coalesce example policy produces expected `effective`, template
-      renders with links, filter output format, null-origin handling.
+      routes. — `project/jinja_filters.py::entity_url`, added to
+      `SAFE_FILTERS`/`ALL_FILTERS` (used by both environments already); no
+      frontend sanitizer change needed — `rehype-sanitize`'s default schema
+      already permits `<a href>` on http(s) urls for ordinary markdown links.
+- [x] Tests: coalesce example policy produces expected `effective`, template
+      renders with links, filter output format, null-origin handling. —
+      `userdefinedmodel/tests/test_effective_display.py` (10 tests); full
+      suite green (`uv run manage.py test userdefinedmodel`, 315 tests).
 
 ### Step 5 — backlinks in the UI (1.5)
 

@@ -19,6 +19,8 @@ import data.udm.udmframeworkv1.modules.sudo
 #   linked_inputs / backlink_inputs (sets, unioned across ALL modules; read in
 #     a REQUEST PHASE before the main evaluation, resolved into input.linked /
 #     input.backlinks — not part of data.udm.result; events-and-sync.md §2.2),
+#   effective (object, unioned across modules like additional_result;
+#     presentation-free coalesced values — events-and-sync.md §1.3),
 #   actions, dashboard_columns, additional_result (object),
 #   protected_fields (INTERNAL convention only — never part of result),
 #   public_type_fields / TYPE_DESCRIPTION (type_result only).
@@ -265,6 +267,16 @@ additional_result[k] := v if {
 	some k, v in udmframeworkv1.modules[name].additional_result
 }
 
+# ─── effective (§1.3 coalesced values) ────────────────────────────────────────
+# Presentation-free policy output, unioned across modules like
+# additional_result — merged into a markdown display field (§1.4) and used as
+# the sync payload source (§4).
+
+effective[k] := v if {
+	some name
+	some k, v in udmframeworkv1.modules[name].effective
+}
+
 # ─── Aggregate results (the ONLY rules the engine reads) ─────────────────────
 
 result := {
@@ -279,6 +291,7 @@ result := {
 	"force_delete": force_delete,
 	"dashboard_columns": [c | some c in dashboard_columns],
 	"additional_result": additional_result,
+	"effective": effective,
 }
 
 _public_type_fields[k] := v if {

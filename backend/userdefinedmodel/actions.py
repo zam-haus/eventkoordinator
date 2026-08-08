@@ -273,6 +273,11 @@ class PolicyEvaluationOutput(BaseModel):
     # Only meaningful for action == "delete": overrides the application-level
     # backlink-protect block (events-and-sync.md §1.1). Ignored otherwise.
     force_delete: bool = False
+    # Policy output convention (events-and-sync.md §1.3): structured, presentation-
+    # free coalesced values. Rendered into markdown display fields by a Jinja
+    # template (§1.4) and used as the sync payload source (§4). Not part of the
+    # engine contract — an ordinary top-level key any policy module may define.
+    effective: dict = {}
     additional_result: dict = {}
     input_document: dict = {}
     """The input document this evaluation was given. Not part of the Rego result

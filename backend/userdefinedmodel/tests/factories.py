@@ -228,6 +228,8 @@ actions contains {} if false
 
 dashboard_columns contains {} if false
 
+effective["_placeholder"] := "" if false
+
 _tf_nodes := {n |
     walk(input.entity, [_, n])
     is_object(n)
@@ -272,6 +274,7 @@ result := {
     "force_delete": force_delete,
     "dashboard_columns": [c | some c in dashboard_columns],
     "additional_result": additional_result,
+    "effective": effective,
 }
 """
 

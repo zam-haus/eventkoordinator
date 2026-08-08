@@ -393,6 +393,11 @@ class FormElement(MetaBase):
         TAB_NEXT = "tab_next"
         # Multi-field widget example (proves the M:N binding)
         DATE_RANGE = "date_range"
+        # Read-only, server-rendered markdown (events-and-sync.md §1.4).
+        # type_config: {"template": "<jinja source>"}. No data value, no
+        # bindings — rendered from the policy's `effective` output, not
+        # backed by a FieldValue.
+        MARKDOWN_DISPLAY = "markdown_display"
 
     STRUCTURAL_TYPES = frozenset({
         ElementType.TAB_CONTAINER,

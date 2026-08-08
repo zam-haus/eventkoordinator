@@ -588,6 +588,7 @@ def evaluate_policy(
             creatable_submodels=_as_creatable_map(raw_result.get("creatable_submodels")),
             actions=[a for a in (raw_result.get("actions") or []) if isinstance(a, dict)],
             force_delete=bool(raw_result.get("force_delete", False)),
+            effective=raw_result.get("effective") if isinstance(raw_result.get("effective"), dict) else {},
             dashboard_columns=[c for c in (raw_result.get("dashboard_columns") or []) if isinstance(c, dict)],
             additional_result=raw_result.get("additional_result") if isinstance(raw_result.get("additional_result"), dict) else {},
             # Carried so send_notification can hand the input to mail templates.
