@@ -1,0 +1,31 @@
+{% set status_de = {'approved': 'Angenommen', 'rejected': 'Abgelehnt', 'revise': 'Überarbeitung erbeten'}.get(review.status, review.status) %}
+{% set status_en = {'approved': 'Approved', 'rejected': 'Rejected', 'revise': 'Revision requested'}.get(review.status, review.status) %}
+[Deutsch]
+
+Ein Gutachten ist eingegangen für die Einreichung "{{ proposal.title }}"{% if proposal.call_title %} in "{{ proposal.call_title }}"{% endif %}.
+
+  Gutachter: {{ reviewer_name }}
+  Ergebnis: {{ status_de }}
+{% if review.comment %}
+  Kommentar: {{ review.comment | userinput }}
+{% endif %}
+
+Die Einreichung ist unter folgendem Link einsehbar:
+
+{{ proposal.url }}
+
+================================
+
+[English]
+
+A review has been submitted for the submission "{{ proposal.title }}"{% if proposal.call_title %} in "{{ proposal.call_title }}"{% endif %}.
+
+  Reviewer: {{ reviewer_name }}
+  Result: {{ status_en }}
+{% if review.comment %}
+  Comment: {{ review.comment | userinput }}
+{% endif %}
+
+The submission can be viewed at the following link:
+
+{{ proposal.url }}

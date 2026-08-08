@@ -27,6 +27,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Union
 
+from django.conf import settings
+
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
@@ -68,6 +70,15 @@ class ActionContext(BaseModel):
 
     depth: int = 0
     """Recursion depth — raised by 1 for each nested trigger_transition call."""
+
+    policy_input: dict | None = None
+    """The input document handed to Rego for the evaluation that produced these
+    actions. Exposed to mail templates as ``input``. None for callers that do
+    not have it, in which case templates see an empty dict."""
+
+    policy_output: Any | None = None
+    """The PolicyEvaluationOutput of that same evaluation, so actions can use the
+    fields Rego calculated (grants, messages, valid transitions)."""
 
 
 # ─── Action output schemas ─────────────────────────────────────────────────────
@@ -132,10 +143,17 @@ class SendNotificationOutput(BaseModel):
     mail is only queued if the surrounding transaction commits successfully.
 
     **Template-based sending** (recommended to stay within Rego's 1 024-char
-    line limit): set ``template_name`` to a base path (e.g.
-    ``"proposals/submit"``) and the handler will render
-    ``{template_name}.txt.j2`` and ``{template_name}.html.j2`` via Django's
-    template loader.  Template context: ``node``, ``user``, ``trigger``.
+    line limit): set ``template_name`` to a MailTemplate slug (e.g.
+    ``"proposal-submitted-owner"``, editable in UDM Admin → UDM Templating) and
+    the handler renders its plaintext and HTML bodies in a sandboxed Jinja2
+    environment.  A slug with no MailTemplate row falls back to the legacy
+    on-disk ``{name}.txt.j2`` / ``{name}.html.j2`` pair with a deprecation
+    warning.
+
+    The template context is documented on :func:`build_notification_context` and
+    always carries the policy input document and the calculated decision fields;
+    ``context`` below is the policy's own JSON, exposed under the key
+    ``context``.
 
     **Inline sending**: leave ``template_name`` empty and provide
     ``body_text`` / ``body_html`` directly.
@@ -147,8 +165,16 @@ class SendNotificationOutput(BaseModel):
     template_name: str = Field(
         default="",
         description=(
-            "Base template path (without suffix).  "
-            "Renders <name>.txt.j2 and <name>.html.j2."
+            "MailTemplate slug to render.  Falls back to the legacy on-disk "
+            "<name>.txt.j2 / <name>.html.j2 pair when no such row exists."
+        ),
+    )
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Arbitrary JSON calculated by the policy, exposed to the template "
+            "under the top-level key `context`.  Engine-provided keys such as "
+            "`input` and `decision` cannot be shadowed by it."
         ),
     )
     body_text: str = Field(default="", description="Plain-text body (used when template_name is empty)")
@@ -225,6 +251,9 @@ class PolicyEvaluationOutput(BaseModel):
     dashboard_columns: list[dict] = []
     actions: list[dict] = []
     additional_result: dict = {}
+    input_document: dict = {}
+    """The input document this evaluation was given. Not part of the Rego result
+    — the engine attaches it so actions can pass it to templates."""
 
 
 # ─── Registry ─────────────────────────────────────────────────────────────────
@@ -264,6 +293,17 @@ def _action_history_value(raw: dict, error: Exception | None = None) -> dict:
     """
     STRIP_KEYS = {"body_text", "body_html"}
     value = {k: v for k, v in raw.items() if k not in STRIP_KEYS}
+    # The policy-supplied context is the auditable part, so it is kept — but a
+    # policy could put an entire entity in there, so cap it.
+    context = value.get("context")
+    if context is not None:
+        import json as _json
+        try:
+            oversized = len(_json.dumps(context, default=str)) > 8_000
+        except (TypeError, ValueError):
+            oversized = True
+        if oversized:
+            value["context"] = {"_truncated": True}
     if error is not None:
         value["_error"] = str(error)
     return value
@@ -518,10 +558,68 @@ def _handle_trigger_transition(action: TriggerTransitionOutput, ctx: ActionConte
                 raise
 
 
+def build_notification_context(action: "SendNotificationOutput", ctx: ActionContext) -> dict:
+    """Build the JSON context a notification template is rendered with.
+
+    This is a stable contract — templates in the bundle depend on these keys:
+
+    ``context``            the policy's own JSON, verbatim from the action
+    ``input``              the full policy input document handed to Rego
+    ``entity``             ``input.entity`` (convenience alias)
+    ``fields``             ``{slug: value}`` of the node the action fired on
+    ``node``               ``{id, schema_id}`` of that node
+    ``user``               ``input.user`` — the actor
+    ``trigger`` ``phase``  lifecycle event and dispatch phase
+    ``action`` ``transition`` ``field`` ``locale`` ``type_id``  from the input
+    ``additional_result``  the policy's VIEW carry-over
+    ``decision``           calculated fields of this evaluation: ``allow``,
+                           ``messages``, ``valid_transitions``, ``additional_result``
+    ``recipients``         the resolved recipient addresses
+    ``frontend_base_url``  also available as a Jinja global
+
+    The engine-provided keys are applied *after* ``context``, so a policy cannot
+    shadow them.
+    """
+    policy_input = ctx.policy_input or {}
+    output = ctx.policy_output
+    decision = {
+        "allow": bool(getattr(output, "allow", False)),
+        "messages": list(getattr(output, "messages", []) or []),
+        "valid_transitions": list(getattr(output, "valid_transitions", []) or []),
+        "additional_result": dict(getattr(output, "additional_result", {}) or {}),
+    }
+
+    return {
+        **(action.context or {}),
+        "context": action.context or {},
+        "input": policy_input,
+        "entity": policy_input.get("entity", {}),
+        "fields": {
+            fv.field.slug: fv.get_value()
+            for fv in ctx.node.field_values.select_related("field").all()
+        },
+        "node": {
+            "id": str(ctx.node.id),
+            "schema_id": str(getattr(ctx.node, "config_version_id", "") or ""),
+        },
+        "user": policy_input.get("user", {}),
+        "trigger": ctx.trigger,
+        "phase": ctx.phase,
+        "action": policy_input.get("action"),
+        "transition": policy_input.get("transition"),
+        "field": policy_input.get("field"),
+        "locale": policy_input.get("locale"),
+        "type_id": policy_input.get("type_id"),
+        "additional_result": policy_input.get("additional_result", {}),
+        "decision": decision,
+    }
+
+
 @policy_action("send_notification", schema=SendNotificationOutput)
 def _handle_send_notification(action: SendNotificationOutput, ctx: ActionContext) -> None:
     from django.core.mail import send_mail
-    from django.template.loader import render_to_string
+
+    from userdefinedmodel.mailtemplates import render_mail_template
 
     # ── Resolve recipients (inside the transaction so errors reach history) ──
     recipient_emails: list[str] = list(action.extra_recipients)
@@ -541,20 +639,17 @@ def _handle_send_notification(action: SendNotificationOutput, ctx: ActionContext
         )
 
     # ── Render templates (inside the transaction so errors reach history) ──
-    ctx_dict = {
-        "node": ctx.node,
-        "user": ctx.user,
-        "trigger": ctx.trigger,
-        # Convenience dict so templates can write {{ fields.title }} instead
-        # of calling node.get_field_value("title").get_value()
-        "fields": {
-            fv.field.slug: fv.get_value()
-            for fv in ctx.node.field_values.select_related("field").all()
-        },
-    }
+    subject = action.subject
     if action.template_name:
-        body_text = render_to_string(f"{action.template_name}.txt.j2", ctx_dict)
-        body_html = render_to_string(f"{action.template_name}.html.j2", ctx_dict)
+        ctx_dict = build_notification_context(action, ctx)
+        ctx_dict["recipients"] = recipient_emails
+        ctx_dict["frontend_base_url"] = settings.FRONTEND_BASE_URL
+        # A missing slug raises MailTemplateNotFound, which dispatch_actions
+        # records on the FieldEdit — import the bundle to create the row.
+        rendered = render_mail_template(action.template_name, ctx_dict)
+        body_text = rendered.text
+        body_html = rendered.html or None
+        subject = subject or rendered.subject
     else:
         body_text = action.body_text
         body_html = action.body_html or None
@@ -564,7 +659,7 @@ def _handle_send_notification(action: SendNotificationOutput, ctx: ActionContext
     # Running inside the same atomic() guarantees that the queue entry and the
     # transition state change are committed together or rolled back together.
     send_mail(
-        subject=action.subject,
+        subject=subject,
         message=body_text,
         html_message=body_html,
         from_email=None,  # uses settings.DEFAULT_FROM_EMAIL

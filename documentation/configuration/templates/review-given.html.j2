@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .proposal-title {
+            font-weight: bold;
+        }
+        .cta-link {
+            display: inline-block;
+            margin: 8px 0 20px;
+            color: #0066cc;
+            word-break: break-all;
+        }
+        .comment-block {
+            background: #f5f5f5;
+            border-left: 3px solid #ccc;
+            padding: 8px 12px;
+            margin: 8px 0;
+            font-style: italic;
+        }
+        .divider {
+            border: none;
+            border-top: 2px solid #ddd;
+            margin: 30px 0;
+        }
+        .lang-label {
+            font-size: 0.75em;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+    </style>
+</head>
+<body>
+    {% set status_de = {'approved': 'Angenommen', 'rejected': 'Abgelehnt', 'revise': 'Überarbeitung erbeten'}.get(review.status, review.status) %}
+    {% set status_en = {'approved': 'Approved', 'rejected': 'Rejected', 'revise': 'Revision requested'}.get(review.status, review.status) %}
+
+    <p class="lang-label">Deutsch</p>
+
+    <p>Ein Gutachten ist eingegangen für die Einreichung <span class="proposal-title">"{{ proposal.title }}"</span>{% if proposal.call_title %} in <span class="proposal-title">"{{ proposal.call_title }}"</span>{% endif %}.</p>
+
+    <p><strong>Gutachter:</strong> {{ reviewer_name }}<br>
+    <strong>Ergebnis:</strong> {{ status_de }}</p>
+
+    {% if review.comment %}
+    <div class="comment-block">{{ review.comment | htmlquote }}</div>
+    {% endif %}
+
+    <p>Die Einreichung ist unter folgendem Link einsehbar:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+
+    <hr class="divider">
+
+    <p class="lang-label">English</p>
+
+    <p>A review has been submitted for the submission <span class="proposal-title">"{{ proposal.title }}"</span>{% if proposal.call_title %} in <span class="proposal-title">"{{ proposal.call_title }}"</span>{% endif %}.</p>
+
+    <p><strong>Reviewer:</strong> {{ reviewer_name }}<br>
+    <strong>Result:</strong> {{ status_en }}</p>
+
+    {% if review.comment %}
+    <div class="comment-block">{{ review.comment | htmlquote }}</div>
+    {% endif %}
+
+    <p>The submission can be viewed at the following link:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+</body>
+</html>

@@ -20,6 +20,7 @@ from userdefinedmodel.models.workflow import (
     WorkflowTransitionTranslation,
 )
 from userdefinedmodel.models.policy import Policy, UserDefinedModelTypePolicy
+from userdefinedmodel.models.mailtemplate import MailTemplate
 from userdefinedmodel.models.udmtype import UserDefinedModelType
 from userdefinedmodel.models.rules import (
     SingleFieldValidationRule,
@@ -80,6 +81,7 @@ __all__ = [
     "WorkflowTransitionTranslation",
     "Policy",
     "UserDefinedModelTypePolicy",
+    "MailTemplate",
     "UserDefinedModelType",
     "SingleFieldValidationRule",
     "RequiredRule",

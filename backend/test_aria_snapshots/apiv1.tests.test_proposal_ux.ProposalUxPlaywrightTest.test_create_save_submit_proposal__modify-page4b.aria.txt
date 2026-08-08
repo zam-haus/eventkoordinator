@@ -1,46 +1,34 @@
-- navigation "Main navigation":
-  - link "Event Coordinator – go to home":
-    - /url: /
-    - heading "Event Coordinator" [level=1]
-  - list:
-    - listitem: Proposal Editor
-  - button "Switch to English" [pressed]: 🇬🇧
-  - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": proposalux-user
+- link "Event Coordinator – go to home":
+  - /url: /
+  - heading "Event Coordinator" [level=1]
+- button "Navigation":
+  - img
+- menubar:
+  - menuitem "Proposal Editor":
+    - link "Proposal Editor":
+      - /url: /proposal-editor
+  - menuitem "Proposal Dashboard":
+    - link "Proposal Dashboard":
+      - /url: /proposal-dashboard
+  - menuitem "UDM Dashboard":
+    - link "UDM Dashboard":
+      - /url: /udm-dashboard
+  - menuitem "UDM Entities":
+    - link "UDM Entities":
+      - /url: /udm-entity
+- button "Switch to English" [pressed]: 🇬🇧
+- button "Auf Deutsch wechseln": 🇩🇪
+- button "User menu" [expanded]: proposalux-user
+- menu "User options":
+  - text: "Logged in as: proposalux-user"
+  - separator
+  - menuitem "Manage Account"
+  - separator
+  - menuitem "Logout"
+  - separator
+  - menuitem "Imprint"
+  - menuitem "Privacy Policy"
 - main:
-  - complementary "Proposals":
-    - heading "Proposals" [level=2]
-    - button "Create New Proposal"
-    - listbox "Proposals":
-      - option [selected]
-  - main "Proposals content":
-    - heading "Proposal Editor" [level=1]
-    - form "Proposal editor":
-      - tablist:
-        - tab "✎ General"
-        - tab "✎ Participants and Costs"
-        - tab "✎ Scheduling"
-        - tab "✎ Speakers" [selected]
-        - tab "5 Submission"
-      - tabpanel:
-        - checkbox "Are you a regular member?" [checked]
-        - text: Are you a regular member?
-        - checkbox "Do you have access to the ZAM building?" [checked]
-        - text: Do you have access to the ZAM building? Owner proposalux-user The owner is automatically set to the user who creates the proposal and cannot be changed. Editors Editors can view and edit this proposal. Add users who can edit the proposal.
-        - combobox "Editors"
-        - text: Editors can view and edit this proposal. Add users who can edit the proposal.
-        - heading "Speakers" [level=3]
-        - heading "Added Speakers (1)" [level=4]
-        - text: proposalux-user Name proposalux-user@example.com Bio
-        - button "Edit"
-        - button "Remove"
-        - button "+ Add Speaker"
-        - text: Internal Notes (optional) ●
-        - textbox "Internal Notes (optional) unsaved change": Internal Notes
-        - text: Internal notes are not public. Mention equipment needs (e.g., laptops, projector, laser cutter).
-      - button "← Back"
-      - button "Next →"
-      - button "Save Proposal"
-      - button "Cancel"
-      - button "Delete Proposal"
-      - group: Edit history last changed just now
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - paragraph: No active calls at the moment.

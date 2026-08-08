@@ -41,10 +41,17 @@ In ``post`` phase the send is deferred to ``transaction.on_commit`` so the
 mail is only queued if the surrounding transaction commits successfully.
 
 **Template-based sending** (recommended to stay within Rego's 1 024-char
-line limit): set ``template_name`` to a base path (e.g.
-``"proposals/submit"``) and the handler will render
-``{template_name}.txt.j2`` and ``{template_name}.html.j2`` via Django's
-template loader.  Template context: ``node``, ``user``, ``trigger``.
+line limit): set ``template_name`` to a MailTemplate slug (e.g.
+``"proposal-submitted-owner"``, editable in UDM Admin → UDM Templating) and
+the handler renders its plaintext and HTML bodies in a sandboxed Jinja2
+environment.  A slug with no MailTemplate row falls back to the legacy
+on-disk ``{name}.txt.j2`` / ``{name}.html.j2`` pair with a deprecation
+warning.
+
+The template context is documented on :func:`build_notification_context` and
+always carries the policy input document and the calculated decision fields;
+``context`` below is the policy's own JSON, exposed under the key
+``context``.
 
 **Inline sending**: leave ``template_name`` empty and provide
 ``body_text`` / ``body_html`` directly.
@@ -54,7 +61,8 @@ template loader.  Template context: ``node``, ``user``, ``trigger``.
 | `type` | `'send_notification'` | yes |  |
 | `phase` | `'pre' | 'post'` | yes |  |
 | `subject` | `str` | no | Email subject line |
-| `template_name` | `str` | no | Base template path (without suffix).  Renders <name>.txt.j2 and <name>.html.j2. |
+| `template_name` | `str` | no | MailTemplate slug to render.  Falls back to the legacy on-disk <name>.txt.j2 / <name>.html.j2 pair when no such row exists. |
+| `context` | `dict[str, Any]` | no | Arbitrary JSON calculated by the policy, exposed to the template under the top-level key `context`.  Engine-provided keys such as `input` and `decision` cannot be shadowed by it. |
 | `body_text` | `str` | no | Plain-text body (used when template_name is empty) |
 | `body_html` | `str` | no | HTML body (used when template_name is empty) |
 | `recipient_field` | `str | None` | no | Slug of a user_select field on the triggering node whose user's email address is the primary recipient.  Stacked with extra_recipients. |
@@ -68,6 +76,7 @@ template loader.  Template context: ``node``, ``user``, ``trigger``.
   "phase": "pre",
   "subject": "",
   "template_name": "",
+  "context": {},
   "body_text": "",
   "body_html": "",
   "recipient_field": null,

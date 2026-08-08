@@ -1,0 +1,21 @@
+[Deutsch]
+
+Hi {{ reviewer.username }}!
+
+Du wurdest gebeten, die Einreichung "{{ proposal.title }}"{% if proposal.call_title %} für "{{ proposal.call_title }}"{% endif %} zu begutachten.
+
+Du kannst die Einreichung unter folgendem Link einsehen und dein Gutachten abgeben:
+
+{{ proposal.url }}
+
+================================
+
+[English]
+
+Hi {{ reviewer.username }}!
+
+You have been asked to review the submission "{{ proposal.title }}"{% if proposal.call_title %} for "{{ proposal.call_title }}"{% endif %}.
+
+You can view the submission and submit your review at the following link:
+
+{{ proposal.url }}

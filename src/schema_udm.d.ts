@@ -455,6 +455,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/udm/mail-templates/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mail Templates */
+        get: operations["userdefinedmodel_api_mailtemplates_list_mail_templates"];
+        put?: never;
+        /** Create Mail Template */
+        post: operations["userdefinedmodel_api_mailtemplates_create_mail_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/mail-templates/preview/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Mail Template
+         * @description Render unsaved sources against a sample context.
+         *
+         *     Declared before the ``{slug}`` routes so it is not swallowed by them.
+         *
+         *     A template syntax error is normal editing state, not an API failure, so it
+         *     comes back as HTTP 200 with ``error`` set rather than a 4xx/5xx.
+         */
+        post: operations["userdefinedmodel_api_mailtemplates_preview_mail_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/mail-templates/{slug}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Mail Template */
+        get: operations["userdefinedmodel_api_mailtemplates_get_mail_template"];
+        /** Update Mail Template */
+        put: operations["userdefinedmodel_api_mailtemplates_update_mail_template"];
+        post?: never;
+        /** Delete Mail Template */
+        delete: operations["userdefinedmodel_api_mailtemplates_delete_mail_template"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/udm/parse-bundle-zip/": {
         parameters: {
             query?: never;
@@ -1471,6 +1533,158 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+        };
+        /** MailTemplateCreateIn */
+        MailTemplateCreateIn: {
+            /**
+             * Body Html
+             * @default
+             */
+            body_html: string;
+            /**
+             * Body Text
+             * @default
+             */
+            body_text: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Example Input
+             * @default {}
+             */
+            example_input: {
+                [key: string]: unknown;
+            };
+            /** Slug */
+            slug: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+        };
+        /** MailTemplateOut */
+        MailTemplateOut: {
+            /**
+             * Body Html
+             * @default
+             */
+            body_html: string;
+            /**
+             * Body Text
+             * @default
+             */
+            body_text: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Example Input
+             * @default {}
+             */
+            example_input: {
+                [key: string]: unknown;
+            };
+            /** Slug */
+            slug: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+        };
+        /**
+         * MailTemplatePreviewIn
+         * @description Render unsaved sources — the editor previews before anything is saved.
+         */
+        MailTemplatePreviewIn: {
+            /**
+             * Body Html
+             * @default
+             */
+            body_html: string;
+            /**
+             * Body Text
+             * @default
+             */
+            body_text: string;
+            /**
+             * Context
+             * @default {}
+             */
+            context: {
+                [key: string]: unknown;
+            };
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+        };
+        /** MailTemplatePreviewOut */
+        MailTemplatePreviewOut: {
+            /** Error */
+            error?: string | null;
+            /**
+             * Html
+             * @default
+             */
+            html: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
+        /** MailTemplateSummaryOut */
+        MailTemplateSummaryOut: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Slug */
+            slug: string;
+        };
+        /** MailTemplateUpdateIn */
+        MailTemplateUpdateIn: {
+            /**
+             * Body Html
+             * @default
+             */
+            body_html: string;
+            /**
+             * Body Text
+             * @default
+             */
+            body_text: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Example Input
+             * @default {}
+             */
+            example_input: {
+                [key: string]: unknown;
+            };
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
         };
         /**
          * MigrationAction
@@ -2628,6 +2842,142 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    userdefinedmodel_api_mailtemplates_list_mail_templates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailTemplateSummaryOut"][];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_mailtemplates_create_mail_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailTemplateCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailTemplateOut"];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_mailtemplates_preview_mail_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailTemplatePreviewIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailTemplatePreviewOut"];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_mailtemplates_get_mail_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailTemplateOut"];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_mailtemplates_update_mail_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailTemplateUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailTemplateOut"];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_mailtemplates_delete_mail_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {

@@ -512,3 +512,108 @@ class GeneratePolicyActionDocsTests(TestCase):
         output = buf.getvalue()
 
         self.assertIn("```json", output)
+
+
+# ─── send_notification: template resolution and context contract ──────────────
+
+@override_settings(MIDDLEWARE=_TEST_MIDDLEWARE, FRONTEND_BASE_URL="https://example.test")
+class SendNotificationTemplateTests(TestCase):
+    """Pins the JSON context contract that bundle templates depend on."""
+
+    def _fire(self, body_text: str, *, context: dict | None = None, slug: str = "tpl"):
+        from django.core import mail
+        from userdefinedmodel.writer import apply_patch
+        from django.db import transaction
+
+        entity, user = self._setup_entity(slug, context or {})
+        from userdefinedmodel.models import MailTemplate
+        MailTemplate.objects.create(slug=slug, subject="S", body_text=body_text)
+
+        mail.outbox.clear()
+        with transaction.atomic():
+            apply_patch(entity, {"title": "hello"}, user)
+        return mail.outbox
+
+    def _setup_entity(self, slug: str, context: dict):
+        import json as _json
+        from userdefinedmodel.tests.factories import (
+            FieldConfigFactory, ConfigLanguageFactory, PublishedConfigVersionFactory,
+            FieldDefinitionFactory, UserDefinedModelTypeFactory,
+            UserDefinedModelEntityFactory, StaffUserFactory, wrap_policy,
+        )
+
+        user = StaffUserFactory(email="to@example.org")
+        config = FieldConfigFactory()
+        ConfigLanguageFactory(config=config, code="en", is_default=True)
+        version = PublishedConfigVersionFactory(config=config)
+        FieldDefinitionFactory(version=version, slug="title", data_type="text_short")
+        action = {
+            "type": "send_notification",
+            "phase": "post",
+            "template_name": slug,
+            "extra_recipients": ["to@example.org"],
+            "context": context,
+        }
+        rego = wrap_policy(
+            "package udm\nimport rego.v1\nallow := true\n"
+            f"actions contains a if {{ some a in [{_json.dumps(action)}] }}\n"
+        )
+        udm_type = UserDefinedModelTypeFactory(field_config=config, policy=rego)
+        entity = UserDefinedModelEntityFactory(
+            config_version=version, user_defined_model_type=udm_type,
+        )
+        return entity, user
+
+    def test_db_template_is_used_and_context_keys_are_present(self):
+        outbox = self._fire(
+            "{{ context.foo }}|{{ input.action }}|{{ decision.allow }}|"
+            "{{ fields.title }}|{{ trigger }}|{{ phase }}|{{ frontend_base_url }}",
+            context={"foo": "bar"},
+        )
+        self.assertEqual(len(outbox), 1)
+        self.assertEqual(
+            outbox[0].body,
+            "bar|save|True|hello|save|post|https://example.test",
+        )
+
+    def test_template_subject_is_used(self):
+        outbox = self._fire("x")
+        self.assertEqual(outbox[0].subject, "S")
+
+    def test_policy_context_cannot_shadow_engine_keys(self):
+        outbox = self._fire(
+            "{{ input.action }}|{{ decision.allow }}",
+            context={"input": {"action": "spoofed"}, "decision": {"allow": False}},
+        )
+        self.assertEqual(outbox[0].body, "save|True")
+
+    def test_context_keys_are_also_exposed_at_top_level(self):
+        outbox = self._fire("{{ proposal.title }}", context={"proposal": {"title": "T"}})
+        self.assertEqual(outbox[0].body, "T")
+
+    def test_filters_are_available_in_notifications(self):
+        outbox = self._fire(
+            '{{ context.at | timezone("Europe/Berlin") | isoformat() }}',
+            context={"at": "2026-08-08T10:00:00+00:00"},
+        )
+        self.assertEqual(outbox[0].body, "2026-08-08 12:00:00+02:00")
+
+    def test_unknown_slug_errors_without_blocking_the_save(self):
+        """No MailTemplate row → the action errors, but the save still succeeds
+        because dispatch_actions defaults to on_error=log."""
+        from django.core import mail
+        from userdefinedmodel.writer import apply_patch
+        from django.db import transaction
+        from userdefinedmodel.models import FieldEdit
+
+        entity, user = self._setup_entity("missing-everywhere", {})
+        mail.outbox.clear()
+        with self.assertLogs("userdefinedmodel.actions", level="WARNING"):
+            with transaction.atomic():
+                apply_patch(entity, {"title": "hello"}, user)
+
+        self.assertEqual(len(mail.outbox), 0)
+        edit = FieldEdit.objects.filter(
+            change_kind=FieldEdit.ChangeKind.POLICY_POST_ACTION
+        ).last()
+        self.assertIn("_error", edit.new_value)

@@ -113,6 +113,7 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
                 raise PolicyError(result.messages or [{"level": "critical", "text": "Create denied by policy."}])
             pre_ctx = ActionContext(
                 node=entity, user=request.user, trigger="create", phase="pre",
+                policy_input=result.input_document, policy_output=result,
             )
             dispatch_actions(result.actions, pre_ctx)
             post_ctx = pre_ctx.model_copy(update={"phase": "post"})

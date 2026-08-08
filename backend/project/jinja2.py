@@ -1,5 +1,4 @@
 import logging
-import textwrap
 
 from django.templatetags.static import static
 from django.urls import reverse
@@ -12,8 +11,8 @@ from jinja2 import (
     BaseLoader,
 )
 from django.conf import settings
-import pprint
-import json
+
+from project.jinja_filters import ALL_FILTERS
 
 
 def environment(**options):
@@ -26,13 +25,7 @@ def environment(**options):
             "settings": settings,
         }
     )
-    env.filters.update(
-        {
-            "pprint": lambda v: pprint.pformat(v, indent=4),
-            "tojson": lambda v: json.dumps(v, indent=4, sort_keys=True, default=str),
-            "textwrap": lambda v, width=80: "\n".join(textwrap.wrap(v, width=width)),
-        }
-    )
+    env.filters.update(ALL_FILTERS)
     return env
 
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Optional
 
@@ -29,6 +30,7 @@ from userdefinedmodel.schemas import (
     BundleUDMTypeOut,
     BundleWorkflowOut,
     ConfigLanguageOut,
+    MailTemplateOut,
     PolicyOut,
     WorkflowStateOut,
     WorkflowTransitionOut,
@@ -69,14 +71,29 @@ def _extract_bundle_from_rego(source: str) -> dict | None:
         return None
 
 
-def _collect_bundle_scope(scope_type_ids: list) -> tuple[list, list, list, list]:
-    """Collect all UDMTypes, field configs, workflows, and policies for the given UDMType IDs.
+#: Matches the ``template_name`` of a send_notification action in a Rego policy.
+#: Only literal slugs are found — a slug built with sprintf() is invisible here,
+#: which is why BundleExportIn also offers extra_template_slugs.
+_TEMPLATE_NAME_RE = re.compile(r'"template_name"\s*:\s*"([a-z0-9][a-z0-9_\-/]*)"')
 
-    Returns (udm_types, field_configs, workflows, policies) — all DB model objects.
-    Field configs include both root configs and any submodel configs reachable from them.
+
+def _collect_bundle_scope(
+    scope_type_ids: list,
+    extra_template_slugs: list[str] | None = None,
+    include_all_templates: bool = False,
+) -> tuple[list, list, list, list, list]:
+    """Collect all UDMTypes, field configs, workflows, policies and mail templates.
+
+    Returns (udm_types, field_configs, workflows, policies, mail_templates) — all
+    DB model objects. Field configs include both root configs and any submodel
+    configs reachable from them.
+
+    Mail templates are not referenced by any config structure, so they are found
+    by scanning the in-scope policy sources for send_notification template names.
     """
     from userdefinedmodel.models import (
         UserDefinedModelType, FieldConfig, ConfigVersion, WorkflowDefinition, Policy,
+        MailTemplate,
     )
 
     udm_types = list(
@@ -135,14 +152,28 @@ def _collect_bundle_scope(scope_type_ids: list) -> tuple[list, list, list, list]
             policy_slugs.add(tp.policy.slug)
     policies = list(Policy.objects.filter(slug__in=policy_slugs))
 
-    return udm_types, field_configs, workflows, policies
+    if include_all_templates:
+        mail_templates = list(MailTemplate.objects.all())
+    else:
+        template_slugs: set[str] = set(extra_template_slugs or [])
+        for policy in policies:
+            template_slugs.update(_TEMPLATE_NAME_RE.findall(policy.source or ""))
+        mail_templates = list(MailTemplate.objects.filter(slug__in=template_slugs))
+
+    return udm_types, field_configs, workflows, policies, mail_templates
 
 
-def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
+def _build_bundle_export(
+    scope_type_ids: list,
+    extra_template_slugs: list[str] | None = None,
+    include_all_templates: bool = False,
+) -> BundleExportOut:
     """Build a BundleExportOut for the given scope UDMType IDs."""
     from userdefinedmodel.models import ConfigVersion
 
-    udm_types, field_configs, workflows, policies = _collect_bundle_scope(scope_type_ids)
+    udm_types, field_configs, workflows, policies, mail_templates = _collect_bundle_scope(
+        scope_type_ids, extra_template_slugs, include_all_templates
+    )
 
     bundle_udm_types = []
     for t in udm_types:
@@ -216,6 +247,17 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
         ))
 
     bundle_policies = [PolicyOut(slug=p.slug, source=p.source) for p in policies]
+    bundle_templates = [
+        MailTemplateOut(
+            slug=t.slug,
+            description=t.description,
+            subject=t.subject,
+            body_text=t.body_text,
+            body_html=t.body_html,
+            example_input=t.example_input or {},
+        )
+        for t in mail_templates
+    ]
 
     return BundleExportOut(
         version=1,
@@ -224,22 +266,31 @@ def _build_bundle_export(scope_type_ids: list) -> BundleExportOut:
         field_configs=bundle_field_configs,
         workflows=bundle_workflows,
         policies=bundle_policies,
+        mail_templates=bundle_templates,
     )
 
 
-def _build_bundle_zip(scope_type_ids: list) -> bytes:
+def _build_bundle_zip(
+    scope_type_ids: list,
+    extra_template_slugs: list[str] | None = None,
+    include_all_templates: bool = False,
+) -> bytes:
     """Build a ZIP archive containing:
-    - UDM_BUNDLE.json  — structural bundle without policy sources
+    - UDM_BUNDLE.json  — structural bundle without policy sources or template bodies
     - policies/<slug>.rego — one file per policy
+    - templates/<slug>.{txt,html}.j2 — mail template bodies, one file each
     Returns raw ZIP bytes.
     """
     import io
     import zipfile as _zf
-    bundle = _build_bundle_export(scope_type_ids)
-    # Strip policy sources from the embedded bundle — they live as separate files
+    bundle = _build_bundle_export(scope_type_ids, extra_template_slugs, include_all_templates)
+    # Strip sources/bodies from the embedded bundle — they live as separate files
     bundle_dict = bundle.model_dump(mode="json")
     for p in bundle_dict.get("policies", []):
         p.pop("source", None)
+    for t in bundle_dict.get("mail_templates", []):
+        t.pop("body_text", None)
+        t.pop("body_html", None)
     bundle_json = json.dumps(bundle_dict, indent=2, ensure_ascii=False)
 
     buf = io.BytesIO()
@@ -247,20 +298,45 @@ def _build_bundle_zip(scope_type_ids: list) -> bytes:
         zf.writestr("UDM_BUNDLE.json", bundle_json)
         for policy in bundle.policies:
             zf.writestr(f"policies/{policy.slug}.rego", policy.source)
+        for template in bundle.mail_templates:
+            # An absent file means an empty body on import, so skip empties.
+            if template.body_text:
+                zf.writestr(f"templates/{template.slug}.txt.j2", template.body_text)
+            if template.body_html:
+                zf.writestr(f"templates/{template.slug}.html.j2", template.body_html)
+            zf.writestr(
+                f"templates/{template.slug}.json",
+                json.dumps(
+                    {
+                        "description": template.description,
+                        "subject": template.subject,
+                        "example_input": template.example_input,
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ),
+            )
     return buf.getvalue()
 
 
-def _extract_bundle_from_zip(zip_bytes: bytes) -> tuple[dict | None, dict[str, str]]:
+def _extract_bundle_from_zip(
+    zip_bytes: bytes,
+) -> tuple[dict | None, dict[str, str], dict[str, dict]]:
     """Parse a ZIP bundle archive.
 
-    Returns (bundle_dict, policy_sources) where:
+    Returns (bundle_dict, policy_sources, template_files) where:
     - bundle_dict is from UDM_BUNDLE.json or evaluated UDM_BUNDLE.rego (None on failure)
     - policy_sources maps slug → source from policies/*.rego files
+    - template_files maps slug → the fields found in templates/<slug>.* files
     """
     import io
     import zipfile as _zf
     policy_sources: dict[str, str] = {}
+    template_files: dict[str, dict] = {}
     bundle_dict: dict | None = None
+
+    def _template(slug: str) -> dict:
+        return template_files.setdefault(slug, {})
 
     try:
         with _zf.ZipFile(io.BytesIO(zip_bytes)) as zf:
@@ -271,6 +347,31 @@ def _extract_bundle_from_zip(zip_bytes: bytes) -> tuple[dict | None, dict[str, s
                     slug = name[len("policies/"):-len(".rego")]
                     if slug:
                         policy_sources[slug] = zf.read(name).decode("utf-8")
+            # Read mail template files
+            for name in names:
+                if not name.startswith("templates/"):
+                    continue
+                rest = name[len("templates/"):]
+                for suffix, key in ((".txt.j2", "body_text"), (".html.j2", "body_html")):
+                    if rest.endswith(suffix):
+                        slug = rest[: -len(suffix)]
+                        if slug:
+                            _template(slug)[key] = zf.read(name).decode("utf-8")
+                        break
+                else:
+                    if rest.endswith(".json"):
+                        slug = rest[: -len(".json")]
+                        if not slug:
+                            continue
+                        try:
+                            meta = json.loads(zf.read(name).decode("utf-8"))
+                        except ValueError:
+                            continue
+                        if isinstance(meta, dict):
+                            entry = _template(slug)
+                            for key in ("description", "subject", "example_input"):
+                                if key in meta:
+                                    entry[key] = meta[key]
             # Prefer UDM_BUNDLE.json, fall back to UDM_BUNDLE.rego
             if "UDM_BUNDLE.json" in names:
                 bundle_dict = json.loads(zf.read("UDM_BUNDLE.json").decode("utf-8"))
@@ -279,7 +380,7 @@ def _extract_bundle_from_zip(zip_bytes: bytes) -> tuple[dict | None, dict[str, s
                 bundle_dict = _extract_bundle_from_rego(rego_src)
     except Exception:
         pass
-    return bundle_dict, policy_sources
+    return bundle_dict, policy_sources, template_files
 
 
 @router.post("/export-bundle-zip/", auth=django_auth)
@@ -288,7 +389,9 @@ def export_bundle_zip(request, payload: BundleExportIn):
     from django.http import HttpResponse
     if denied := _require_perms(request, "userdefinedmodel.view_fieldconfig", "userdefinedmodel.view_datafield"):
         return denied
-    zip_bytes = _build_bundle_zip(payload.scope_type_ids)
+    zip_bytes = _build_bundle_zip(
+        payload.scope_type_ids, payload.extra_template_slugs, payload.include_all_templates
+    )
     response = HttpResponse(zip_bytes, content_type="application/zip")
     response["Content-Disposition"] = "attachment; filename=\"udm_bundle.zip\""
     return response
@@ -297,7 +400,7 @@ def export_bundle_zip(request, payload: BundleExportIn):
 @router.post("/parse-bundle-zip/", auth=django_auth)
 def parse_bundle_zip(request, file: UploadedFile = File(...)):
     """Parse a ZIP bundle and return the scope_type_ids and udm_types metadata it declares."""
-    bundle_dict, _ = _extract_bundle_from_zip(file.read())
+    bundle_dict, _, _ = _extract_bundle_from_zip(file.read())
     if bundle_dict is None:
         return JsonResponse({"scope_type_ids": [], "udm_types": [], "error": "Could not parse UDM_BUNDLE from ZIP"})
     udm_types = [
@@ -310,35 +413,30 @@ def parse_bundle_zip(request, file: UploadedFile = File(...)):
     })
 
 
-@router.post("/import-bundle-zip/", auth=django_auth)
-def import_bundle_zip(
-    request,
-    file: UploadedFile = File(...),
-    scope_type_ids: str = "",
-    policy_slug: str = "",
-):
-    """Import a ZIP bundle (UDM_BUNDLE.json + policies/*.rego).
+class BundleImportError(ValueError):
+    """The ZIP could not be parsed or lacked a usable scope."""
 
-    scope_type_ids: comma-separated UUID strings of in-scope UDM Types.
-    policy_slug: if set, save each policy rego with its own slug (already done from policies/ dir).
+
+def import_bundle_bytes(zip_bytes: bytes, scope_type_ids: str = "") -> dict:
+    """Import a ZIP bundle (UDM_BUNDLE.json + policies/*.rego + templates/*.j2).
+
+    The single implementation of bundle import, shared by the HTTP endpoint and
+    the ``import_bundle`` management command.
+
+    scope_type_ids: comma-separated UUID strings of in-scope UDM Types; falls
+    back to the bundle's own declared scope when empty.
+
+    Raises BundleImportError on unusable input. Returns a summary dict.
     """
     from userdefinedmodel.models import (
         ConfigVersion, FieldConfig, ConfigLanguage, FieldDefinition,
         FieldDefinitionTranslation, WorkflowDefinition,
-        Policy, UserDefinedModelType, UserDefinedModelTypePolicy,
+        MailTemplate, Policy, UserDefinedModelType, UserDefinedModelTypePolicy,
     )
-    if denied := _require_perms(
-        request,
-        "userdefinedmodel.change_fieldconfig",
-        "userdefinedmodel.change_datafield",
-        "userdefinedmodel.change_policy",
-    ):
-        return denied
 
-    zip_bytes = file.read()
-    raw_bundle, zip_policy_sources = _extract_bundle_from_zip(zip_bytes)
+    raw_bundle, zip_policy_sources, zip_template_files = _extract_bundle_from_zip(zip_bytes)
     if raw_bundle is None:
-        return JsonResponse({"detail": "Could not parse UDM_BUNDLE from ZIP"}, status=400)
+        raise BundleImportError("Could not parse UDM_BUNDLE from ZIP")
 
     # Parse scope_type_ids from query param (comma-separated)
     parsed_scope_ids = set(s.strip() for s in scope_type_ids.split(",") if s.strip())
@@ -346,7 +444,7 @@ def import_bundle_zip(
         # Fall back to the bundle's own scope
         parsed_scope_ids = set(str(s) for s in raw_bundle.get("scope_type_ids", []))
     if not parsed_scope_ids:
-        return JsonResponse({"detail": "scope_type_ids is required"}, status=400)
+        raise BundleImportError("scope_type_ids is required")
 
     bundle_config_ids = set(str(fc["id"]) for fc in raw_bundle.get("field_configs", []))
 
@@ -476,6 +574,30 @@ def import_bundle_zip(
                 pol, _ = Policy.objects.get_or_create(slug=slug, defaults={"source": ""})
             policy_slug_map[slug] = pol
 
+        # ── Step 3b: Mail templates ───────────────────────────────────────────
+        # Upsert by slug, never delete — same semantics as policies. Bodies come
+        # from the templates/ files, everything else from the embedded JSON.
+        imported_template_slugs: list[str] = []
+        template_entries: dict[str, dict] = {}
+        for tpl_data in raw_bundle.get("mail_templates", []):
+            slug = tpl_data.get("slug", "")
+            if slug:
+                template_entries[slug] = dict(tpl_data)
+        for slug, file_fields in zip_template_files.items():
+            template_entries.setdefault(slug, {}).update(file_fields)
+
+        for slug, data in template_entries.items():
+            MailTemplate.objects.update_or_create(
+                slug=slug,
+                defaults={
+                    "description": data.get("description", "") or "",
+                    "subject": data.get("subject", "") or "",
+                    "body_text": data.get("body_text", "") or "",
+                    "body_html": data.get("body_html", "") or "",
+                    "example_input": data.get("example_input") or {},
+                },
+            )
+            imported_template_slugs.append(slug)
 
         # ── Step 4: UDMTypes — create if missing, always relink ───────────────
         # Maps bundle cfg_id → the first config assigned to a bundle UDMType,
@@ -534,12 +656,42 @@ def import_bundle_zip(
                             defaults={"sort_order": 0},
                         )
 
-    return JsonResponse({
+    return {
         "status": "ok",
         "imported_workflows": len(workflow_id_map),
         "imported_configs": len(config_id_map),
         "imported_policies": len(policy_slug_map),
-    })
+        "imported_mail_templates": len(imported_template_slugs),
+        "config_ids": [str(cfg.id) for cfg in config_id_map.values()],
+    }
+
+
+@router.post("/import-bundle-zip/", auth=django_auth)
+def import_bundle_zip(
+    request,
+    file: UploadedFile = File(...),
+    scope_type_ids: str = "",
+    policy_slug: str = "",
+):
+    """Import a ZIP bundle. See :func:`import_bundle_bytes` for the semantics.
+
+    policy_slug: accepted for backwards compatibility; policy sources already
+    carry their own slug via the policies/ directory.
+    """
+    if denied := _require_perms(
+        request,
+        "userdefinedmodel.change_fieldconfig",
+        "userdefinedmodel.change_datafield",
+        "userdefinedmodel.change_policy",
+        "userdefinedmodel.change_mailtemplate",
+    ):
+        return denied
+    try:
+        result = import_bundle_bytes(file.read(), scope_type_ids)
+    except BundleImportError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    result.pop("config_ids", None)
+    return JsonResponse(result)
 
 
 def _is_workflow_externally_used(workflow_id, scope_config_ids: set) -> bool:
@@ -943,6 +1095,103 @@ def _resolve_submodel_version(sub_ver_id: str, config_id_map: dict, bundle_confi
             except ConfigVersion.DoesNotExist:
                 pass
     return original_version
+
+
+# ─── Identity migration plans ─────────────────────────────────────────────────
+
+def plan_identity_migration(src_version, tgt_version) -> tuple[dict, list[str]]:
+    """Work out how a config version could be migrated without asking a human.
+
+    Returns (mapping_spec, unresolvable) where mapping_spec describes the
+    same-slug field mappings and unresolvable lists what needs a human decision:
+    a source field whose slug is gone from the target, or a workflow state name
+    that no longer exists. Callers must refuse to migrate when unresolvable is
+    non-empty rather than guessing.
+    """
+    from userdefinedmodel.models import FieldDefinition, WorkflowState
+
+    src_fields = {f.slug: f for f in src_version.field_definitions.select_related("submodel_config").all()}
+    tgt_fields = {f.slug: f for f in tgt_version.field_definitions.select_related("submodel_config").all()}
+
+    unresolvable: list[str] = []
+    field_pairs: list[tuple] = []
+    submodel_pairs: list[tuple] = []
+
+    for slug, src_field in src_fields.items():
+        tgt_field = tgt_fields.get(slug)
+        if tgt_field is None:
+            unresolvable.append(f"field '{slug}' has no field of the same slug in the target")
+            continue
+        field_pairs.append((src_field, tgt_field))
+
+        if src_field.data_type == FieldDefinition.DataType.WORKFLOW and tgt_field.workflow_version_id:
+            src_states = {
+                s.name for s in WorkflowState.objects.filter(version_id=src_field.workflow_version_id)
+            }
+            tgt_states = {
+                s.name for s in WorkflowState.objects.filter(version_id=tgt_field.workflow_version_id)
+            }
+            for missing in sorted(src_states - tgt_states):
+                unresolvable.append(f"workflow state '{slug}.{missing}' does not exist in the target")
+
+        if src_field.submodel_config_id:
+            if not tgt_field.submodel_config_id:
+                unresolvable.append(f"submodel field '{slug}' has no submodel config in the target")
+                continue
+            sub_src = {f.slug: f for f in src_field.submodel_config.field_definitions.all()}
+            sub_tgt = {f.slug: f for f in tgt_field.submodel_config.field_definitions.all()}
+            sub_pairs = []
+            for sub_slug, sub_field in sub_src.items():
+                sub_target = sub_tgt.get(sub_slug)
+                if sub_target is None:
+                    unresolvable.append(
+                        f"submodel field '{slug}.{sub_slug}' has no field of the same slug in the target"
+                    )
+                    continue
+                sub_pairs.append((sub_field, sub_target))
+            submodel_pairs.append((src_field, tgt_field.submodel_config, sub_pairs))
+
+    return {"field_pairs": field_pairs, "submodel_pairs": submodel_pairs}, unresolvable
+
+
+def build_identity_migration_plan(src_version, tgt_version, type_filter=None, created_by=None):
+    """Create a BulkMigrationPlan that maps every field onto the same slug.
+
+    Only safe when :func:`plan_identity_migration` reports nothing unresolvable —
+    callers are expected to check that first.
+    """
+    from userdefinedmodel.models import (
+        BulkMigrationPlan, BulkMigrationFieldMapping,
+        BulkMigrationSubmodelMapping, BulkMigrationSubmodelFieldMapping,
+        UserDefinedModelEntityMigration,
+    )
+
+    spec, _ = plan_identity_migration(src_version, tgt_version)
+    action = UserDefinedModelEntityMigration.Action.MAP
+
+    with transaction.atomic():
+        plan = BulkMigrationPlan.objects.create(
+            source_version=src_version,
+            target_version=tgt_version,
+            user_defined_model_type_filter=type_filter,
+            created_by=created_by,
+        )
+        for src_field, tgt_field in spec["field_pairs"]:
+            BulkMigrationFieldMapping.objects.create(
+                plan=plan, source_field=src_field, action=action, target_field=tgt_field,
+            )
+        for src_field, tgt_submodel_version, sub_pairs in spec["submodel_pairs"]:
+            submodel_mapping = BulkMigrationSubmodelMapping.objects.create(
+                plan=plan,
+                source_parent_field=src_field,
+                target_submodel_version=tgt_submodel_version,
+            )
+            for sub_src, sub_tgt in sub_pairs:
+                BulkMigrationSubmodelFieldMapping.objects.create(
+                    submodel_mapping=submodel_mapping,
+                    source_field=sub_src, action=action, target_field=sub_tgt,
+                )
+    return plan
 
 
 # ─── Bulk migration ───────────────────────────────────────────────────────────

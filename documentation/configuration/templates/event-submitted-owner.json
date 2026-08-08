@@ -1,0 +1,19 @@
+{
+  "description": "Sent to the submitter when a date proposal is created.",
+  "subject": "",
+  "example_input": {
+    "proposal": {
+      "title": "A Talk About Sandboxes",
+      "call_title": "Example Call 2026",
+      "owner_name": "Ada Lovelace",
+      "moderation_comment": "Please shorten the abstract.\nAlso add a bio.",
+      "url": "https://example.com/proposals/42"
+    },
+    "event": {
+      "name": "Saal 1 — Saturday slot",
+      "start_time": "2026-08-08T10:00:00+00:00",
+      "end_time": "2026-08-08T11:00:00+00:00",
+      "url": "https://example.com/events/7"
+    }
+  }
+}

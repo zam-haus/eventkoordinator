@@ -14,6 +14,7 @@ from userdefinedmodel.api_autocomplete import router as autocomplete_router
 from userdefinedmodel.api_bundle import router as bundle_router
 from userdefinedmodel.api_configs import router as configs_router
 from userdefinedmodel.api_entities import router as entities_router
+from userdefinedmodel.api_mailtemplates import router as mailtemplates_router
 from userdefinedmodel.api_policies import router as policies_router
 from userdefinedmodel.api_staging import router as staging_router
 from userdefinedmodel.api_types import router as types_router
@@ -30,6 +31,7 @@ api.add_router("", configs_router)
 api.add_router("", types_router)
 api.add_router("", workflows_router)
 api.add_router("", policies_router)
+api.add_router("", mailtemplates_router)
 api.add_router("", entities_router)
 api.add_router("", staging_router)
 api.add_router("", autocomplete_router)

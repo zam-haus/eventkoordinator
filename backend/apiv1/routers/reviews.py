@@ -7,11 +7,11 @@ Endpoints for managing proposal peer-reviews and group-review requests.
 import logging
 import uuid
 
-from django.conf import settings
 from django.contrib.auth.models import Group
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
 from django.utils import timezone
+
+from apiv1.mailcontext import review_context
+from userdefinedmodel.mailtemplates import send_mail_template
 from ninja import Router
 
 import apiv1
@@ -92,16 +92,12 @@ def _get_proposal_or_404(proposal_id: uuid.UUID, request) -> tuple[ProposalModel
 
 def _send_review_requested_mail(proposal: ProposalModel, reviewer) -> None:
     """Notify a reviewer that they have been asked to review a proposal."""
-    proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{proposal.pk}"
-    ctx = dict(object=proposal, proposal_url=proposal_url, reviewer=reviewer)
     try:
-        send_mail(
-            subject=f"Bitte um Gutachten / Review requested: {proposal.title}",
-            message=render_to_string("apiv1/mails/review_requested.txt.j2", ctx),
-            html_message=render_to_string("apiv1/mails/review_requested.html.j2", ctx),
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        send_mail_template(
+            "review-requested",
+            review_context(proposal, reviewer=reviewer),
             recipient_list=[reviewer.email],
-            fail_silently=False,
+            subject=f"Bitte um Gutachten / Review requested: {proposal.title}",
         )
     except BaseException as e:
         logger.error("Failed to send review-requested notification: " + str(e), exc_info=e)
@@ -115,16 +111,12 @@ def _send_review_given_mail(proposal: ProposalModel, review: ProposalReview) -> 
     if not proposal.call.responsible_email:
         logger.warning("Skipping review-given mail for proposal %s: call %s has no responsible_email", proposal.pk, proposal.call.pk)
         return
-    proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{proposal.pk}"
-    ctx = dict(object=proposal, proposal_url=proposal_url, review=review)
     try:
-        send_mail(
-            subject=f"Gutachten eingegangen / Review submitted: {proposal.title}",
-            message=render_to_string("apiv1/mails/review_given.txt.j2", ctx),
-            html_message=render_to_string("apiv1/mails/review_given.html.j2", ctx),
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        send_mail_template(
+            "review-given",
+            review_context(proposal, review=review),
             recipient_list=[proposal.call.responsible_email],
-            fail_silently=False,
+            subject=f"Gutachten eingegangen / Review submitted: {proposal.title}",
         )
     except BaseException as e:
         logger.error("Failed to send review-given notification: " + str(e), exc_info=e)

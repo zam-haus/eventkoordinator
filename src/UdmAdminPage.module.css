@@ -424,3 +424,26 @@
   gap: 0.4rem;
   font-size: 0.875rem;
 }
+
+.previewFrame {
+  width: 100%;
+  min-height: 480px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  margin-top: 0.75rem;
+}
+
+.previewPre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+  max-height: 480px;
+  overflow: auto;
+}

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .proposal-title {
+            font-weight: bold;
+        }
+        .cta-link {
+            display: inline-block;
+            margin: 8px 0 20px;
+            color: #0066cc;
+            word-break: break-all;
+        }
+        .divider {
+            border: none;
+            border-top: 2px solid #ddd;
+            margin: 30px 0;
+        }
+        .lang-label {
+            font-size: 0.75em;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+    </style>
+</head>
+<body>
+    <p class="lang-label">Deutsch</p>
+
+    <p>Es ist eine neue (oder überarbeitete) Einreichung für <span class="proposal-title">"{{ proposal.call_title }}"</span> eingegangen:</p>
+
+    <p><strong>Titel:</strong> <span class="proposal-title">{{ proposal.title }}</span><br>
+    <strong>Einreicher:</strong> {{ proposal.owner_name }}</p>
+
+    <p>Die Einreichung ist unter folgendem Link einsehbar:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+
+    <hr class="divider">
+
+    <p class="lang-label">English</p>
+
+    <p>A new (or revised) submission for <span class="proposal-title">"{{ proposal.call_title }}"</span> has arrived:</p>
+
+    <p><strong>Title:</strong> <span class="proposal-title">{{ proposal.title }}</span><br>
+    <strong>Submitted by:</strong> {{ proposal.owner_name }}</p>
+
+    <p>The submission can be viewed at the following link:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+</body>
+</html>

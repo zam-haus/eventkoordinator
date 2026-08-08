@@ -452,6 +452,8 @@ def evaluate_policy(
             actions=[a for a in (raw_result.get("actions") or []) if isinstance(a, dict)],
             dashboard_columns=[c for c in (raw_result.get("dashboard_columns") or []) if isinstance(c, dict)],
             additional_result=raw_result.get("additional_result") if isinstance(raw_result.get("additional_result"), dict) else {},
+            # Carried so send_notification can hand the input to mail templates.
+            input_document=input_doc if isinstance(input_doc, dict) else {},
         )
         logger.debug(
             "policy result node=%s action=%s allow=%s messages=%d viewable_nodes=%d editable_nodes=%d",
@@ -746,6 +748,8 @@ def execute_transition(
         edit_group=edit_group,
         visited_transitions=_visited,
         depth=_depth,
+        policy_input=output.input_document,
+        policy_output=output,
     )
     dispatch_actions(output.actions, pre_ctx)
 

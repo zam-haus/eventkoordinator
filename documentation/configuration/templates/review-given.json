@@ -1,0 +1,22 @@
+{
+  "description": "Sent to the call contact when a review has been submitted.",
+  "subject": "",
+  "example_input": {
+    "proposal": {
+      "title": "A Talk About Sandboxes",
+      "call_title": "Example Call 2026",
+      "owner_name": "Ada Lovelace",
+      "moderation_comment": "Please shorten the abstract.\nAlso add a bio.",
+      "url": "https://example.com/proposals/42"
+    },
+    "reviewer": {
+      "username": "reviewer1"
+    },
+    "review": {
+      "comment": "Great topic.\nNeeds a clearer outline.",
+      "status": "revise",
+      "reviewer_name": "reviewer1",
+      "reviewer_is_system": false
+    }
+  }
+}

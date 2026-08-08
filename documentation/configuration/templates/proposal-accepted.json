@@ -1,0 +1,13 @@
+{
+  "description": "Sent to the submitter when a proposal is accepted.",
+  "subject": "",
+  "example_input": {
+    "proposal": {
+      "title": "A Talk About Sandboxes",
+      "call_title": "Example Call 2026",
+      "owner_name": "Ada Lovelace",
+      "moderation_comment": "Please shorten the abstract.\nAlso add a bio.",
+      "url": "https://example.com/proposals/42"
+    }
+  }
+}

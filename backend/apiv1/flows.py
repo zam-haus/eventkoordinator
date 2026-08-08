@@ -3,16 +3,15 @@ import textwrap
 from datetime import timedelta
 from typing import Any
 
-from django.conf import settings
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
 from django.utils import timezone
 from viewflow import fsm
 from viewflow.fsm.base import Transition
 
 import apiv1
+from apiv1.mailcontext import event_context, proposal_context
 from apiv1.models import Event, Proposal, ProposalReview, check_proposal_required_fields
 from openid_user_management.models import OpenIDUser
+from userdefinedmodel.mailtemplates import send_mail_template
 from prometheus_client import Gauge
 
 logger = logging.getLogger(__name__)
@@ -191,40 +190,23 @@ class ProposalFlow:
         logger.info(f"Submitting proposal: {self.object!r}")
         g_proposal_submit.inc()
         self.object.save()
-        proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{self.object.pk}"
         try:
-            send_mail(
-                subject=f"Einreichung eingegangen / Submission received: {self.object.title}",
-                message=render_to_string(
-                    "apiv1/mails/submit.txt.j2",
-                    dict(object=self.object, proposal_url=proposal_url),
-                ),
-                html_message=render_to_string(
-                    "apiv1/mails/submit.html.j2",
-                    dict(object=self.object, proposal_url=proposal_url),
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+            send_mail_template(
+                "proposal-submitted-owner",
+                proposal_context(self.object),
                 recipient_list=[self.object.owner.email],
-                fail_silently=False,
+                subject=f"Einreichung eingegangen / Submission received: {self.object.title}",
             )
         except BaseException as e:
             logger.error("Failed to send submission confirmation: " + str(e), exc_info=e)
             raise
         if self.object.call and self.object.call.responsible_email:
             try:
-                send_mail(
-                    subject=f"Neue Einreichung / New submission: {self.object.title}",
-                    message=render_to_string(
-                        "apiv1/mails/submit_contact.txt.j2",
-                        dict(object=self.object, proposal_url=proposal_url),
-                    ),
-                    html_message=render_to_string(
-                        "apiv1/mails/submit_contact.html.j2",
-                        dict(object=self.object, proposal_url=proposal_url),
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
+                send_mail_template(
+                    "proposal-submitted-contact",
+                    proposal_context(self.object),
                     recipient_list=[self.object.call.responsible_email],
-                    fail_silently=False,
+                    subject=f"Neue Einreichung / New submission: {self.object.title}",
                 )
             except BaseException as e:
                 logger.error("Failed to send submission notification to call contact: " + str(e), exc_info=e)
@@ -244,7 +226,6 @@ class ProposalFlow:
     def revise(self):
         logger.info(f"Revising proposal: {self.object}")
         g_proposal_revise.inc()
-        proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{self.object.pk}"
         reviews_with_comments = list(
             ProposalReview.objects.filter(
                 proposal=self.object,
@@ -252,19 +233,11 @@ class ProposalFlow:
             ).exclude(comment="").select_related("reviewer")
         )
         try:
-            send_mail(
-                subject=f"Überarbeitung angefordert / Revision requested: {self.object.title}",
-                message=render_to_string(
-                    "apiv1/mails/revise.txt.j2",
-                    dict(object=self.object, proposal_url=proposal_url, reviews=reviews_with_comments),
-                ),
-                html_message=render_to_string(
-                    "apiv1/mails/revise.html.j2",
-                    dict(object=self.object, proposal_url=proposal_url, reviews=reviews_with_comments),
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+            send_mail_template(
+                "proposal-revision-requested",
+                proposal_context(self.object, reviews=reviews_with_comments),
                 recipient_list=[self.object.owner.email],
-                fail_silently=False,
+                subject=f"Überarbeitung angefordert / Revision requested: {self.object.title}",
             )
         except BaseException as e:
             logger.error("Failed to send message: " + str(e), exc_info=e)
@@ -282,21 +255,12 @@ class ProposalFlow:
         logger.info(f"Accepting proposal: {self.object}")
         g_proposal_accept.inc()
         self.object.save()
-        proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{self.object.pk}"
         try:
-            send_mail(
-                subject=f"Einreichung angenommen / Submission accepted: {self.object.title}",
-                message=render_to_string(
-                    "apiv1/mails/accept.txt.j2",
-                    dict(object=self.object, proposal_url=proposal_url),
-                ),
-                html_message=render_to_string(
-                    "apiv1/mails/accept.html.j2",
-                    dict(object=self.object, proposal_url=proposal_url),
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+            send_mail_template(
+                "proposal-accepted",
+                proposal_context(self.object),
                 recipient_list=[self.object.owner.email],
-                fail_silently=False,
+                subject=f"Einreichung angenommen / Submission accepted: {self.object.title}",
             )
         except BaseException as e:
             logger.error("Failed to send acceptance mail: " + str(e), exc_info=e)
@@ -312,21 +276,12 @@ class ProposalFlow:
         logger.info(f"Rejecting proposal: {self.object}")
         g_proposal_reject.inc()
         self.object.save()
-        proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{self.object.pk}"
         try:
-            send_mail(
-                subject=f"Einreichung abgelehnt / Submission rejected: {self.object.title}",
-                message=render_to_string(
-                    "apiv1/mails/reject.txt.j2",
-                    dict(object=self.object, proposal_url=proposal_url),
-                ),
-                html_message=render_to_string(
-                    "apiv1/mails/reject.html.j2",
-                    dict(object=self.object, proposal_url=proposal_url),
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+            send_mail_template(
+                "proposal-rejected",
+                proposal_context(self.object),
                 recipient_list=[self.object.owner.email],
-                fail_silently=False,
+                subject=f"Einreichung abgelehnt / Submission rejected: {self.object.title}",
             )
         except BaseException as e:
             logger.error("Failed to send rejection mail: " + str(e), exc_info=e)
@@ -687,23 +642,23 @@ class EventFlow:
         proposal = self.object.proposal
         if not proposal or not proposal.owner or not proposal.owner.email:
             return
-        proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{proposal.pk}"
-        event_url = f"{settings.FRONTEND_BASE_URL}/proposal/{proposal.pk}/event/{self.object.pk}"
         _subjects = {
             "submit": ("Neuer Terminvorschlag", "New date proposal"),
             "confirm": ("Termin bestätigt", "Date confirmed"),
             "cancel": ("Termin abgesagt", "Date canceled"),
         }
+        _slugs = {
+            "submit": "event-submitted-owner",
+            "confirm": "event-confirmed-owner",
+            "cancel": "event-canceled-owner",
+        }
         subject_de, subject_en = _subjects[action]
-        ctx = dict(object=self.object, proposal_url=proposal_url, event_url=event_url)
         try:
-            send_mail(
-                subject=f"{subject_de} / {subject_en}: {self.object.name}",
-                message=render_to_string(f"apiv1/mails/event_{action}_owner.txt.j2", ctx),
-                html_message=render_to_string(f"apiv1/mails/event_{action}_owner.html.j2", ctx),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+            send_mail_template(
+                _slugs[action],
+                event_context(self.object),
                 recipient_list=[proposal.owner.email],
-                fail_silently=False,
+                subject=f"{subject_de} / {subject_en}: {self.object.name}",
             )
         except BaseException as e:
             logger.error(
@@ -719,13 +674,11 @@ class EventFlow:
         call = proposal.call
         if not call or not call.responsible_email:
             return
-        proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{proposal.pk}"
-        event_url = f"{settings.FRONTEND_BASE_URL}/proposal/{proposal.pk}/event/{self.object.pk}"
         _template_names = {
-            "approve": "event_approve_contact",
-            "reject": "event_reject_contact",
-            "confirm": "event_confirm_contact",
-            "cancel": "event_cancel_contact",
+            "approve": "event-approved-contact",
+            "reject": "event-rejected-contact",
+            "confirm": "event-confirmed-contact",
+            "cancel": "event-canceled-contact",
         }
         _subjects = {
             "approve": ("Terminvorschlag bestätigt", "Date proposal confirmed"),
@@ -733,17 +686,13 @@ class EventFlow:
             "confirm": ("Termin bestätigt", "Date confirmed"),
             "cancel": ("Termin abgesagt", "Date canceled"),
         }
-        template_name = _template_names[action]
         subject_de, subject_en = _subjects[action]
-        ctx = dict(object=self.object, proposal_url=proposal_url, event_url=event_url)
         try:
-            send_mail(
-                subject=f"{subject_de} / {subject_en}: {self.object.name}",
-                message=render_to_string(f"apiv1/mails/{template_name}.txt.j2", ctx),
-                html_message=render_to_string(f"apiv1/mails/{template_name}.html.j2", ctx),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+            send_mail_template(
+                _template_names[action],
+                event_context(self.object),
                 recipient_list=[call.responsible_email],
-                fail_silently=False,
+                subject=f"{subject_de} / {subject_en}: {self.object.name}",
             )
         except BaseException as e:
             logger.error(

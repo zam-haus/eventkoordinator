@@ -1,0 +1,59 @@
+[Deutsch]
+
+Hi!
+
+Wir haben deine Einreichung "{{ proposal.title }}" für "{{ proposal.call_title }}" geprüft und bitten dich, einige Überarbeitungen vorzunehmen.
+
+{% if reviews %}
+{% for review in reviews %}
+{% if review.reviewer_is_system %}Kommentar des Teams:{% else %}Kommentar von {{ review.reviewer_name }}:{% endif %}
+
+{{ review.comment | userinput }}
+{% if not loop.last %}
+---
+{% endif %}
+{% endfor %}
+{% elif proposal.moderation_comment %}
+Kommentar des Teams:
+
+{{ proposal.moderation_comment | userinput }}
+{% endif %}
+
+Du kannst deine Einreichung unter folgendem Link bearbeiten:
+
+{{ proposal.url }}
+
+Bitte zögere nicht, dich bei uns zu melden, wenn du irgendwelche Fragen hast.
+
+Das {{ proposal.call_title }} Team
+
+================================
+
+[English]
+
+Hi!
+
+We have reviewed your submission "{{ proposal.title }}" for "{{ proposal.call_title }}" and would like to ask you to make some revisions.
+
+{% if reviews %}
+{% for review in reviews %}
+{% if review.reviewer_is_system %}Comment from the team:{% else %}Comment from {{ review.reviewer_name }}:{% endif %}
+
+{{ review.comment | userinput }}
+{% if not loop.last %}
+---
+{% endif %}
+{% endfor %}
+{% elif proposal.moderation_comment %}
+Comment from the team:
+
+{{ proposal.moderation_comment | userinput }}
+{% endif %}
+
+You can edit your submission at the following link:
+
+{{ proposal.url }}
+
+Please don't hesitate to reach out if you have any questions.
+
+The {{ proposal.call_title }} Team

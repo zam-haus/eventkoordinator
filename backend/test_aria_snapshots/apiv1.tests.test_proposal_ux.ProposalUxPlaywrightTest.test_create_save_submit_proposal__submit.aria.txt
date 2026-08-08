@@ -1,45 +1,34 @@
-- navigation "Main navigation":
-  - link "Event Coordinator – go to home":
-    - /url: /
-    - heading "Event Coordinator" [level=1]
-  - list:
-    - listitem: Proposal Editor
-  - button "Switch to English" [pressed]: 🇬🇧
-  - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": proposalux-user
+- link "Event Coordinator – go to home":
+  - /url: /
+  - heading "Event Coordinator" [level=1]
+- button "Navigation":
+  - img
+- menubar:
+  - menuitem "Proposal Editor":
+    - link "Proposal Editor":
+      - /url: /proposal-editor
+  - menuitem "Proposal Dashboard":
+    - link "Proposal Dashboard":
+      - /url: /proposal-dashboard
+  - menuitem "UDM Dashboard":
+    - link "UDM Dashboard":
+      - /url: /udm-dashboard
+  - menuitem "UDM Entities":
+    - link "UDM Entities":
+      - /url: /udm-entity
+- button "Switch to English" [pressed]: 🇬🇧
+- button "Auf Deutsch wechseln": 🇩🇪
+- button "User menu" [expanded]: proposalux-user
+- menu "User options":
+  - text: "Logged in as: proposalux-user"
+  - separator
+  - menuitem "Manage Account"
+  - separator
+  - menuitem "Logout"
+  - separator
+  - menuitem "Imprint"
+  - menuitem "Privacy Policy"
 - main:
-  - complementary "Proposals":
-    - heading "Proposals" [level=2]
-    - button "Create New Proposal"
-    - listbox "Proposals":
-      - option "My Title workshop" [selected]
-  - main "Proposals content":
-    - heading "Proposal Editor" [level=1]
-    - form "Proposal editor":
-      - tablist:
-        - tab "1 General"
-        - tab "2 Participants and Costs"
-        - tab "3 Scheduling"
-        - tab "4 Speakers"
-        - tab "5 Submission" [selected]
-      - tabpanel:
-        - heading "Submission Checklist" [level=3]
-        - list:
-          - listitem: ✓ Title (max 30 characters)
-          - listitem: ✓ Abstract (50–250 characters)
-          - listitem: ✓ Description (50–1000 characters)
-          - listitem: ✓ Duration set
-          - listitem: ✓ Max participants set
-          - listitem: ✓ Occurrence count set
-          - listitem: ✓ Preferred dates specified
-          - listitem: ✓ Language selected
-          - listitem: ✓ Submission type selected
-          - listitem: ✓ Workshop area selected
-          - listitem: ✓ At least one speaker added
-          - listitem: ✓ All speakers have a biography
-      - button "← Back"
-      - button "Request revision" [disabled]
-      - button "Accept proposal" [disabled]
-      - button "Reject proposal" [disabled]
-      - button "Save Proposal" [disabled]
-      - group: Edit history last changed just now
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - paragraph: No active calls at the moment.

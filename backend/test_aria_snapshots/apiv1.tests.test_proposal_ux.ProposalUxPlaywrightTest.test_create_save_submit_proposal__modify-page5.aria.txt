@@ -1,35 +1,34 @@
-- navigation "Main navigation":
-  - link "Event Coordinator – go to home":
-    - /url: /
-    - heading "Event Coordinator" [level=1]
-  - list:
-    - listitem: Proposal Editor
-  - button "Switch to English" [pressed]: 🇬🇧
-  - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": proposalux-user
+- link "Event Coordinator – go to home":
+  - /url: /
+  - heading "Event Coordinator" [level=1]
+- button "Navigation":
+  - img
+- menubar:
+  - menuitem "Proposal Editor":
+    - link "Proposal Editor":
+      - /url: /proposal-editor
+  - menuitem "Proposal Dashboard":
+    - link "Proposal Dashboard":
+      - /url: /proposal-dashboard
+  - menuitem "UDM Dashboard":
+    - link "UDM Dashboard":
+      - /url: /udm-dashboard
+  - menuitem "UDM Entities":
+    - link "UDM Entities":
+      - /url: /udm-entity
+- button "Switch to English" [pressed]: 🇬🇧
+- button "Auf Deutsch wechseln": 🇩🇪
+- button "User menu" [expanded]: proposalux-user
+- menu "User options":
+  - text: "Logged in as: proposalux-user"
+  - separator
+  - menuitem "Manage Account"
+  - separator
+  - menuitem "Logout"
+  - separator
+  - menuitem "Imprint"
+  - menuitem "Privacy Policy"
 - main:
-  - complementary "Proposals":
-    - heading "Proposals" [level=2]
-    - button "Create New Proposal"
-    - listbox "Proposals":
-      - option [selected]
-  - main "Proposals content":
-    - heading "Proposal Editor" [level=1]
-    - form "Proposal editor":
-      - tablist:
-        - tab "✎ General"
-        - tab "✎ Participants and Costs"
-        - tab "✎ Scheduling"
-        - tab "✎ Speakers"
-        - tab "5 Submission" [selected]
-      - tabpanel:
-        - alert:
-          - heading "Draft – not yet submitted" [level=3]
-          - paragraph: This proposal will only be considered after you submit it via "Submit Proposal". In the meantime, you can save it, it does not get submitted by that.
-        - paragraph: Please save your changes before checking the submission checklist.
-      - button "← Back"
-      - button "Submit proposal" [disabled]
-      - button "Save Proposal"
-      - button "Cancel"
-      - button "Delete Proposal"
-      - group: Edit history last changed just now
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - paragraph: No active calls at the moment.

@@ -253,6 +253,12 @@ export type ConfigLanguageIn = components['schemas']['ConfigLanguageIn']
 export type PolicyOut = components['schemas']['PolicyOut']
 export type PolicyCreateIn = components['schemas']['PolicyCreateIn']
 export type PolicyUpdateIn = components['schemas']['PolicyUpdateIn']
+export type MailTemplateOut = components['schemas']['MailTemplateOut']
+export type MailTemplateSummaryOut = components['schemas']['MailTemplateSummaryOut']
+export type MailTemplateCreateIn = components['schemas']['MailTemplateCreateIn']
+export type MailTemplateUpdateIn = components['schemas']['MailTemplateUpdateIn']
+export type MailTemplatePreviewIn = components['schemas']['MailTemplatePreviewIn']
+export type MailTemplatePreviewOut = components['schemas']['MailTemplatePreviewOut']
 export type PolicyAssignIn = components['schemas']['PolicyAssignIn']
 export type UDMTypeOut = components['schemas']['UDMTypeOut']
 export type UDMTypeCreateIn = components['schemas']['UDMTypeCreateIn']
@@ -533,6 +539,59 @@ export async function udmDeletePolicy(slug: string): Promise<void> {
     params: { path: { slug } },
   })
   if (error || !response.ok) throw new Error('Failed to delete policy')
+}
+
+// ── Mail templates ────────────────────────────────────────────────────────────
+
+export async function udmListMailTemplates(): Promise<MailTemplateSummaryOut[]> {
+  const { data, error, response } = await udmClient.GET('/api/udm/mail-templates/')
+  if (error || !response.ok) throw new Error('Failed to list mail templates')
+  return data as MailTemplateSummaryOut[]
+}
+
+export async function udmGetMailTemplate(slug: string): Promise<MailTemplateOut> {
+  const { data, error, response } = await udmClient.GET('/api/udm/mail-templates/{slug}/', {
+    params: { path: { slug } },
+  })
+  if (error || !response.ok || !data) throw new Error('Failed to load mail template')
+  return data as MailTemplateOut
+}
+
+export async function udmCreateMailTemplate(payload: MailTemplateCreateIn): Promise<MailTemplateOut> {
+  const { data, error, response } = await udmClient.POST('/api/udm/mail-templates/', { body: payload })
+  if (error || !response.ok || !data) throwApiError(error, 'Failed to create mail template')
+  return data as unknown as MailTemplateOut
+}
+
+export async function udmUpdateMailTemplate(
+  slug: string,
+  payload: MailTemplateUpdateIn,
+): Promise<MailTemplateOut> {
+  const { data, error, response } = await udmClient.PUT('/api/udm/mail-templates/{slug}/', {
+    params: { path: { slug } },
+    body: payload,
+  })
+  if (error || !response.ok || !data) throwApiError(error, 'Failed to update mail template')
+  return data as MailTemplateOut
+}
+
+export async function udmDeleteMailTemplate(slug: string): Promise<void> {
+  const { error, response } = await udmClient.DELETE('/api/udm/mail-templates/{slug}/', {
+    params: { path: { slug } },
+  })
+  if (error || !response.ok) throw new Error('Failed to delete mail template')
+}
+
+export async function udmPreviewMailTemplate(
+  payload: MailTemplatePreviewIn,
+  signal?: AbortSignal,
+): Promise<MailTemplatePreviewOut> {
+  const { data, error, response } = await udmClient.POST('/api/udm/mail-templates/preview/', {
+    body: payload,
+    signal,
+  })
+  if (error || !response.ok || !data) throw new Error('Failed to render preview')
+  return data as MailTemplatePreviewOut
 }
 
 export async function udmListTypePolicies(typeId: string): Promise<PolicyOut[]> {

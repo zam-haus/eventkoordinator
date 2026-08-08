@@ -1,0 +1,41 @@
+[Deutsch]
+
+Termin abgesagt für "{{ proposal.call_title }}"
+
+Der folgende Termin wurde abgesagt:
+
+  Veranstaltung: {{ event.name }}
+  Einreichung: {{ proposal.title }}
+  Einreicher: {{ proposal.owner_name }}
+  Beginn: {{ event.start_time | timezone("Europe/Berlin") | isoformat() }}
+  Ende: {{ event.end_time | timezone("Europe/Berlin") | isoformat() }}
+
+Die Einreichung ist unter folgendem Link einsehbar:
+
+{{ proposal.url }}
+
+Der Termin ist unter folgendem Link einsehbar:
+
+{{ event.url }}
+
+================================
+
+[English]
+
+Date canceled for "{{ proposal.call_title }}"
+
+The following date has been canceled:
+
+  Event: {{ event.name }}
+  Submission: {{ proposal.title }}
+  Submitted by: {{ proposal.owner_name }}
+  Start: {{ event.start_time | timezone("Europe/Berlin") | isoformat() }}
+  End: {{ event.end_time | timezone("Europe/Berlin") | isoformat() }}
+
+The submission can be viewed at the following link:
+
+{{ proposal.url }}
+
+The date can be viewed at the following link:
+
+{{ event.url }}

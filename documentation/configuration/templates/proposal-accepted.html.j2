@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .proposal-title {
+            font-weight: bold;
+        }
+        .cta-link {
+            display: inline-block;
+            margin: 8px 0 20px;
+            color: #0066cc;
+            word-break: break-all;
+        }
+        .signature {
+            margin-top: 30px;
+        }
+        .divider {
+            border: none;
+            border-top: 2px solid #ddd;
+            margin: 30px 0;
+        }
+        .lang-label {
+            font-size: 0.75em;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+    </style>
+</head>
+<body>
+    <p class="lang-label">Deutsch</p>
+
+    <p>Hi!</p>
+
+    <p>Wir freuen uns, dir mitzuteilen, dass deine Einreichung <span class="proposal-title">"{{ proposal.title }}"</span> für <span class="proposal-title">"{{ proposal.call_title }}"</span> angenommen wurde!</p>
+
+    <p>Du wirst in Kürze weitere Mails mit Terminvorschlägen von uns erhalten.</p>
+
+    <p>Du kannst deine Einreichung unter folgendem Link ansehen:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+
+    <p>Bitte zögere nicht, dich bei uns zu melden, wenn du irgendwelche Fragen hast.</p>
+
+    <p class="signature">Das {{ proposal.call_title }} Team</p>
+
+    <hr class="divider">
+
+    <p class="lang-label">English</p>
+
+    <p>Hi!</p>
+
+    <p>We are happy to let you know that your submission <span class="proposal-title">"{{ proposal.title }}"</span> for <span class="proposal-title">"{{ proposal.call_title }}"</span> has been accepted!</p>
+
+    <p>You will receive further emails from us with date proposals shortly.</p>
+
+    <p>You can view your submission at the following link:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+
+    <p>Please don't hesitate to reach out if you have any questions.</p>
+
+    <p class="signature">The {{ proposal.call_title }} Team</p>
+</body>
+</html>

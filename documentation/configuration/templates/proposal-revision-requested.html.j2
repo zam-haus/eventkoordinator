@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .proposal-title {
+            font-weight: bold;
+        }
+        .comment-block {
+            margin: 16px 0;
+        }
+        .comment-box {
+            background-color: #f5f5f5;
+            border-left: 4px solid #0066cc;
+            padding: 12px 16px;
+            margin: 4px 0 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .cta-link {
+            display: inline-block;
+            margin: 8px 0 20px;
+            color: #0066cc;
+            word-break: break-all;
+        }
+        .signature {
+            margin-top: 30px;
+        }
+        .divider {
+            border: none;
+            border-top: 2px solid #ddd;
+            margin: 30px 0;
+        }
+        .lang-label {
+            font-size: 0.75em;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .comment-label {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <p class="lang-label">Deutsch</p>
+
+    <p>Hi!</p>
+
+    <p>Wir haben deine Einreichung <span class="proposal-title">"{{ proposal.title }}"</span> für <span class="proposal-title">"{{ proposal.call_title }}"</span> geprüft und bitten dich, einige Überarbeitungen vorzunehmen.</p>
+
+    {% if reviews %}
+        {% for review in reviews %}
+        <div class="comment-block">
+            <p class="comment-label">{% if review.reviewer_is_system %}Kommentar des Teams:{% else %}Kommentar von {{ review.reviewer_name }}:{% endif %}</p>
+            <div class="comment-box">{{ review.comment | htmlquote }}</div>
+        </div>
+        {% endfor %}
+    {% elif proposal.moderation_comment %}
+        <p class="comment-label">Kommentar des Teams:</p>
+        <div class="comment-box">{{ proposal.moderation_comment | htmlquote }}</div>
+    {% endif %}
+
+    <p>Du kannst deine Einreichung unter folgendem Link bearbeiten:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+
+    <p>Bitte zögere nicht, dich bei uns zu melden, wenn du irgendwelche Fragen hast.</p>
+
+    <p class="signature">Das {{ proposal.call_title }} Team</p>
+
+    <hr class="divider">
+
+    <p class="lang-label">English</p>
+
+    <p>Hi!</p>
+
+    <p>We have reviewed your submission <span class="proposal-title">"{{ proposal.title }}"</span> for <span class="proposal-title">"{{ proposal.call_title }}"</span> and would like to ask you to make some revisions.</p>
+
+    {% if reviews %}
+        {% for review in reviews %}
+        <div class="comment-block">
+            <p class="comment-label">{% if review.reviewer_is_system %}Comment from the team:{% else %}Comment from {{ review.reviewer_name }}:{% endif %}</p>
+            <div class="comment-box">{{ review.comment | htmlquote }}</div>
+        </div>
+        {% endfor %}
+    {% elif proposal.moderation_comment %}
+        <p class="comment-label">Comment from the team:</p>
+        <div class="comment-box">{{ proposal.moderation_comment | htmlquote }}</div>
+    {% endif %}
+
+    <p>You can edit your submission at the following link:</p>
+
+    <a class="cta-link" href="{{ proposal.url }}">{{ proposal.url }}</a>
+
+    <p>Please don't hesitate to reach out if you have any questions.</p>
+
+    <p class="signature">The {{ proposal.call_title }} Team</p>
+</body>
+</html>

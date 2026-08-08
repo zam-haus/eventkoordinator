@@ -54,10 +54,11 @@ import {
 import { usePermissions } from './usePermissions'
 import { BulkMigrationTab } from './UdmMigration'
 import { BundleTab } from './UdmBundleTab'
+import TemplatingTab from './UdmTemplatingTab'
 import { WorkflowEditor } from './WorkflowEditor'
 import styles from './UdmAdminPage.module.css'
 
-type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle' | 'workflow'
+type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle' | 'workflow' | 'templating'
 
 // ── Policy evaluator: field-grant tree ────────────────────────────────────────
 // Renders the entity tree from the evaluator's input document and marks every
@@ -1954,7 +1955,7 @@ function TypesTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const VALID_TABS = new Set<AdminTab>(['configs', 'types', 'policies', 'migrations', 'bundle', 'workflow'])
+const VALID_TABS = new Set<AdminTab>(['configs', 'types', 'policies', 'migrations', 'bundle', 'workflow', 'templating'])
 
 export function UdmAdminPage() {
   useTranslation()
@@ -1971,6 +1972,7 @@ export function UdmAdminPage() {
       {tab === 'migrations' && <BulkMigrationTab />}
       {tab === 'bundle' && <BundleTab />}
       {tab === 'workflow' && <WorkflowEditor />}
+      {tab === 'templating' && <TemplatingTab />}
     </div>
   )
 }

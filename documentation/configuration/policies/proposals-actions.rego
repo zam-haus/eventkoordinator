@@ -10,17 +10,21 @@ import rego.v1
 #
 # Built-in action types used here (registered in userdefinedmodel.actions):
 #   create_submodel_item   Append a new item to a submodel_list field
-#   send_notification      Send email; uses a named Jinja2 template pair
-#                          (<name>.txt.j2 / <name>.html.j2)
+#   send_notification      Send email; template_name is a MailTemplate slug
+#                          (UDM Admin → UDM Templating)
 #   set_field_value        Write a field value on the node or a submodel
 #   trigger_transition     Fire a workflow transition on self or children
 #
-# Template files expected under the Django TEMPLATES search path:
-#   proposals/submit.{txt,html}.j2
-#   proposals/submit_contact.{txt,html}.j2
-#   proposals/accept.{txt,html}.j2
-#   proposals/reject.{txt,html}.j2
-#   proposals/request_revision.{txt,html}.j2
+# MailTemplate slugs used here (shipped in the bundle under templates/):
+#   proposal-submitted-owner
+#   proposal-submitted-contact
+#   proposal-accepted
+#   proposal-rejected
+#   proposal-revision-requested
+#
+# Each action passes a `context` object; the engine additionally injects the
+# input document and the calculated decision fields. The templates read
+# context.proposal.{title,call_title,owner_name,url}.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -51,7 +55,8 @@ actions contains {
         "Einreichung eingegangen / Submission received: %v",
         [input.entity.fields["title"].value],
     ),
-    "template_name": "proposals/submit",
+    "template_name": "proposal-submitted-owner",
+    "context": {"proposal": proposal_context},
     "recipient_field": "owner",
 } if {
     input.action == "transition"
@@ -69,7 +74,8 @@ actions contains {
         "Neue Einreichung / New submission: %v",
         [input.entity.fields["title"].value],
     ),
-    "template_name": "proposals/submit_contact",
+    "template_name": "proposal-submitted-contact",
+    "context": {"proposal": proposal_context},
     "recipient_field": null,
     "extra_recipients": ["programm@example.org"],
 } if {
@@ -88,7 +94,8 @@ actions contains {
         "Einreichung angenommen / Submission accepted: %v",
         [input.entity.fields["title"].value],
     ),
-    "template_name": "proposals/accept",
+    "template_name": "proposal-accepted",
+    "context": {"proposal": proposal_context},
     "recipient_field": "owner",
 } if {
     input.action == "transition"
@@ -106,7 +113,8 @@ actions contains {
         "Einreichung abgelehnt / Submission rejected: %v",
         [input.entity.fields["title"].value],
     ),
-    "template_name": "proposals/reject",
+    "template_name": "proposal-rejected",
+    "context": {"proposal": proposal_context},
     "recipient_field": "owner",
 } if {
     input.action == "transition"
@@ -125,7 +133,8 @@ actions contains {
         "Überarbeitung angefordert / Revision requested: %v",
         [input.entity.fields["title"].value],
     ),
-    "template_name": "proposals/request_revision",
+    "template_name": "proposal-revision-requested",
+    "context": {"proposal": proposal_context},
     "recipient_field": "owner",
 } if {
     input.action == "transition"
@@ -146,4 +155,17 @@ actions contains {
     input.action == "transition"
     input.field == "status"
     input.transition == "request-revision"
+}
+
+
+# ─── Template context ────────────────────────────────────────────────────────
+# The JSON handed to the mail templates as `context.proposal`. Keys match what
+# the bundled templates expect; apiv1 builds the same shape in mailcontext.py.
+
+proposal_context := {
+    "title": object.get(input.entity.fields, ["title", "value"], ""),
+    "call_title": object.get(input.entity.fields, ["call", "value"], ""),
+    "owner_name": object.get(input.entity.fields, ["owner", "value"], ""),
+    "moderation_comment": object.get(input.entity.fields, ["moderation_comment", "value"], ""),
+    "url": sprintf("/entities/%v", [input.entity.id]),
 }

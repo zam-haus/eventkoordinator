@@ -28,6 +28,7 @@ from userdefinedmodel.models import (
     WorkflowTransitionTranslation,
     Policy,
     UserDefinedModelTypePolicy,
+    MailTemplate,
     UserDefinedModelType,
     SingleFieldValidationRule,
     RequiredRule,
@@ -419,6 +420,15 @@ class PolicyAdmin(admin.ModelAdmin):
     @admin.display(description="# UDM types")
     def udm_type_count(self, obj):
         return obj.user_defined_model_types.count()
+
+
+# ─── Mail template ───────────────────────────────────────────────────────────
+
+@admin.register(MailTemplate)
+class MailTemplateAdmin(admin.ModelAdmin):
+    list_display = ("slug", "description", "updated_at")
+    search_fields = ("slug", "description", "body_text", "body_html")
+    readonly_fields = ("created_at", "updated_at")
 
 
 # ─── UDM Type ────────────────────────────────────────────────────────────────

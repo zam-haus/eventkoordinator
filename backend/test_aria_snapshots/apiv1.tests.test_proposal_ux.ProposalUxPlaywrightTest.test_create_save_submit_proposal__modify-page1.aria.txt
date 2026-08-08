@@ -1,51 +1,34 @@
-- navigation "Main navigation":
-  - link "Event Coordinator – go to home":
-    - /url: /
-    - heading "Event Coordinator" [level=1]
-  - list:
-    - listitem: Proposal Editor
-  - button "Switch to English" [pressed]: 🇬🇧
-  - button "Auf Deutsch wechseln": 🇩🇪
-  - button "User menu": proposalux-user
+- link "Event Coordinator – go to home":
+  - /url: /
+  - heading "Event Coordinator" [level=1]
+- button "Navigation":
+  - img
+- menubar:
+  - menuitem "Proposal Editor":
+    - link "Proposal Editor":
+      - /url: /proposal-editor
+  - menuitem "Proposal Dashboard":
+    - link "Proposal Dashboard":
+      - /url: /proposal-dashboard
+  - menuitem "UDM Dashboard":
+    - link "UDM Dashboard":
+      - /url: /udm-dashboard
+  - menuitem "UDM Entities":
+    - link "UDM Entities":
+      - /url: /udm-entity
+- button "Switch to English" [pressed]: 🇬🇧
+- button "Auf Deutsch wechseln": 🇩🇪
+- button "User menu" [expanded]: proposalux-user
+- menu "User options":
+  - text: "Logged in as: proposalux-user"
+  - separator
+  - menuitem "Manage Account"
+  - separator
+  - menuitem "Logout"
+  - separator
+  - menuitem "Imprint"
+  - menuitem "Privacy Policy"
 - main:
-  - complementary "Proposals":
-    - heading "Proposals" [level=2]
-    - button "Create New Proposal"
-    - listbox "Proposals":
-      - option [selected]
-  - main "Proposals content":
-    - heading "Proposal Editor" [level=1]
-    - form "Proposal editor":
-      - tablist:
-        - tab "✎ General" [selected]
-        - tab "2 Participants and Costs"
-        - tab "3 Scheduling"
-        - tab "4 Speakers"
-        - tab "5 Submission"
-      - tabpanel:
-        - text: Title (max 30 characters) ●
-        - textbox "Title (max 30 characters) unsaved change": My Title
-        - text: 8/30 No image uploaded yet. Proposal image
-        - button "Proposal image"
-        - text: Upload a JPG or PNG image up to 10 MB for this proposal. Submission Type ●
-        - combobox "Submission Type unsaved change":
-          - option "-- Select submission type --"
-          - option "Workshop" [selected]
-        - text: "Workshop: Fixed booking, fee required, providers receive a remuneration; Open offer: No booking or fee required; takes place in the main building. Area (optional) ●"
-        - combobox "Area (optional) unsaved change":
-          - option "-- Select an area --"
-          - option "Woodworking" [selected]
-        - text: Language ●
-        - combobox "Language unsaved change":
-          - option "-- Select language --"
-          - option "German" [selected]
-        - text: Abstract (50-250 characters) ●
-        - textbox "Abstract (50-250 characters) unsaved change": Some Abstract Some Abstract Some Abstract Some Abstract
-        - text: This will be published on our website in the program overview. (50–250 characters) 56/250 Description (50-1000 characters) ●
-        - textbox "Description (50-1000 characters) unsaved change": Some Description Some Description Some Description Some Description Some Description Some Description Some Description Some Description
-        - text: This will be published on our website in the detailed description. Please include goal, prerequisites and whether participants take something home. (50–1000 characters) 136/1000
-      - button "Next →"
-      - button "Save Proposal"
-      - button "Cancel"
-      - button "Delete Proposal"
-      - group: Edit history last changed just now
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - paragraph: No active calls at the moment.

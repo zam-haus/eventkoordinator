@@ -1,0 +1,37 @@
+[Deutsch]
+
+Hi!
+
+Wir freuen uns, dir mitteilen zu können, dass der folgende Termin für deine Einreichung "{{ proposal.title }}" für "{{ proposal.call_title }}" bestätigt wurde:
+
+  Veranstaltung: {{ event.name }}
+  Beginn: {{ event.start_time | timezone("Europe/Berlin") | isoformat() }}
+  Ende: {{ event.end_time | timezone("Europe/Berlin") | isoformat() }}
+
+Den Termin kannst du unter folgendem Link einsehen:
+
+{{ event.url }}
+
+Bei Fragen melde dich gerne bei uns.
+
+Das {{ proposal.call_title }} Team
+
+================================
+
+[English]
+
+Hi!
+
+We are pleased to let you know that the following date for your submission "{{ proposal.title }}" for "{{ proposal.call_title }}" has been confirmed:
+
+  Event: {{ event.name }}
+  Start: {{ event.start_time | timezone("Europe/Berlin") | isoformat() }}
+  End: {{ event.end_time | timezone("Europe/Berlin") | isoformat() }}
+
+You can view the date at the following link:
+
+{{ event.url }}
+
+Please don't hesitate to reach out if you have any questions.
+
+The {{ proposal.call_title }} Team

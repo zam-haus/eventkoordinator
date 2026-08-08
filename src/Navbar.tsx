@@ -190,6 +190,7 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
         subLinkItem('Field Configs', '/udm-admin/configs', location.pathname === '/udm-admin/configs' || location.pathname === '/udm-admin'),
         subLinkItem('UDM Types', '/udm-admin/types', location.pathname === '/udm-admin/types'),
         subLinkItem('Rego Policies', '/udm-admin/policies', location.pathname === '/udm-admin/policies'),
+        subLinkItem('UDM Templating', '/udm-admin/templating', location.pathname === '/udm-admin/templating'),
         subLinkItem('Bulk Migration', '/udm-admin/migrations', location.pathname === '/udm-admin/migrations'),
         subLinkItem('Export / Import', '/udm-admin/bundle', location.pathname === '/udm-admin/bundle'),
         subLinkItem('Workflow Editor', '/udm-admin/workflow', location.pathname === '/udm-admin/workflow'),

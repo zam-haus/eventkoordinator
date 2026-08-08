@@ -855,6 +855,60 @@ class PolicyOut(Schema):
     source: str
 
 
+# ─── Mail templates ──────────────────────────────────────────────────────────
+
+_TemplateBody = Annotated[str, Field(max_length=500_000)]
+
+
+class MailTemplateOut(Schema):
+    slug: str
+    description: str = ""
+    subject: str = ""
+    body_text: str = ""
+    body_html: str = ""
+    example_input: dict[str, Any] = {}
+
+
+class MailTemplateSummaryOut(Schema):
+    slug: str
+    description: str = ""
+
+
+class MailTemplateCreateIn(Schema):
+    slug: Slug
+    description: str = ""
+    subject: Annotated[str, Field(max_length=2_000)] = ""
+    body_text: _TemplateBody = ""
+    body_html: _TemplateBody = ""
+    example_input: dict[str, Any] = {}
+    model_config = {"extra": "forbid"}
+
+
+class MailTemplateUpdateIn(Schema):
+    description: str = ""
+    subject: Annotated[str, Field(max_length=2_000)] = ""
+    body_text: _TemplateBody = ""
+    body_html: _TemplateBody = ""
+    example_input: dict[str, Any] = {}
+    model_config = {"extra": "forbid"}
+
+
+class MailTemplatePreviewIn(Schema):
+    """Render unsaved sources — the editor previews before anything is saved."""
+    subject: Annotated[str, Field(max_length=2_000)] = ""
+    body_text: _TemplateBody = ""
+    body_html: _TemplateBody = ""
+    context: dict[str, Any] = {}
+    model_config = {"extra": "forbid"}
+
+
+class MailTemplatePreviewOut(Schema):
+    subject: str = ""
+    text: str = ""
+    html: str = ""
+    error: Optional[str] = None
+
+
 class PolicyAssignIn(Schema):
     policy_slug: Slug
     sort_order: int = Field(0, ge=0, le=_MAX_SORT_ORDER)
@@ -986,6 +1040,8 @@ class BundleExportOut(Schema):
     field_configs: list[BundleFieldConfigOut]
     workflows: list[BundleWorkflowOut]
     policies: list[PolicyOut]
+    # Defaulted so bundles exported before mail templates existed still parse.
+    mail_templates: list[MailTemplateOut] = []
 
 
 class BundleImportIn(Schema):
@@ -997,4 +1053,9 @@ class BundleImportIn(Schema):
 
 class BundleExportIn(Schema):
     scope_type_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+    #: Mail templates are global, not owned by a UDM type, so they are collected
+    #: by scanning in-scope policies for send_notification template_name values.
+    #: These two knobs cover what that scan cannot see.
+    extra_template_slugs: list[Slug] = []
+    include_all_templates: bool = False
     model_config = {"extra": "forbid"}

@@ -219,6 +219,8 @@ def apply_patch(
         trigger="save",
         phase="pre",
         edit_group=edit_group,
+        policy_input=output.input_document,
+        policy_output=output,
     )
     dispatch_actions(output.actions, pre_ctx)
 

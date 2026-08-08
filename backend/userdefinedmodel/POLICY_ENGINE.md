@@ -253,3 +253,77 @@ framework layer (`udm.rego` aggregator, `framework.rego` tree walker in `package
   cannot recurse back — cycle); cross-module *function* calls do not resolve — define helpers locally.
 - Multiple policies per type compose by set union; any one module's `allow` suffices unless the aggregator
   denies.
+
+---
+
+## 6. Mail templates (`send_notification`)
+
+Mail bodies are `MailTemplate` rows, keyed by a human slug and edited in **UDM Admin → UDM
+Templating** (live preview; the HTML side renders in a `sandbox=""` iframe). Like policies, they
+travel in the UDM bundle — as files under `templates/<slug>.{txt,html}.j2` plus a `<slug>.json`
+holding subject/description/example input. The versioned source of truth is
+`documentation/configuration/templates/`; `manage.py import_bundle` zips that folder and runs it
+through the normal bundle import.
+
+`send_notification` resolves `template_name` to a slug. A missing slug raises
+`MailTemplateNotFound`, which `dispatch_actions` records as `_error` on the `FieldEdit` — the
+surrounding save or transition still succeeds under the default `on_error="log"`.
+
+### Rendering environment
+
+Templates are staff-editable, so they render in a `jinja2.sandbox.SandboxedEnvironment`
+(`userdefinedmodel/mailtemplates.py`) — **not** the environment in `project/jinja2.py`. Consequences:
+
+- The Django `settings` object is *not* a global. Use `{{ frontend_base_url }}`; also available are
+  `site_name`, `default_from_email` and `now()`.
+- The context is round-tripped through JSON, so templates see plain data and cannot traverse ORM
+  relations. Callers must pass everything a template needs (see `apiv1/mailcontext.py`).
+- Autoescaping is on for the HTML body and off for the plaintext body.
+- Undefined names render empty (`ChainableUndefined`) rather than raising, so an optional key can
+  never break a transition. The `<slug>.json` example inputs are what catch typos.
+
+### Filters
+
+| Filter | Purpose |
+|---|---|
+| `timezone(tz="Europe/Berlin")` | Converts a datetime or ISO string to a tz-aware datetime. Returns a datetime, so it composes: `{{ v \| timezone("Europe/Berlin") \| isoformat() }}`. Naive values are read as `settings.TIME_ZONE`. |
+| `isoformat(timespec="seconds", sep=" ")` | ISO 8601; `""` for None, idempotent on strings. |
+| `userinput(prefix="    ")` | Marks user-supplied text in **plaintext** mails by indenting every line. Empty input becomes an indented placeholder. |
+| `htmlquote` | HTML counterpart: escape + `<br>`, for use inside `<blockquote class="user-input">`. |
+
+All four are also registered in `project/jinja2.py`, so the same syntax works in ordinary templates.
+
+### Template context
+
+`build_notification_context` (`userdefinedmodel/actions.py`) is the contract the bundled templates
+depend on. The policy's own `context` object is applied first and its keys are also exposed at the
+top level; the engine-provided keys are applied afterwards and therefore cannot be shadowed:
+
+```
+context            the policy's JSON, verbatim
+input              the full policy input document
+entity             input.entity
+fields             {slug: value} of the node the action fired on
+node               {id, schema_id}
+user               input.user (the actor)
+trigger  phase     lifecycle event and dispatch phase
+action  transition  field  locale  type_id      from the input document
+additional_result  the policy's VIEW carry-over
+decision           {allow, messages, valid_transitions, additional_result}
+recipients         resolved recipient addresses
+frontend_base_url  also a Jinja global
+```
+
+A policy therefore passes calculated values like this:
+
+```rego
+actions contains {
+    "type": "send_notification",
+    "phase": "post",
+    "template_name": "proposal-accepted",
+    "recipient_field": "owner",
+    "context": {"proposal": proposal_context},
+} if { ... }
+```
+
+See `documentation/configuration/policies/proposals-actions.rego` for the worked example.
