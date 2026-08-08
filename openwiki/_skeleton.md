@@ -7,13 +7,13 @@ description: Skeleton structure for the UDM application documentation wiki
 # Wiki Skeleton for UDM Application
 
 ## Quick Start
-- /openwiki/quickstart.md - High-level overview, navigation, and task routing
+- /openwiki/quickstart.md - Quickstart guide for new users and developers
 
 ## Core Concepts
 - /openwiki/architecture/overview.md - System architecture, layers, and technology stack
-- /openwiki/concepts/udm.md - UserDefinedModel (UDM) concept and data model
-- /openwiki/concepts/policies.md - Rego policy engine and evaluation model
 - /openwiki/concepts/form_tree_and_data_fields.md - Form tree vs data fields split
+- /openwiki/concepts/mail_templates.md - Mail templates system (Jinja2 templates for email notifications)
+- /openwiki/concepts/publishing.md - Publishing documentation
 
 ## UDM API Documentation
 - /openwiki/api/udm_overview.md - UDM API overview and endpoints
@@ -30,22 +30,12 @@ description: Skeleton structure for the UDM application documentation wiki
 - /openwiki/backend/policy_engine.md - Policy evaluation engine
 - /openwiki/backend/actions.md - Policy actions system
 - /openwiki/backend/models/overview.md - Model overview and relationships
-  - /openwiki/backend/models/udmtype.md - UserDefinedModelType
-  - /openwiki/backend/models/config.md - Configuration models (FieldConfig, ConfigVersion, etc.)
-  - /openwiki/backend/models/node.md - Entity node and field value models
-  - /openwiki/backend/models/workflow.md - Workflow definition and version models
-  - /openwiki/backend/models/policy.md - Policy models
-  - /openwiki/backend/models/rules.md - Validation rule models
-  - /openwiki/backend/models/migration.md - Migration models
 
 ## Frontend Components
 - /openwiki/frontend/overview.md - Frontend architecture and structure
 - /openwiki/frontend/udm_admin.md - UDM Admin page
 - /openwiki/frontend/udm_entity_editor.md - UDM Entity Editor
-- /openwiki/frontend/udm_bundle_tab.md - UDM Bundle Tab
-- /openwiki/frontend/udm_migration.md - UDM Migration interface
-- /openwiki/frontend/event_editor.md - Event Editor
-- /openwiki/frontend/workflow_editor.md - Workflow Editor
+- /openwiki/frontend/api_client.md - Frontend API Client
 
 ## Sync Targets (high-level)
 - /openwiki/sync/overview.md - Sync infrastructure overview (Pretix, CalDAV, iCal)
@@ -63,7 +53,5 @@ description: Skeleton structure for the UDM application documentation wiki
 
 ## Migration and Maintenance
 - /openwiki/maintenance/migrations.md - Migration system documentation
-- /openwiki/maintenance/metrics.md - Metrics and monitoring
 
-## Backlog
-- /openwiki/backlog.md - Deferred or future work items
+

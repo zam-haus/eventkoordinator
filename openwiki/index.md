@@ -11,6 +11,8 @@ This directory contains the generated OpenWiki documentation for this repository
 
 ## Contents
 
+- **quickstart.md**: Quickstart guide for new users and developers
+- **README.md**: Main documentation index
 - **api**: API documentation for endpoints, entities, policies, and workflows
 - **architecture**: Architecture overview and design decisions
 - **backend**: Backend documentation including models, actions, and management commands

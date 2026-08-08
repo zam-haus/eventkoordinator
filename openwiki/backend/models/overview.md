@@ -324,11 +324,66 @@ Represents an individual edit.
 - `get_diff()`: Get value difference
 - `is_changed()`: Check if value changed
 
-**Relationships**:
 - Belongs to one `EditGroup`
 - Belongs to one `UserDefinedModelEntity`
 
+### 15. MailTemplate
+
+Represents a Jinja2 mail template for email notifications.
+
+**Fields**:
+- `id` (UUID, primary key)
+- `slug` (string, unique): Template identifier
+- `description` (string, nullable): Template description
+- `subject` (string): Email subject (Jinja2 template)
+- `body_text` (string): Plain text body (Jinja2 template)
+- `body_html` (string): HTML body (Jinja2 template)
+- `example_input` (JSON): Example input for testing
+- `created_at` (datetime)
+- `updated_at` (datetime)
+
+**Methods**:
+- `render(context)`: Render template with context
+- `get_example_context()`: Get example context from example_input
+
+**Usage**:
+- Templates are stored in the database and editable in UDM Admin → UDM Templating
+- Rendered in a sandboxed Jinja2 environment for security
+- Supports both plain text and HTML email bodies
+
+**Template Context**:
+- `context`: Policy's own context JSON
+- `input`: Full policy input document
+- `entity`: `input.entity` convenience alias
+- `fields`: `{slug: value}` for all fields on the node
+- `node`: `{id, schema_id}` of the triggering node
+- `user`: The actor
+- `trigger`: Lifecycle event: `save`, `create`, `transition`
+- `phase`: Dispatch phase: `pre` or `post`
+- `frontend_base_url`: Base URL for frontend links
+- `now`: Current datetime
+- **Filters**: `timezone`, `isoformat`, `htmlquote`, `userinput`
+
+**Security**:
+- Rendered in `SandboxedEnvironment` to prevent access to dangerous attributes
+- Context is JSON round-tripped to ensure only plain data
+- Django settings not exposed (unlike in `project.jinja2`)
+
+**File-based Templates**:
+- Stored in `documentation/configuration/templates/` as `{slug}.txt.j2` and `{slug}.html.j2`
+- Each template has a corresponding `.json` file with example input
+- Used as fallback when no database template exists
+
+**Migration Support**:
+- Included in UDM bundles as `udm_mailtemplates`
+- Exported/imported via `export_udm_bundle` / `import_udm_bundle` commands
+
+**Relationships**:
+- No foreign key relationships (self-contained)
+
+
 ## Model Relationships
+
 
 ### Hierarchical Structure
 

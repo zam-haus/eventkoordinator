@@ -10,6 +10,7 @@ Welcome to the OpenWiki documentation. This documentation provides comprehensive
 
 ## Quick Start
 
+- **[Quickstart Guide](quickstart.md)** - Get started with OpenWiki quickly
 - **[Architecture Overview](architecture/overview.md)** - Understand the system architecture
 - **[Backend Components Overview](backend/overview.md)** - Learn about backend architecture
 - **[Frontend Overview](frontend/overview.md)** - Learn about frontend architecture
@@ -23,9 +24,25 @@ Welcome to the OpenWiki documentation. This documentation provides comprehensive
 - **[Backend Components](#backend-components)** - Backend components
 - **[Frontend Components](#frontend-components)** - Frontend components
 
+## Documentation Structure
+
+The documentation is organized into the following sections:
+
+- **Quick Start**: Getting started with the application
+- **Core Concepts**: Key concepts and domain models
+- **Architecture**: System architecture and design
+- **API Endpoints**: UDM API documentation
+- **Backend Components**: Backend documentation
+- **Frontend Components**: Frontend documentation
+- **Sync Targets**: Synchronization documentation
+- **User Management**: OpenID User Management
+- **Testing**: Testing documentation
+- **Migration and Maintenance**: Maintenance procedures
+
 ## Core Concepts
 
 - **[Form Tree and Data Fields](concepts/form_tree_and_data_fields.md)** - Form tree vs data fields split
+- **[Mail Templates](concepts/mail_templates.md)** - Mail templates system (Jinja2 templates for email notifications)
 - **[Publishing System](concepts/publishing.md)** - Config and workflow publishing
 
 ## Architecture

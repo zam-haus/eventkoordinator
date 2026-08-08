@@ -6,158 +6,89 @@ description: Summary of all documentation created
 
 # Documentation Created Summary
 
-## Completed Tasks for Q-008
+## Mail Templates Documentation Added
 
-The following documentation has been created to address the publishing system gap identified in Q-008:
+The following documentation has been created to address the mail templates and notification system:
 
-### 1. `/openwiki/concepts/publishing.md` - Comprehensive Publishing Documentation
+### 1. `/openwiki/concepts/mail_templates.md` - Mail Templates System Documentation
 
-Complete documentation of the publishing system including:
-- Overview of version statuses and unique constraints
-- Detailed workflow for `ConfigVersion.publish()` method
-- Deep copy behavior for field definitions, form elements, and validation rules
-- Validation requirements (submodel config assignment, default validation)
-- Auto-creation of BulkMigrationPlan stubs for stale entities
-- Workflow version publishing behavior
-- Virtual node position inheritance
-- Translation preservation for states and transitions
-- Practical examples and best practices
+Comprehensive documentation of the mail templates system including:
+- Overview of mail templates in UserDefinedModel
+- Two template sources: Database (`MailTemplate`) and files (`.j2`)
+- Template context structure and available keys
+- Jinja2 filters and globals
+- Template rendering process
+- Security considerations (sandboxed environment)
+- Send notification action from Rego policies
+- Template examples and best practices
 - Troubleshooting guide
 
-### 2. `/openwiki/api/configs.md` - Updated Config API Documentation
+**Key Topics Covered**:
+- Mail template types (UDM MailTemplate vs file-based)
+- Template context structure (core keys, globals, filters)
+- Template rendering process (sandboxed Jinja2)
+- Send notification action (`send_notification`)
+- Recipient resolution (user_select fields and extra_recipients)
+- Template examples (simple, datetime, review comments)
+- Migration and bundle support
+- Best practices and security considerations
+- Troubleshooting common issues
 
-Extended with:
-- Publish endpoint documentation: `POST /configs/{id}/publish/`
-- Permissions and authentication requirements
-- Request/response examples
-- Error handling (403, 404, 422)
-- Validation error response examples
-- Implementation details
+### 2. `/openwiki/_skeleton.md` - Updated Skeleton
 
-### 3. `/openwiki/api/workflows.md` - Updated Workflow API Documentation
+Updated skeleton structure to include mail templates documentation under "Core Concepts".
 
-Extended with:
-- Publish endpoint documentation: `POST /workflows/{id}/versions/draft/publish/`
-- Permissions and authentication requirements
-- Request/response examples
-- Error handling
-- Implementation details
+## Files Created/Updated
 
-### 4. `/openwiki/DOCUMENTATION_SUMMARY.md` - Updated Index
+### Documentation Files
 
-Updated to reflect new documentation and marking the Q-008 task as completed.
-
-## Files Created
-
-### API Documentation
-
-1. **`/openwiki/api/udm_overview.md`** - Overview of UDM API endpoints
-2. **`/openwiki/api/configs.md`** - Configuration API documentation (including publish endpoint)
-3. **`/openwiki/api/entities.md`** - Entity CRUD and workflow API
-4. **`/openwiki/api/policies.md`** - Policy management API
-5. **`/openwiki/api/workflows.md`** - Workflow management API (including publish endpoint)
-6. **`/openwiki/api/endpoints.md`** - Comprehensive API endpoint documentation
-
-### Backend Documentation
-
-7. **`/openwiki/backend/overview.md`** - Backend overview
-8. **`/openwiki/backend/actions.md`** - Policy actions system
-9. **`/openwiki/backend/policy_engine.md`** - Policy evaluation engine
-10. **`/openwiki/backend/management_commands.md`** - Management commands documentation
-11. **`/openwiki/backend/models/overview.md`** - Model overview
-
-### Concept Documentation
-
-12. **`/openwiki/concepts/publishing.md`** - Comprehensive publishing system documentation (Q-008)
-13. **`/openwiki/concepts/form_tree_and_data_fields.md`** - Form tree and data fields relationship
-
-### Sync Documentation
-
-14. **`/openwiki/sync/overview.md`** - Sync infrastructure overview
-15. **`/openwiki/sync/pretix.md`** - Pretix synchronization documentation
-16. **`/openwiki/sync/ical.md`** - iCal synchronization documentation
-17. **`/openwiki/sync/caldav.md`** - CalDAV synchronization documentation
-
-### OpenID User Management
-
-18. **`/openwiki/openid_users.md`** - OpenID User Management documentation
-
-### Frontend Documentation
-
-19. **`/openwiki/frontend/overview.md`** - Frontend architecture and structure
-20. **`/openwiki/frontend/udm_admin.md`** - UDM Admin page documentation
-21. **`/openwiki/frontend/udm_entity_editor.md`** - UDM Entity Editor documentation
-
-### Testing Documentation
-
-22. **`/openwiki/testing/overview.md`** - Testing strategy and approach
-23. **`/openwiki/testing/backend_tests.md`** - Backend test suite documentation
-24. **`/openwiki/testing/frontend_tests.md`** - Frontend/Playwright tests documentation
-
-### Skeleton Update
-
-25. **`/openwiki/_skeleton.md`** - Updated skeleton structure with new documentation
+1. **`/openwiki/concepts/mail_templates.md`** - Mail templates system documentation
+2. **`/openwiki/_skeleton.md`** - Updated to include mail_templates link
 
 ## Documentation Coverage
 
-The created documentation covers:
+The mail templates documentation covers:
 
-### 1. API Endpoints
+### 1. Template System Architecture
 
-- **Config version lifecycle** - Publish endpoint and configuration management
-- **Entity history endpoint** - Entity version tracking and history
-- **Workflow transition endpoint** - Workflow state transitions
-- **Policy evaluation endpoint** - Policy validation and evaluation
-- **Bulk migration endpoints** - Create, status, and execute endpoints
-- **Staging file upload endpoint** - File upload and management
-- **Policy document endpoint** - Policy management and editing
+- **Database templates** (`MailTemplate` model)
+- **File-based templates** (`.j2` files in `documentation/configuration/templates/`)
+- **Two-phase rendering** (JSON round-trip for security)
 
-### 2. Backend Components
+### 2. Template Context
 
-- **Policy actions system** (actions.py)
-  - Action context and parameters
-  - Action output schemas
-  - Action registration and dispatch
-- **Policy evaluation flow**
-  - Input schema
-  - Rego policy evaluation
-  - Action dispatch
-- **Management commands**
-  - API schema generation
-  - Nginx configuration rendering
-  - Permission management
+- **Core keys**: `context`, `input`, `entity`, `fields`, `node`, `user`, `trigger`, `phase`, etc.
+- **Globals**: `frontend_base_url`, `site_name`, `default_from_email`, `now`
+- **Filters**: `timezone`, `isoformat`, `htmlquote`, `userinput`
 
-### 3. Sync Targets
+### 3. Integration with Rego Policies
 
-- **Pretix** - Ticketing system synchronization
-- **CalDAV** - Calendar synchronization
-- **iCal** - iCalendar format synchronization
+- **Send notification action** (`send_notification`)
+- **Template-based vs inline sending**
+- **Recipient resolution** (user_select fields and extra_recipients)
 
-### 4. OpenID User Management
+### 4. Security
 
-- User authentication and authorization
-- User CRUD operations
-- Group management
-- Permission management
-- Sudo mode functionality
+- **Sandboxed environment** (Jinja2 SandboxedEnvironment)
+- **JSON round-trip** (ensures plain data only)
+- **Settings not exposed** (prevents secret access)
 
-### 5. Frontend Components
+### 5. Migration and Bundles
 
-- **UDM Admin page** - Model, field, policy, and workflow management
-- **UDM Entity Editor** - Entity creation and editing
-- **UDM Bundle Tab** - Bundle export/import functionality
-- **UDM Migration** - Data migration interface
-
-### 6. Testing Documentation
-
-- Testing strategy and approach
-- Backend test suite
-- Frontend/Playwright tests
+- **UDM bundle support** (`udm_mailtemplates`)
+- **Migration commands** (export/import)
+- **Version control** for templates
 
 ## Documentation Structure
 
 ```
 /openwiki/
+├── concepts/             # Core concept documentation
+│   ├── udm.md            # UserDefinedModel overview
+│   ├── policies.md       # Rego policy engine
+│   ├── form_tree_and_data_fields.md
+│   ├── mail_templates.md # Mail templates system (NEW)
+│   └── publishing.md     # Publishing system
 ├── api/                  # API documentation
 │   ├── udm_overview.md   # Overview
 │   ├── configs.md        # Configuration API
@@ -169,7 +100,7 @@ The created documentation covers:
 │   ├── overview.md       # Overview
 │   ├── actions.md        # Policy actions
 │   ├── policy_engine.md  # Policy engine
-│   ├── management_commands.md  # Management commands
+│   ├── management_commands.md
 │   └── models/
 │       └── overview.md   # Model overview
 ├── sync/                 # Sync documentation
@@ -181,7 +112,7 @@ The created documentation covers:
 ├── frontend/             # Frontend documentation
 │   ├── overview.md       # Overview
 │   ├── udm_admin.md      # UDM Admin
-│   └── udm_entity_editor.md    # Entity Editor
+│   └── udm_entity_editor.md
 ├── testing/              # Testing documentation
 │   ├── overview.md       # Overview
 │   ├── backend_tests.md  # Backend tests
@@ -191,13 +122,12 @@ The created documentation covers:
 
 ## Next Steps
 
-The documentation provides a comprehensive foundation for:
+The updated documentation provides:
 
-1. **API Development** - Clear endpoint documentation for developers
-2. **Backend Integration** - Understanding backend components and workflows
-3. **Sync Configuration** - Guidance for setting up sync targets
-4. **User Management** - OpenID User Management implementation
-5. **Frontend Development** - Component architecture and implementation
-6. **Testing Strategy** - Approach to testing the application
+1. **Mail Templates Reference** - Complete reference for template system
+2. **Rego Integration** - How to use `send_notification` action
+3. **Security Best Practices** - Proper sandboxing and data handling
+4. **Migration Support** - Bundle export/import for templates
 
 All documentation follows the existing skeleton structure and includes proper YAML front matter for consistency.
+
