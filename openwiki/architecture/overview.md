@@ -1,25 +1,31 @@
 ---
 type: architecture_documentation
 title: Architecture Overview
-description: High-level architecture overview of the OpenWiki application, including the UDM system, policy evaluation engine, frontend structure, and integration with external systems
+description: High-level architecture overview of the OpenWiki application, including both the UserDefinedModel (UDM) system and the apiv1 event management system with sync infrastructure, covering policy evaluation engine, frontend structure, and integration with external systems
 resource: /openwiki/architecture/overview.md
-tags: [architecture, system-design, udm, policy-engine]
+tags: [architecture, system-design, udm, policy-engine, apiv1, sync]
 timestamp: 2024-01-01T00:00:00Z
 openwiki:
   roles: [architecture]
   change_kinds: [lifecycle]
   source_paths: [/openwiki/architecture/overview.md]
   invariants: [Architecture documentation must match actual implementation in source code]
-  validation_commands: [grep -r "api/udm/" backend/]
+  validation_commands: [grep -r "path(\"api/v1\"" backend/project/urls.py && grep -r "path(\"api/udm\"" backend/project/urls.py]
 ---
 
 # Architecture Overview
 
-This document provides a high-level overview of the OpenWiki application architecture, including the UserDefinedModel (UDM) system, policy evaluation engine, frontend structure, and integration with external systems.
+This document provides a high-level overview of the OpenWiki application architecture, including both the UserDefinedModel (UDM) system and the apiv1 event management system with sync infrastructure.
 
 ## System Architecture
 
-The OpenWiki application follows a layered architecture with clear separation of concerns:
+The OpenWiki application follows a layered architecture with two independent systems:
+
+### UDM System
+UserDefinedModel (UDM) - A dynamic data modeling framework for custom entities.
+
+### apiv1 System
+Core event management system (Events, Proposals, Series) with sync infrastructure.
 
 ```mermaid
 flowchart TD
@@ -49,7 +55,6 @@ flowchart TD
         direction TB
         K["Sync Targets"] --> L["Pretix"]
         K --> M["iCal/CalDAV"]
-        K --> N["Auth Providers"]
     end
     
     FrontendLayer --> APILayer
@@ -73,7 +78,7 @@ flowchart TD
 |  (Django ORM + PostgreSQL)                      |
 +--------------------------------------------------+
 |              External Integrations               |
-|  (Sync Targets, Auth, etc.)                     |
+|  (Sync Targets: Pretix, iCal, CalDAV)           |
 +--------------------------------------------------+
 ```
 
@@ -257,20 +262,20 @@ graph TD
 └── /autocomplete/     - Search endpoints
 ```
 
-### 5. External Integrations
+### 5. External Integrations (apiv1)
 
-The application integrates with external systems through sync targets.
+The application provides external system synchronization through the apiv1 sync infrastructure.
 
 **Sync Targets**:
-- **Pretix**: Event ticketing system synchronization
-- **iCal**: Calendar format synchronization
-- **CalDAV**: Calendar protocol synchronization
+- **Pretix**: Event ticketing system synchronization (syncs Event data)
+- **iCal**: Calendar format synchronization (syncs Event calendar entries)
+- **CalDAV**: Calendar protocol synchronization (syncs Event calendar entries)
 
 **Sync Architecture**:
 
 ```mermaid
 flowchart LR
-    A["Entity Changes"] --> B["Sync Queue"]
+    A["Event Changes"] --> B["Sync Queue"]
     B --> C["Sync Worker 1"]
     B --> D["Sync Worker 2"]
     B --> E["Sync Worker N"]
@@ -287,9 +292,9 @@ flowchart LR
     E --> G
     E --> H
     
-    F --> I["External Event System"]
-    G --> J["Calendar Applications"]
-    H --> J
+    F --> I["Pretix Event System"]
+    G --> J["iCal Applications"]
+    H --> K["CalDAV Applications"]
 ```
 
 ## Data Flow

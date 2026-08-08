@@ -1,12 +1,12 @@
 ---
 type: sync_documentation
 title: Sync Target Overview
-description: Overview of sync targets infrastructure
+description: Overview of sync targets infrastructure for the apiv1 system (Events, Proposals, Series)
 ---
 
-# Sync Target Overview
+# Sync Target Overview (apiv1)
 
-The sync infrastructure enables synchronization with external systems.
+The sync infrastructure enables synchronization of Event data with external systems.
 
 **Related Documentation**:
 - [Architecture Overview](../architecture/overview.md) - High-level system architecture

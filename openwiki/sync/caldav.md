@@ -1,12 +1,12 @@
 ---
 type: sync_documentation
 title: CalDAV Synchronization
-description: Documentation for CalDAV synchronization
+description: Documentation for CalDAV synchronization (apiv1 Event system)
 ---
 
-# CalDAV Synchronization
+# CalDAV Synchronization (apiv1)
 
-CalDAV synchronization enables event data to be synchronized with CalDAV servers.
+CalDAV synchronization enables Event data to be synchronized with CalDAV servers.
 
 **Related Documentation**:
 - [Architecture Overview](../architecture/overview.md) - High-level system architecture
@@ -14,7 +14,7 @@ CalDAV synchronization enables event data to be synchronized with CalDAV servers
 
 ## Overview
 
-The CalDAV sync target synchronizes calendar events between UDM and CalDAV servers.
+The CalDAV sync target synchronizes calendar events between the apiv1 system and CalDAV servers.
 
 ## Configuration
 

@@ -1,12 +1,12 @@
 ---
 type: sync_documentation
 title: iCal Synchronization
-description: Documentation for iCal synchronization
+description: Documentation for iCal synchronization (apiv1 Event system)
 ---
 
-# iCal Synchronization
+# iCal Synchronization (apiv1)
 
-iCal synchronization enables event data to be synchronized with iCal calendar files.
+iCal synchronization enables Event calendar entries to be synchronized with iCal calendar files.
 
 **Related Documentation**:
 - [Architecture Overview](../architecture/overview.md) - High-level system architecture
@@ -14,7 +14,7 @@ iCal synchronization enables event data to be synchronized with iCal calendar fi
 
 ## Overview
 
-The iCal sync target synchronizes event calendar entries between UDM and iCal format.
+The iCal sync target synchronizes calendar entries between the apiv1 system and iCal format.
 
 ## Configuration
 

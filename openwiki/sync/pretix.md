@@ -1,12 +1,12 @@
 ---
 type: sync_documentation
 title: Pretix Synchronization
-description: Documentation for Pretix synchronization
+description: Documentation for Pretix synchronization (apiv1 Event system)
 ---
 
-# Pretix Synchronization
+# Pretix Synchronization (apiv1)
 
-Pretix is a ticketing system that can be synchronized with the UDM application.
+Pretix is a ticketing system that can be synchronized with Event data from the apiv1 system.
 
 **Related Documentation**:
 - [Architecture Overview](../architecture/overview.md) - High-level system architecture
@@ -14,7 +14,7 @@ Pretix is a ticketing system that can be synchronized with the UDM application.
 
 ## Overview
 
-The Pretix sync target synchronizes event data between UDM and Pretix.
+The Pretix sync target synchronizes Event data between the apiv1 system and Pretix.
 
 ## Configuration
 
