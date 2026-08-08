@@ -613,6 +613,17 @@ class TypedValue(models.Model):
             import nh3
             value = nh3.clean(value)
 
+        # Floats arrive as Python `float` (IEEE754 binary) from the JSON
+        # payload. Decimal(some_float) expands the exact binary value (e.g.
+        # 0.2 -> "0.200000000000000011102230246...") which blows past the
+        # column's decimal_places=10 limit — go through str() so the decimal
+        # matches what was actually typed/displayed, then round to the
+        # column's precision rather than rejecting values with (harmless)
+        # trailing binary noise beyond 10 decimal places.
+        if col == "value_decimal" and isinstance(value, float):
+            import decimal
+            value = decimal.Decimal(str(value)).quantize(decimal.Decimal("1.0000000000"))
+
         # FK columns use _id suffix
         if col in ("value_user", "value_group", "value_node", "value_file", "value_workflow_state"):
             setattr(self, col + "_id", value.pk if hasattr(value, "pk") else value)

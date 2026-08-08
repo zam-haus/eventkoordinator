@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { TreeTable } from 'primereact/treetable'
@@ -6,23 +6,68 @@ import { Column } from 'primereact/column'
 import { MultiSelect } from 'primereact/multiselect'
 import { InputText } from 'primereact/inputtext'
 import { Button } from 'primereact/button'
+import { ToggleButton } from 'primereact/togglebutton'
+import { OverlayPanel } from 'primereact/overlaypanel'
 import type { TreeNode } from 'primereact/treenode'
 import {
   udmListTypes,
   udmGetTypeConfig,
   udmListEntitiesByType,
+  udmPatchEntity,
+  udmGetEntity,
+  udmValidationPreview,
+  UdmApiError,
   type UDMTypeOut,
   type ConfigVersionOut,
   type EntityOut,
   type DashboardColumnOut,
+  type PolicyMessage,
 } from './apiUdm'
-import { getLang, FieldPreview, fieldPreviewText } from './udm-editors'
+import { getLang, FieldPreview, fieldPreviewText, FieldInput, PolicyMessageList } from './udm-editors'
+import { FieldCommitWrapper, BLUR_COMMIT_TYPES, LARGE_TYPES } from './udm-editors/FieldCommitWrapper'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const SKIP_DATA_TYPES = new Set([
   'tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next',
 ])
+
+// Editing happens in a popup rather than inline in the cell, so even
+// markdown/multiline/richtext/image/file fields (LARGE_TYPES) work fine here.
+// Submodels are still excluded — nested editing belongs in the full entity
+// editor, not the dashboard grid.
+function isUneditableInGrid(dataType: string): boolean {
+  return dataType.startsWith('submodel')
+}
+
+function isForField(msg: PolicyMessage, slug: string): boolean {
+  return (msg.highlight_fields ?? []).some(p => p.split('.')[0] === slug)
+}
+
+/** Messages from a failed save, narrowed to the one field being edited.
+ *  Unrelated form-wide messages (other fields, form status, etc.) are
+ *  dropped — only a totally unstructured failure (no pydantic/field/policy
+ *  detail at all) falls back to the bare error text, since there's nothing
+ *  else to attribute it to. */
+function errorToFieldMessages(e: unknown, slug: string): PolicyMessage[] {
+  if (e instanceof UdmApiError) {
+    const fieldSpecific: PolicyMessage[] = []
+    for (const pe of e.pydanticErrors) {
+      const loc = pe.loc.filter(s => s !== 'body' && s !== 'payload')
+      if (loc[0] === slug) fieldSpecific.push({ level: 'error', text: loc.length > 1 ? `${loc.slice(1).join(' → ')}: ${pe.msg}` : pe.msg })
+    }
+    for (const err of e.fieldErrors[slug] ?? []) fieldSpecific.push({ level: 'error', text: err })
+    for (const pm of e.policyMessages) if (isForField(pm, slug)) fieldSpecific.push(pm)
+    if (fieldSpecific.length > 0) return fieldSpecific
+    if (e.pydanticErrors.length === 0 && Object.keys(e.fieldErrors).length === 0 && e.policyMessages.length === 0) {
+      return [{ level: 'error', text: e.message }]
+    }
+    // The save failed, but every message belongs to some other field —
+    // still say so here (it did not save), without dumping the unrelated list.
+    return [{ level: 'error', text: 'Not saved — see the full form for details.' }]
+  }
+  return [{ level: 'error', text: e instanceof Error ? e.message : 'Save failed' }]
+}
 
 const FILTER_HELP = [
   'Lucene-like filter query:',
@@ -102,6 +147,142 @@ function DashboardCell({ col }: { col: DashboardColumnOut; entity: EntityOut }) 
   }
 }
 
+interface DashboardFieldCellProps {
+  fd: ConfigVersionOut['fields'][number]
+  entity: EntityOut
+  uiLang: string
+  editable: boolean
+  saving: boolean
+  errors: PolicyMessage[]
+  onSave: (value: unknown) => Promise<void>
+  onEntityRefresh: () => void
+  onClearErrors: () => void
+}
+
+function DashboardFieldCell({ fd, entity, uiLang, editable, saving, errors, onSave, onEntityRefresh, onClearErrors }: DashboardFieldCellProps) {
+  const savedValue = getFieldVal(entity, fd.slug, uiLang)
+  const [value, setValue] = useState(savedValue)
+  const [dirty, setDirty] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const [previewMessages, setPreviewMessages] = useState<PolicyMessage[]>([])
+  const opRef = useRef<OverlayPanel>(null)
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Adjust local state during render when the saved value changes underneath
+  // us (e.g. a transition refreshed this entity) — avoids the extra render
+  // an effect-based sync would cause.
+  const [prevSavedValue, setPrevSavedValue] = useState(savedValue)
+  if (savedValue !== prevSavedValue) {
+    setPrevSavedValue(savedValue)
+    setValue(savedValue)
+    setDirty(false)
+    setPreviewMessages([])
+  }
+
+  function closeAndBlur() {
+    (document.activeElement as HTMLElement | null)?.blur()
+    opRef.current?.hide()
+  }
+
+  // While the value is being edited (dirty), query the same
+  // validation-preview endpoint UdmEntityEditor uses, so problems surface
+  // before the user saves — not just after. Debounced like there (600ms).
+  useEffect(() => {
+    if (!dirty) return
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+    previewTimer.current = setTimeout(() => {
+      udmValidationPreview(entity.id, { [fd.slug]: value })
+        .then(preview => setPreviewMessages((preview.messages ?? []).filter(m => isForField(m, fd.slug))))
+        .catch(() => { /* best-effort — ignore lock conflicts and network errors */ })
+    }, 600)
+    return () => { if (previewTimer.current) clearTimeout(previewTimer.current) }
+  }, [dirty, value, entity.id, fd.slug])
+
+  async function commit() {
+    // Nothing changed — some field types (e.g. file/image) render a display
+    // shape that isn't a valid write payload on its own, so only send a
+    // value when the user actually edited something.
+    if (!dirty) { closeAndBlur(); return }
+    try {
+      await onSave(value)
+      setDirty(false)
+      setPreviewMessages([])
+      closeAndBlur()
+    } catch {
+      // error surfaced via `errors` prop; keep the popup open so the user can retry
+    }
+  }
+
+  function cancel() {
+    setValue(savedValue)
+    setDirty(false)
+    setPreviewMessages([])
+    closeAndBlur()
+  }
+
+  // Show both: the live preview (while editing) and the last known
+  // post-save result (errors/warnings from the previous save) — neither
+  // should hide the other, before or after saving.
+  const displayedMessages = [...errors, ...previewMessages]
+
+  const large = LARGE_TYPES.has(fd.data_type)
+
+  const previewNode = savedValue == null
+    ? <span style={{ color: '#9ca3af' }}>—</span>
+    : <FieldPreview fd={fd} value={savedValue} lang={uiLang} entityChildren={entity.children as Record<string, unknown[]>} />
+
+  if (!editable) {
+    if (savedValue == null) return null
+    return previewNode
+  }
+
+  return (
+    // The click-to-open handler lives only on the trigger span, not on a
+    // wrapper that also contains <OverlayPanel> — React bubbles synthetic
+    // events through the *component* tree even across a portal, so a click
+    // inside the popup's (portaled) content would otherwise re-trigger this
+    // handler and immediately toggle the panel closed again.
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+      <span
+        onClick={e => opRef.current?.toggle(e)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.2rem', cursor: 'pointer',
+          padding: '0.15rem 0.3rem', margin: '-0.15rem -0.3rem', borderRadius: '4px',
+          background: hovered ? '#eff6ff' : undefined,
+          outline: hovered ? '1px dashed #93c5fd' : undefined,
+        }}
+      >
+        {previewNode}
+      </span>
+      <OverlayPanel ref={opRef} style={{ width: '50vw' }} onHide={() => { setPreviewMessages([]); onClearErrors() }}>
+        {displayedMessages.length > 0 && <PolicyMessageList messages={displayedMessages} />}
+        <FieldCommitWrapper
+          dirty={dirty}
+          saving={saving}
+          large={large}
+          blurCommit={BLUR_COMMIT_TYPES.has(fd.data_type)}
+          disabled={!editable}
+          alwaysShowButtons={fd.data_type !== 'workflow'}
+          onCommit={() => void commit()}
+          onCancel={cancel}
+        >
+          <FieldInput
+            fd={fd}
+            value={value}
+            onChange={v => { setValue(v); setDirty(true) }}
+            disabled={!editable}
+            lang={uiLang}
+            nodeId={entity.id}
+            onEntityRefresh={onEntityRefresh}
+            entityChildren={entity.children as Record<string, unknown[]>}
+          />
+        </FieldCommitWrapper>
+      </OverlayPanel>
+    </span>
+  )
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function getFieldVal(entity: EntityOut, slug: string, uiLang: string): unknown {
@@ -146,6 +327,9 @@ export function UdmDashboard() {
   const [filterText, setFilterText] = useState('')
   const [appliedFilter, setAppliedFilter] = useState('')
   const [filterError, setFilterError] = useState<string | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [savingCells, setSavingCells] = useState<Set<string>>(new Set())
+  const [cellErrors, setCellErrors] = useState<Record<string, PolicyMessage[]>>({})
 
   useEffect(() => {
     udmListTypes()
@@ -212,6 +396,46 @@ export function UdmDashboard() {
     setSelectedColumns(defaultSelectedIds)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultSelectedIds.join(',')])
+
+  // Replace one entity in place after a cell save or workflow transition, so
+  // the row reflects fresh values/policy state without a full type reload.
+  const patchEntityInState = useCallback((typeId: string, updated: EntityOut) => {
+    setEntitiesByTypeId(prev => ({
+      ...prev,
+      [typeId]: (prev[typeId] ?? []).map(e => (e.id === updated.id ? updated : e)),
+    }))
+  }, [])
+
+  function cellKey(entityId: string, slug: string) {
+    return `${entityId}:${slug}`
+  }
+
+  async function saveCell(typeId: string, entity: EntityOut, slug: string, value: unknown) {
+    const key = cellKey(entity.id, slug)
+    setSavingCells(prev => new Set(prev).add(key))
+    setCellErrors(prev => { const n = { ...prev }; delete n[key]; return n })
+    try {
+      const updated = await udmPatchEntity(entity.id, { [slug]: value })
+      patchEntityInState(typeId, updated)
+      // A successful save can still carry policy warnings/info for this
+      // field (e.g. "close to the limit") — surface those too, not just
+      // hard save errors.
+      const relevant = ((updated.policy_messages ?? []) as PolicyMessage[]).filter(m => isForField(m, slug))
+      if (relevant.length > 0) setCellErrors(prev => ({ ...prev, [key]: relevant }))
+    } catch (e) {
+      setCellErrors(prev => ({ ...prev, [key]: errorToFieldMessages(e, slug) }))
+      throw e
+    } finally {
+      setSavingCells(prev => { const n = new Set(prev); n.delete(key); return n })
+    }
+  }
+
+  // Refetches one entity — used after a workflow transition, whose result
+  // (unlike a field patch) doesn't hand back the updated entity directly.
+  async function refreshEntity(typeId: string, entityId: string) {
+    const updated = await udmGetEntity(entityId)
+    patchEntityInState(typeId, updated)
+  }
 
   const loadEntities = useCallback((typeId: string, query: string) => {
     setLoadingTypeIds(prev => new Set([...prev, typeId]))
@@ -314,6 +538,31 @@ export function UdmDashboard() {
         const fd = d.config?.fields.find(f => f.slug === col.slug)
         if (!fd) return null
         const val = getFieldVal(d.entity, col.slug, uiLang)
+
+        if (editMode && !isUneditableInGrid(fd.data_type)) {
+          const editableSlugs = new Set(
+            (d.entity.editable_fields as unknown as Record<string, string[]>)?.[d.entity.id] ?? [],
+          )
+          const editable = editableSlugs.has(col.slug)
+          // Non-editable fields with no value are simply not viewable — nothing to show.
+          if (val == null && !editable) return null
+          const typeId = d.entity.user_defined_model_type_id as string
+          const key = cellKey(d.entity.id, col.slug)
+          return (
+            <DashboardFieldCell
+              fd={fd}
+              entity={d.entity}
+              uiLang={uiLang}
+              editable={editable}
+              saving={savingCells.has(key)}
+              errors={cellErrors[key] ?? []}
+              onSave={value => saveCell(typeId, d.entity, col.slug, value)}
+              onEntityRefresh={() => void refreshEntity(typeId, d.entity.id)}
+              onClearErrors={() => setCellErrors(prev => { const n = { ...prev }; delete n[key]; return n })}
+            />
+          )
+        }
+
         if (val == null) return null
         return <FieldPreview fd={fd} value={val} lang={uiLang} entityChildren={d.entity.children as Record<string, unknown[]>} />
       }
@@ -331,6 +580,15 @@ export function UdmDashboard() {
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>UDM Dashboard</h1>
+        <ToggleButton
+          checked={editMode}
+          onChange={e => setEditMode(e.value)}
+          onLabel="Editing"
+          offLabel="Edit mode"
+          onIcon="pi pi-pencil"
+          offIcon="pi pi-pencil"
+          className="p-button-sm"
+        />
         <form
           onSubmit={e => { e.preventDefault(); setAppliedFilter(filterText) }}
           style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}

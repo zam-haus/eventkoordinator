@@ -244,7 +244,7 @@ error_messages contains msg if {
 	msg := {
 		"level": "critical",
 		"text": "You must confirm copyright consent before uploading an image.",
-		"field_slug": "photo-copyright-consent",
+		"field_slug": "photo",
 	}
 }
 

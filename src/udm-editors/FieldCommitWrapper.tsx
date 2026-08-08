@@ -31,6 +31,8 @@ export interface FieldCommitWrapperProps {
   large: boolean
   blurCommit: boolean
   disabled?: boolean
+  /** Show the check/cancel buttons even when the field isn't dirty. */
+  alwaysShowButtons?: boolean
   onCommit: () => void
   onCancel: () => void
   children: ReactNode
@@ -45,7 +47,7 @@ export interface FieldCommitWrapperProps {
  *   click, or editors where focus never entered the wrapper at all)
  */
 export function FieldCommitWrapper({
-  dirty, saving, large, blurCommit, disabled, onCommit, onCancel, children,
+  dirty, saving, large, blurCommit, disabled, alwaysShowButtons, onCommit, onCancel, children,
 }: FieldCommitWrapperProps) {
   const ref = useRef<HTMLDivElement>(null)
   const stateRef = useRef({ dirty, saving, blurCommit, disabled, onCommit })
@@ -86,7 +88,7 @@ export function FieldCommitWrapper({
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [dirty, blurCommit, disabled])
 
-  const showButtons = dirty && !disabled
+  const showButtons = (dirty || alwaysShowButtons) && !disabled
   const buttons = showButtons ? (
     <>
       <Button type="button" className="commitBtn commitBtnCheck" icon="pi pi-check" severity="success"

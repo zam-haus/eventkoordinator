@@ -1,3 +1,4 @@
+import { Tooltip } from 'primereact/tooltip'
 import type { PolicyMessage } from './types'
 
 const MSG_COLORS: Record<string, { text: string; bg: string; icon?: string }> = {
@@ -6,6 +7,36 @@ const MSG_COLORS: Record<string, { text: string; bg: string; icon?: string }> = 
   warning:  { text: '#92400e', bg: '#fffbeb' },
   info:     { text: '#1e40af', bg: '#eff6ff' },
   success:  { text: '#15803d', bg: '#f0fdf4', icon: '✓' },
+}
+
+const SEVERITY_ICON: Record<string, string> = {
+  critical: 'pi-times-circle',
+  error:    'pi-times-circle',
+  warning:  'pi-exclamation-circle',
+  info:     'pi-info-circle',
+  success:  'pi-check-circle',
+}
+
+/** Small icon that shows a tooltip with `messages` on hover — the compact
+ *  alternative to `PolicyMessageList` for tight spaces like table cells. */
+export function SeverityIndicator({ severity, messages, targetKey }: {
+  severity: string
+  messages: PolicyMessage[]
+  targetKey: string
+}) {
+  const iconClass = SEVERITY_ICON[severity] ?? 'pi-info-circle'
+  const color = MSG_COLORS[severity] ?? MSG_COLORS.info
+  const targetId = `udm-sev-${targetKey.replace(/[^a-zA-Z0-9]/g, '-')}`
+  return (
+    <>
+      <Tooltip target={`#${targetId}`} position="right">
+        <ul style={{ margin: 0, padding: '0 0 0 1rem', fontSize: '0.8rem', maxWidth: '260px' }}>
+          {messages.map((m, i) => <li key={i}>{m.text}</li>)}
+        </ul>
+      </Tooltip>
+      <i id={targetId} className={`pi ${iconClass}`} style={{ color: color.text, cursor: 'help', marginLeft: '0.3rem' }} />
+    </>
+  )
 }
 
 export function PolicyMessageList({ messages }: { messages: PolicyMessage[] }) {

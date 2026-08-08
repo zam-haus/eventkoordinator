@@ -10,9 +10,7 @@ function FilePreview({ fd, value }: PreviewProps) {
 
   if (fd.data_type === 'image') {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer">
-        <img src={url} alt={name} style={{ maxHeight: 80, maxWidth: 160, borderRadius: 4, display: 'block', border: '1px solid #e5e7eb' }} />
-      </a>
+      <img src={url} alt={name} style={{ maxHeight: 80, maxWidth: 160, borderRadius: 4, display: 'block', border: '1px solid #e5e7eb' }} />
     )
   }
 
