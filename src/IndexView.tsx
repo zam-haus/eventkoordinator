@@ -15,6 +15,7 @@ import { ProposalDashboard } from './ProposalDashboard'
 import { UdmAdminPage } from './UdmAdminPage'
 import { UdmEntityEditor, UdmEntityPanel } from './UdmEntityEditor'
 import { UdmDashboard } from './UdmDashboard'
+import { UdmCalendarPage } from './UdmCalendarPage'
 
 export function IndexView() {
   const { t } = useTranslation()
@@ -114,6 +115,7 @@ export function IndexView() {
             }
           />
           <Route path="/udm-dashboard" element={<UdmDashboard />} />
+          <Route path="/udm-calendar" element={<UdmCalendarPage />} />
           <Route path="/udm-entity" element={<UdmEntityPanel />} />
           <Route path="/udm-entity/:entityId" element={<UdmEntityEditor />} />
 <Route

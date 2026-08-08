@@ -31,6 +31,7 @@ import { FieldCommitWrapper, LARGE_TYPES, BLUR_COMMIT_TYPES } from './udm-editor
 import { ReadonlyBadge } from './udm-editors/shared'
 import { UdmGrantsContext, type UdmGrants } from './udm-editors/grants'
 import { BacklinkListPreview } from './udm-editors/BacklinkListPreview'
+import { CalendarPreview } from './udm-editors/CalendarPreview'
 import { UdfMarkdown } from './UdfMarkdown'
 import styles from './UdmEntityEditor.module.css'
 import dsStyles from './DefaultScreen.module.css'
@@ -278,7 +279,7 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
 // viewable_fields like any other field; see the `fields` filter below.
 const STRUCTURAL = new Set([
   'tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next',
-  'backlink_list', 'markdown_display', 'sync_status',
+  'backlink_list', 'markdown_display', 'sync_status', 'calendar',
 ])
 
 // ── Field row ─────────────────────────────────────────────────────────────────
@@ -1284,6 +1285,22 @@ export function UdmEntityEditor() {
             </div>
           </div>
           <UdfMarkdown content={markdown} />
+        </div>
+      )
+    }
+    if (fd.data_type === 'calendar') {
+      const tc = fd.type_config as { sources?: string[] } | undefined
+      const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
+      const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
+      return (
+        <div key={fd.slug} className={styles.fieldGroup}>
+          <div className={styles.fieldHeader}>
+            <div>
+              <div className={styles.fieldLabel}>{label}</div>
+              {helpText && <div className={styles.fieldHelp}>{helpText}</div>}
+            </div>
+          </div>
+          <CalendarPreview sources={tc?.sources ?? []} refreshToken={refreshToken} />
         </div>
       )
     }

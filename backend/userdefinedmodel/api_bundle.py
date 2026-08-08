@@ -990,7 +990,7 @@ def _apply_draft_fields(
         # no bindings" branch below.
         structural_set = {
             "tab_container", "tab", "save_button", "hstack", "hstack_group", "tab_prev", "tab_next",
-            "backlink_list", "markdown_display", "sync_status",
+            "backlink_list", "markdown_display", "sync_status", "calendar",
         }
         for fd_data in legacy_fields:
             if fd_data.get("data_type") in structural_set:

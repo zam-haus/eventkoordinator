@@ -207,6 +207,11 @@ export function Navbar({ user, onLogin, onLogout }: NavbarProps) {
     '/udm-entity',
     location.pathname.startsWith('/udm-entity'),
   ))
+  navItems.push(navLinkItem(
+    'Calendar',
+    '/udm-calendar',
+    location.pathname.startsWith('/udm-calendar'),
+  ))
   if (permissions?.is_staff) {
     navItems.push({ label: t('nav.adminPanel'), url: '/admin/' })
   }

@@ -846,6 +846,39 @@ export async function udmGetEntityBacklinks(
   return (await res.json()) as BacklinkOut[]
 }
 
+// ── Calendar (events-and-sync.md §6/Step 9) ─────────────────────────────────────
+// Hand-typed for the same reason as backlinks above (schema_udm.d.ts doesn't
+// cover this endpoint yet).
+
+export interface CalendarEntryOut {
+  source: string
+  uid: string
+  title: string
+  start: string | null
+  end: string | null
+  url: string | null
+  entity_id: string | null
+}
+
+export async function udmGetCalendar(start: string, end: string, sources: string[]): Promise<CalendarEntryOut[]> {
+  const params = new URLSearchParams({ start, end, sources: sources.join(',') })
+  const res = await fetch(`/api/udm/calendar/?${params.toString()}`, { credentials: 'include' })
+  if (!res.ok) return []
+  return (await res.json()) as CalendarEntryOut[]
+}
+
+export interface CalendarSourceOut {
+  key: string
+  name: string
+  kind: string
+}
+
+export async function udmListCalendarSources(): Promise<CalendarSourceOut[]> {
+  const res = await fetch('/api/udm/calendar-sources/', { credentials: 'include' })
+  if (!res.ok) return []
+  return (await res.json()) as CalendarSourceOut[]
+}
+
 // ── Staging files ─────────────────────────────────────────────────────────────
 
 export async function udmUploadStagingFile(

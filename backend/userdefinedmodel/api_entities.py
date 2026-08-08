@@ -158,6 +158,21 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
     return 201, _entity_out_for_user(entity, request.user)
 
 
+@router.get("/calendar-sources/", response=list[dict], auth=django_auth)
+def list_calendar_sources(request):
+    """{key, name, kind} for every enabled sync_core.CalendarSource — used by
+    the standalone calendar dashboard's source picker. Never exposes url/
+    username/password (see CalendarSource.secret_field_names)."""
+    try:
+        from sync_core.models import CalendarSource
+    except ImportError:
+        return []
+    return [
+        {"key": s.key, "name": s.name, "kind": s.kind}
+        for s in CalendarSource.objects.filter(enabled=True).order_by("name")
+    ]
+
+
 @router.get("/calendar/", response=list[CalendarEntryOut], auth=django_auth)
 def get_calendar(request, start: str, end: str, sources: str = ""):
     """events-and-sync.md §6: aggregated calendar entries in [start, end].

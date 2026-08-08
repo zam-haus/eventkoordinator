@@ -199,6 +199,16 @@ class SyncStatusTypeConfig(Schema):
     model_config = {"extra": "forbid"}
 
 
+class CalendarTypeConfig(Schema):
+    """events-and-sync.md §6/Step 9: read-only aggregated calendar view.
+
+    Each entry is either "type_id:start_field:end_field" (a UDM type;
+    end_field may be "") or "source:<key>" (a sync_core.CalendarSource key).
+    """
+    sources: list[str] = Field(..., min_length=1, max_length=50)
+    model_config = {"extra": "forbid"}
+
+
 _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
     DataType.TEXT_SHORT: TextTypeConfig, DataType.TEXT_LONG: TextTypeConfig,
     DataType.TEXT_MARKDOWN: TextTypeConfig, DataType.TEXT_RICHTEXT: TextTypeConfig,
@@ -230,6 +240,7 @@ _ELEMENT_TYPE_CONFIG_CLS: dict[str, type[Schema]] = {
     "backlink_list": BacklinkListTypeConfig,
     "markdown_display": MarkdownDisplayTypeConfig,
     "sync_status": SyncStatusTypeConfig,
+    "calendar": CalendarTypeConfig,
 }
 
 # ─── FieldDefinition schemas ──────────────────────────────────────────────────

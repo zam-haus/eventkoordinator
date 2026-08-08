@@ -434,6 +434,12 @@ class FormElement(MetaBase):
         # Per-target sync state badges (events-and-sync.md §3.2). No
         # type_config, no data value, no bindings — reads EntityOut.sync_items.
         SYNC_STATUS = "sync_status"
+        # Read-only aggregated calendar view (events-and-sync.md §6/Step 9).
+        # type_config: {"sources": ["type_id:start_field:end_field", ...,
+        # "source:<sync_core.CalendarSource.key>", ...]}. No data value, no
+        # bindings — cross-entity-type aggregation via GET /calendar/, not a
+        # sibling-field binding like date_range.
+        CALENDAR = "calendar"
 
     STRUCTURAL_TYPES = frozenset({
         ElementType.TAB_CONTAINER,
@@ -456,6 +462,7 @@ class FormElement(MetaBase):
         ElementType.MARKDOWN_DISPLAY,
         ElementType.BACKLINK_LIST,
         ElementType.SYNC_STATUS,
+        ElementType.CALENDAR,
     })
 
     version = models.ForeignKey(ConfigVersion, on_delete=models.CASCADE, related_name="form_elements")

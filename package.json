@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@daypilot/daypilot-lite-javascript": "^5.10.0",
     "@git-diff-view/file": "^0.1.1",
     "@git-diff-view/react": "^0.1.1",
     "@playwright/test": "^1.58.2",
