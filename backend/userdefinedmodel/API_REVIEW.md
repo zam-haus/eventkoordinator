@@ -99,10 +99,9 @@ automatic 422 — no clamping logic in the handler.
 ### 7. `execute_migration` only migrates one language of localized fields
 `api_entities.py:585`: `entity.field_values.filter(field=src_field).first()` picks a
 single `FieldValue`. For `is_localized` fields with several language rows, all but one
-language's value is silently dropped (and for overflow, only one language is preserved).
+language's value is silently dropped.
 
-**Decision:** iterate every `FieldValue` per source field (all languages) when mapping
-and when building overflow data.
+**Decision:** iterate every `FieldValue` per source field (all languages) when mapping.
 
 ### 8. `execute_migration` can be replayed
 There is no check that `migration.executed_at` is null, so re-POSTing the same

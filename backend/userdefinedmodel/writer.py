@@ -74,7 +74,6 @@ def serialize_node(node: "UserDefinedModelEntityNode", viewable: dict[str, list[
         "user_defined_model_type_id": None,
         "field_values": field_values,
         "children": children,
-        "overflow_data": node.overflow_data,
         "created_at": node.created_at.isoformat(),
         "updated_at": node.updated_at.isoformat(),
     }

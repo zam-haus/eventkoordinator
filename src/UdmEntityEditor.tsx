@@ -1235,21 +1235,21 @@ export function UdmEntityEditor() {
       )
     }
     if (fd.data_type === 'hstack') {
-      // Render hstack groups (children of this hstack)
+      // Visibility is the policy's decision alone: an hstack that reached this
+      // point is granted in viewable_fields, so it always renders — including
+      // its groups, even when a group ends up with no items (an empty group
+      // still holds its side of the space-between layout).
       const groups = childMap.get(fd.slug) ?? []
-      if (groups.length === 0) return null
 
       const hasMultipleGroups = groups.length > 1
       const groupElements = groups.map(group => {
         const tc = group.type_config as { align?: string } | undefined
         const align = tc?.align ?? 'left'
         const groupItems = (childMap.get(group.slug) ?? []).map(renderHstackGroupButton).filter(Boolean)
-        if (groupItems.length === 0) return null
         const alignClass = align === 'center' ? styles.hstackCenter : align === 'right' ? styles.hstackRight : styles.hstackLeft
         return <div key={group.slug} className={`${styles.hstack} ${alignClass}`}>{groupItems}</div>
-      }).filter(Boolean)
+      })
 
-      if (groupElements.length === 0) return null
       if (!hasMultipleGroups) return <div key={fd.slug}>{groupElements}</div>
       return (
         <div key={fd.slug} className={`${styles.hstack} ${styles.hstackSpaceBetween}`}>

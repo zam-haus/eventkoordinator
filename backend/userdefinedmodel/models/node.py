@@ -80,8 +80,6 @@ class UserDefinedModelEntityNode(MetaBase):
         blank=True,
         related_name="child_nodes",
     )
-    overflow_data = models.JSONField(default=dict)
-
     def get_root(self) -> "UserDefinedModelEntity":
         node = self
         while node.parent_node_id is not None:
@@ -217,7 +215,6 @@ class UserDefinedModelEntityNode(MetaBase):
             "parent_field_slug": self.parent_field.slug if self.parent_field_id else None,
             "fields": fields_data,
             "children": children_data,
-            "overflow_data": self.overflow_data,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

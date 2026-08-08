@@ -95,7 +95,7 @@ class ConfigVersionStatus(str, Enum):
 
 
 class MigrationAction(str, Enum):
-    MAP = "map"; DISCARD = "discard"; OVERFLOW = "overflow"
+    MAP = "map"; DISCARD = "discard"
 
 
 class BulkMigrationStatus(str, Enum):
@@ -651,7 +651,6 @@ class EntityOut(Schema):
     user_defined_model_type_id: Optional[uuid.UUID]
     field_values: list[FieldValueOut]
     children: dict[str, list[Any]]
-    overflow_data: dict[str, Any]
     created_at: str; updated_at: str
     # Per-node grant maps {node_id: [slugs]} covering the whole tree (§3.1-1).
     viewable_fields: dict[str, list[str]] = {}

@@ -80,7 +80,6 @@ SPEAKER_WITH_BIO := {
 		"photo": {"data_type": "image", "localized": false, "value": null},
 	},
 	"children": {},
-	"overflow_data": {},
 }
 
 # ─── Patch builders ─────────────────────────────────────────────────────────────
@@ -274,7 +273,6 @@ _review(rid, author, vote) := {
 		"comment": {"data_type": "text_long", "localized": false, "value": null},
 	},
 	"children": {},
-	"overflow_data": {},
 }
 
 _accept_with(reviews) := _mk([
@@ -1297,7 +1295,6 @@ INPUT_DOCUMENT := {
 					},
 				},
 				"children": {},
-				"overflow_data": {},
 				"created_at": "2026-06-04T15:32:00.597275+00:00",
 				"updated_at": "2026-06-04T15:32:00.597285+00:00",
 			}],
@@ -1325,12 +1322,10 @@ INPUT_DOCUMENT := {
 					},
 				},
 				"children": {},
-				"overflow_data": {},
 				"created_at": "2026-06-04T15:40:04.216447+00:00",
 				"updated_at": "2026-06-04T15:40:04.216453+00:00",
 			}],
 		},
-		"overflow_data": {},
 		"created_at": "2026-06-04T14:27:49.295195+00:00",
 		"updated_at": "2026-06-04T14:27:49.295229+00:00",
 	},

@@ -74,7 +74,7 @@ function suggestMappings(sourceFields: FieldDefinitionOut[], targetFields: Field
     if (tgt && isCompatible(sf.data_type, tgt.data_type)) {
       state[sf.slug] = { action: 'map', target: sf.slug }
     } else {
-      state[sf.slug] = { action: 'overflow', target: '' }
+      state[sf.slug] = { action: 'discard', target: '' }
     }
   }
   return state
@@ -127,7 +127,7 @@ function FieldMappingTable({ rows, targetFields, value, onChange, disabled }: Fi
       </thead>
       <tbody>
         {rows.map(row => {
-          const m = value[row.sourceSlug] ?? { action: 'overflow' as MigrationAction, target: '' }
+          const m = value[row.sourceSlug] ?? { action: 'discard' as MigrationAction, target: '' }
           return (
             <tr key={row.sourceSlug}>
               <td style={td}>
@@ -144,7 +144,6 @@ function FieldMappingTable({ rows, targetFields, value, onChange, disabled }: Fi
                     set(row.sourceSlug, { action, target: action === 'map' ? m.target : '' })
                   }}>
                   <option value="map">Map to field</option>
-                  <option value="overflow">Keep in overflow</option>
                   <option value="discard">Discard</option>
                 </select>
               </td>
@@ -282,7 +281,7 @@ export function MigrationAssistant({ entityId, targetTypeId, sourceConfig, onMig
           ) : (
             <>
               <div style={{ fontSize: '0.85rem', color: '#555', marginBottom: '0.5rem' }}>
-                Choose how each field maps into the new version. Fields kept in overflow are preserved as raw text; discarded fields are dropped.
+                Choose how each field maps into the new version. Discarded fields are dropped.
               </div>
               <FieldMappingTable rows={rows} targetFields={targetFields} value={mapping} onChange={setMapping} disabled={busy} />
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.8rem', justifyContent: 'flex-end' }}>

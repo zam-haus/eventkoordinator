@@ -327,7 +327,6 @@ example_child := {
 	"schema_id": EXAMPLE_CHILD_SCHEMA,
 	"fields": {"vote": {"data_type": "select_single", "localized": false, "value": "accept"}},
 	"children": {}, # depth limit: no grandchildren
-	"overflow_data": {},
 	"created_at": "2026-01-01T00:00:00Z",
 	"updated_at": "2026-01-01T00:00:00Z",
 }
@@ -347,7 +346,6 @@ example_linked_entity := {
 	"type_id": EXAMPLE_TYPE_ID,
 	"fields": example_base_fields,
 	"children": {},
-	"overflow_data": {},
 	"created_at": "2026-01-01T00:00:00Z",
 	"updated_at": "2026-01-01T00:00:00Z",
 }
@@ -367,7 +365,6 @@ example_entity(field_variant, children_variant) := {
 	"type_id": EXAMPLE_TYPE_ID,
 	"fields": example_field_variants[field_variant],
 	"children": example_children_variants[children_variant],
-	"overflow_data": {},
 	"created_at": "2026-01-01T00:00:00Z",
 	"updated_at": "2026-01-01T00:00:00Z",
 }

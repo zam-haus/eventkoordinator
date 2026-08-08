@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('action', models.CharField(choices=[('map', 'Map'), ('discard', 'Discard'), ('overflow', 'Overflow')], max_length=10)),
+                ('action', models.CharField(choices=[('map', 'Map'), ('discard', 'Discard')], max_length=10)),
                 ('source_field', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='+', to='userdefinedmodel.fielddefinition')),
                 ('target_field', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='+', to='userdefinedmodel.fielddefinition')),
                 ('submodel_mapping', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='field_mappings', to='userdefinedmodel.bulkmigrationsubmodelmapping')),

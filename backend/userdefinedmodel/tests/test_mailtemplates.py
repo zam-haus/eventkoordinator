@@ -30,9 +30,15 @@ class TimezoneFilterTests(TestCase):
         self.assertEqual(tz_convert(value, BERLIN).hour, 12)
 
     def test_naive_datetime_is_interpreted_in_project_timezone(self):
-        # settings.TIME_ZONE is UTC, so 10:00 naive == 12:00 Berlin in summer.
+        # A naive value means wall-clock time in settings.TIME_ZONE, whatever
+        # that is set to — pin it here rather than assume the deployment's.
         value = datetime.datetime(2026, 8, 8, 10, 0)
-        self.assertEqual(tz_convert(value, BERLIN).hour, 12)
+        with override_settings(TIME_ZONE="UTC"):
+            # 10:00 UTC == 12:00 Berlin in summer.
+            self.assertEqual(tz_convert(value, BERLIN).hour, 12)
+        with override_settings(TIME_ZONE=BERLIN):
+            # Already Berlin wall time: converting to Berlin changes nothing.
+            self.assertEqual(tz_convert(value, BERLIN).hour, 10)
 
     def test_winter_time_uses_plus_one(self):
         value = datetime.datetime(2026, 1, 8, 10, 0, tzinfo=datetime.timezone.utc)

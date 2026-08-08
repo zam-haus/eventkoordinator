@@ -124,7 +124,10 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+# The wall clock users think in. Storage stays UTC (USE_TZ); this is what
+# Django reads and renders local times as — admin, forms, and the dashboard
+# filter query, where a typed "15.03.2024 19:00" means 19:00 here.
+TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "Europe/Berlin")
 USE_I18N = True
 USE_TZ = True
 

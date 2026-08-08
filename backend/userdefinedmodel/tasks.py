@@ -173,7 +173,6 @@ def _apply_field_mappings_to_node(node, mappings, target_version, workflow_state
     from userdefinedmodel.models import FieldValue, MigrationFieldMapping
 
     old_version = node.config_version
-    overflow = {}
     for bm in mappings:
         src_field = bm.source_field
         fv = node.field_values.filter(field=src_field).first()
@@ -195,11 +194,7 @@ def _apply_field_mappings_to_node(node, mappings, target_version, workflow_state
                 )
                 new_fv.set_value(val, field=bm.target_field)
                 new_fv.save()
-        elif bm.action == "overflow":
-            overflow[src_field.slug] = str(fv.get_value())
-
-    if overflow:
-        node.overflow_data = {**node.overflow_data, **overflow}
+        # "discard": the source FieldValue rows are deleted just below.
 
     # Remove stale field values from the old version so they don't pollute
     # serialization or conflict with values created by materialize_defaults.
@@ -207,7 +202,7 @@ def _apply_field_mappings_to_node(node, mappings, target_version, workflow_state
 
     node.config_version = target_version
     node.validate_for_save()
-    node.save(update_fields=["config_version", "overflow_data"])
+    node.save(update_fields=["config_version"])
     node.materialize_defaults()
 
 

@@ -2328,3 +2328,63 @@ class EntityFilterQueryTests(BaseAPITest):
         UserDefinedModelEntity.objects.filter(user_defined_model_type=udm_type).delete()
         resp = self.get(f"/entities/?type_id={udm_type.id}&q=berlin~2")
         self.assertEqual(resp.status_code, 400, resp.content)
+
+
+# A policy that permits viewing the entity but grants NO field at all: the
+# entity is listed, its values are redacted away.
+REGO_VIEW_BUT_NO_FIELDS = """
+package udm
+
+import rego.v1
+
+result := {
+    "allow": true,
+    "messages": [],
+    "viewable_fields": {},
+    "editable_fields": {},
+    "valid_transitions": [],
+    "actions": [],
+    "dashboard_columns": [],
+    "additional_result": {"view_allowed": true, "editable": []},
+}
+"""
+
+
+class EntityFilterPolicyTests(BaseAPITest):
+    """A filter query must never reach past the policy: neither denied entities
+    nor redacted fields may be matched, and matching must not leak either."""
+
+    def _entity(self, title, policy_source):
+        from userdefinedmodel.models import FieldValue, DataField
+        entity, udm_type, version, _ = make_entity_with_type(policy_source=policy_source)
+        field = DataField.objects.get(version=version, slug="title")
+        FieldValue.objects.create(node=entity, field=field, language="", value_text=title)
+        return entity, udm_type
+
+    def test_denied_entities_are_absent_with_and_without_a_query(self):
+        _, udm_type = self._entity("Berlin Meetup", REGO_DENY_ALL)
+        self.assertEqual(self.get(f"/entities/?type_id={udm_type.id}").json(), [])
+        # A query that would match the hidden value must not resurrect it.
+        self.assertEqual(self.get(f"/entities/?type_id={udm_type.id}&q=title:berlin").json(), [])
+        self.assertEqual(self.get(f"/entities/?type_id={udm_type.id}&q=berlin").json(), [])
+
+    def test_redacted_fields_are_not_returned_and_not_filterable(self):
+        entity, udm_type = self._entity("Berlin Meetup", REGO_VIEW_BUT_NO_FIELDS)
+
+        listed = self.get(f"/entities/?type_id={udm_type.id}").json()
+        self.assertEqual([e["id"] for e in listed], [str(entity.id)])
+        self.assertEqual(listed[0]["field_values"], [], "field must be redacted out")
+
+        # Every route to the invisible value must come back empty: by field
+        # name, unqualified (which searches submodels too), and by wildcard.
+        for query in ["title:berlin", "berlin", "title:*", "title:Ber*", '"Berlin Meetup"']:
+            with self.subTest(query=query):
+                resp = self.get(f"/entities/?type_id={udm_type.id}&q={query}")
+                self.assertEqual(resp.status_code, 200, resp.content)
+                self.assertEqual(resp.json(), [], f"{query} matched a redacted field")
+
+    def test_a_visible_field_is_still_filterable_for_the_same_shape(self):
+        # Guards the tests above against passing for the wrong reason.
+        entity, udm_type = self._entity("Berlin Meetup", ALLOW_ALL_POLICY)
+        resp = self.get(f"/entities/?type_id={udm_type.id}&q=title:berlin")
+        self.assertEqual([e["id"] for e in resp.json()], [str(entity.id)])

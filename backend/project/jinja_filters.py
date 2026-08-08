@@ -14,7 +14,15 @@ from zoneinfo import ZoneInfo
 from jinja2 import Undefined
 from markupsafe import Markup, escape
 
-DEFAULT_TIMEZONE = "Europe/Berlin"
+#: Fallback when a template calls ``| timezone`` without an argument. Follows
+#: settings.TIME_ZONE so there is one project-wide notion of local time; the
+#: literal is kept for the rare import that happens outside Django.
+try:
+    from django.conf import settings as _settings
+
+    DEFAULT_TIMEZONE = _settings.TIME_ZONE
+except Exception:  # pragma: no cover - settings not configured
+    DEFAULT_TIMEZONE = "Europe/Berlin"
 
 #: Prefix used by :func:`userinput` to mark quoted user-supplied text.
 DEFAULT_USERINPUT_PREFIX = "    "

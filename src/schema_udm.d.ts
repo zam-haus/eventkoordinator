@@ -230,6 +230,10 @@ export interface paths {
          * List Entities
          * @description List entities for a single UDM type, filtered to those the user may view.
          *     Field values are reduced to the viewable set per entity (policy-enforced).
+         *
+         *     ``q`` is an optional Lucene-like filter query (see
+         *     :mod:`userdefinedmodel.searchquery`). It is evaluated against the
+         *     policy-redacted serialization, so it can never match a hidden field.
          */
         get: operations["userdefinedmodel_api_entities_list_entities"];
         put?: never;
@@ -443,10 +447,10 @@ export interface paths {
         put?: never;
         /**
          * Import Bundle Zip
-         * @description Import a ZIP bundle (UDM_BUNDLE.json + policies/*.rego).
+         * @description Import a ZIP bundle. See :func:`import_bundle_bytes` for the semantics.
          *
-         *     scope_type_ids: comma-separated UUID strings of in-scope UDM Types.
-         *     policy_slug: if set, save each policy rego with its own slug (already done from policies/ dir).
+         *     policy_slug: accepted for backwards compatibility; policy sources already
+         *     carry their own slug via the policies/ directory.
          */
         post: operations["userdefinedmodel_api_bundle_import_bundle_zip"];
         delete?: never;
@@ -930,6 +934,16 @@ export interface components {
         BulkMigrationStatus: "draft" | "running" | "done" | "partial";
         /** BundleExportIn */
         BundleExportIn: {
+            /**
+             * Extra Template Slugs
+             * @default []
+             */
+            extra_template_slugs: string[];
+            /**
+             * Include All Templates
+             * @default false
+             */
+            include_all_templates: boolean;
             /** Scope Type Ids */
             scope_type_ids: string[];
         };
@@ -1122,10 +1136,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Overflow Data */
-            overflow_data: {
-                [key: string]: unknown;
-            };
             /**
              * Policy Messages
              * @default []
@@ -1690,7 +1700,7 @@ export interface components {
          * MigrationAction
          * @enum {string}
          */
-        MigrationAction: "map" | "discard" | "overflow";
+        MigrationAction: "map" | "discard";
         /** MigrationExecuteIn */
         MigrationExecuteIn: {
             /**
@@ -2494,6 +2504,7 @@ export interface operations {
             query: {
                 type_id: string;
                 page_size?: number;
+                q?: string;
             };
             header?: never;
             path?: never;

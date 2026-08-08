@@ -21,7 +21,8 @@ Beyond Lucene, collections (submodels) are searchable with quantifiers::
 
 Values are stored as strings, so terms and range bounds are compared as
 numbers, then as datetimes (via ``dateparser``, so ``15.03.2024``, ``March 15
-2024`` and ``2024-03-15`` are the same instant), then as text::
+2024`` and ``2024-03-15`` are the same instant), then as text. Times without an
+offset are read in Django's active timezone::
 
     starts_at:[2024-03-01 TO 2024-03-31]
     starts_at:["2024-03-15 18:00" TO *]
@@ -30,12 +31,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field as dc_field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone as dt_timezone
 from functools import lru_cache
 from typing import Any, Iterable, Sequence
 
 import dateparser
 import pyparsing as pp
+from django.utils import timezone
 
 __all__ = [
     "QuerySyntaxError",
@@ -130,7 +132,7 @@ def _number(tokens: pp.ParseResults) -> float:
 def _build_grammar() -> pp.ParserElement:
     pp.ParserElement.enablePackrat()
 
-    LPAR, RPAR, LBRACK, RBRACK, LBRACE, RBRACE = map(pp.Suppress, "()[]{}")
+    LPAR, RPAR = map(pp.Suppress, "()")
     COLON = pp.Suppress(":")
     TO = pp.Keyword("TO").suppress()
 
@@ -163,8 +165,11 @@ def _build_grammar() -> pp.ParserElement:
     field_prefix = ~keyword + field_name("field") + COLON
 
     range_endpoint = pp.Literal("*") | quoted_text | pp.Regex(r"[^\s\]\}]+")
-    incl_range = pp.Group(LBRACK + range_endpoint + TO + range_endpoint + RBRACK)
-    excl_range = pp.Group(LBRACE + range_endpoint + TO + range_endpoint + RBRACE)
+    # Brackets may be mixed, so half-open ranges are expressible:
+    # "[2024-03-01 TO 2024-04-01}" is exactly the month of March.
+    range_expr = pp.Group(
+        pp.one_of("[ {")("open") + range_endpoint + TO + range_endpoint + pp.one_of("] }")("close")
+    )
 
     expression = pp.Forward()
 
@@ -174,15 +179,15 @@ def _build_grammar() -> pp.ParserElement:
     def _endpoint(raw: str) -> str | None:
         return None if raw == "*" else _unescape(raw)
 
-    @incl_range.add_parse_action
-    def _mk_incl(tokens):
-        lo, hi = tokens[0]
-        return Range(_endpoint(lo), _endpoint(hi), True, True)
-
-    @excl_range.add_parse_action
-    def _mk_excl(tokens):
-        lo, hi = tokens[0]
-        return Range(_endpoint(lo), _endpoint(hi), False, False)
+    @range_expr.add_parse_action
+    def _mk_range(tokens):
+        group = tokens[0]
+        _, lo, hi, _ = group
+        return Range(
+            _endpoint(lo), _endpoint(hi),
+            include_lower=group["open"] == "[",
+            include_upper=group["close"] == "]",
+        )
 
     phrase = pp.Group(quoted_text + pp.Optional(proximity, default=None))
     phrase.add_parse_action(lambda t: Phrase(t[0][0], proximity=(int(t[0][1]) if t[0][1] is not None else None)))
@@ -215,7 +220,7 @@ def _build_grammar() -> pp.ParserElement:
     malformed_quantifier = (quantifier_kw + pp.FollowedBy("(")).copy()
     malformed_quantifier.add_parse_action(_bad_quantifier)
 
-    atom = quantified | malformed_quantifier | incl_range | excl_range | phrase | wildcard | plain_term
+    atom = quantified | malformed_quantifier | range_expr | phrase | wildcard | plain_term
     grouped = pp.Group(LPAR + expression + RPAR).add_parse_action(lambda t: t[0][0])
 
     fielded = pp.Group(field_prefix + (grouped | atom))
@@ -380,8 +385,6 @@ def build_document(node: Any, slug_id_prefixes: dict[str, str] | None = None) ->
         if prefix:
             values = [*values, *(f"{prefix}-{v}" for v in values)]
         doc.fields.setdefault(slug, []).extend(values)
-    for key, value in (data.get("overflow_data") or {}).items():
-        doc.fields.setdefault(key, []).extend(_stringify(value))
     for col in data.get("dashboard_columns") or []:
         col = col if isinstance(col, dict) else col.dict()
         doc.fields.setdefault(col["key"], []).extend(_stringify(col.get("value")))
@@ -439,30 +442,68 @@ _DATEISH_RE = re.compile(r"(?=.*\d)(?=.*[^\W\d_]|.*[-/.:,])", re.UNICODE)
 
 
 @lru_cache(maxsize=8192)
-def _as_datetime(text: str) -> datetime | None:
-    """Parse a free-text date/datetime, or None if it isn't one.
+def _parse_datetime(text: str, tz_name: str) -> datetime | None:
+    """dateparser, pinned to one timezone. Cached per (text, timezone) — the
+    same text denotes different instants in different zones."""
+    parsed = dateparser.parse(text, settings={
+        # Input without an offset is wall-clock time in the active timezone…
+        "TIMEZONE": tz_name,
+        # …and everything is compared in one frame, so a stored "+01:00" is
+        # converted rather than having its offset thrown away.
+        "RETURN_AS_TIMEZONE_AWARE": True,
+        "TO_TIMEZONE": "UTC",
+    })
+    return parsed
 
-    Field values are plain strings ("15.03.2024", "March 15 2024, 18:00"), so
-    both sides of a comparison go through dateparser and are compared as
-    datetimes. Naive results only — mixing tz-aware and naive is not orderable.
+
+def _as_datetime(text: str) -> datetime | None:
+    """Parse a free-text date/datetime as an aware UTC instant, or None if it
+    isn't one.
+
+    Stored values are strings, and datetime fields serialize with an offset
+    ("2024-03-15T18:00:00+00:00") while a user types wall-clock time
+    ("15.03.2024 19:00"). Both sides go through here, so both end up as the
+    same instant: the typed one is read in Django's active timezone.
     """
     text = text.strip()
     if not text or not _DATEISH_RE.match(text):
         return None
-    parsed = dateparser.parse(text, settings={"RETURN_AS_TIMEZONE_AWARE": False})
-    return parsed.replace(tzinfo=None) if parsed is not None else None
+    return _parse_datetime(text, str(timezone.get_current_timezone()))
 
 
-def _typed_keys(text: str) -> dict[str, Any]:
-    """All orderable interpretations of a string, by kind."""
+#: Whether the text pins a time of day. Without one it denotes a whole day,
+#: and which instants fall in that day depends on the active timezone.
+_HAS_TIME_RE = re.compile(r"\d{1,2}:\d{2}")
+
+
+def _datetime_span(text: str) -> tuple[datetime, datetime] | None:
+    """The (first, last) instant the text denotes: a single instant when it
+    carries a time of day, otherwise the whole local calendar day."""
+    moment = _as_datetime(text)
+    if moment is None:
+        return None
+    if _HAS_TIME_RE.search(text):
+        return moment, moment
+    local = moment.astimezone(timezone.get_current_timezone())
+    start = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1) - timedelta(microseconds=1)
+    return start.astimezone(dt_timezone.utc), end.astimezone(dt_timezone.utc)
+
+
+def _typed_keys(text: str, edge: str = "start") -> dict[str, Any]:
+    """All orderable interpretations of a string, by kind.
+
+    ``edge`` picks which end of a whole-day span represents a date written
+    without a time, so that an inclusive upper bound covers the entire day.
+    """
     keys: dict[str, Any] = {"text": text.strip().lower()}
     number = _as_number(text)
     if number is not None:
         keys["number"] = number
     else:
-        moment = _as_datetime(text)
-        if moment is not None:
-            keys["datetime"] = moment
+        span = _datetime_span(text)
+        if span is not None:
+            keys["datetime"] = span[0] if edge == "start" else span[1]
     return keys
 
 
@@ -485,11 +526,7 @@ def _match_term(node: Term, doc: Document) -> bool:
             return True
     elif any(node.value.lower() in _tokens(value) for value in values):
         return True
-    # Date equality: `starts_at:2024-03-15` also matches "15. März 2024".
-    wanted = _as_datetime(node.value)
-    if wanted is None:
-        return False
-    return any(_as_datetime(value) == wanted for value in values)
+    return _match_as_datetime(node.value, values)
 
 
 def _match_tokens(needle: list[str], values: Iterable[str]) -> bool:
@@ -504,9 +541,28 @@ def _match_tokens(needle: list[str], values: Iterable[str]) -> bool:
     return False
 
 
+def _match_as_datetime(text: str, values: Iterable[str]) -> bool:
+    """Equality as instants: `starts_at:2024-03-15` also matches "15. März
+    2024", and a quoted "2024-03-15 19:00" matches the same moment stored as
+    "2024-03-15T18:00:00+00:00"."""
+    span = _datetime_span(text)
+    if span is None:
+        return False
+    start, end = span
+    return any(
+        moment is not None and start <= moment <= end
+        for moment in (_as_datetime(value) for value in values)
+    )
+
+
 def _match_phrase(node: Phrase, doc: Document) -> bool:
     _reject_unsupported(node)
-    return _match_tokens(_tokens(node.value), doc.values(node.field))
+    values = doc.values(node.field)
+    if _match_tokens(_tokens(node.value), values):
+        return True
+    # A datetime with a time of day has to be quoted to survive tokenization,
+    # so the phrase form needs the same instant comparison a bare term gets.
+    return _match_as_datetime(node.value, values)
 
 
 #: Comparison kinds, most specific first. A range uses the first kind that both
@@ -517,8 +573,11 @@ _KINDS = ("number", "datetime", "text")
 
 def _match_range(node: Range, doc: Document) -> bool:
     _reject_unsupported(node)
-    lower = _typed_keys(node.lower) if node.lower is not None else None
-    upper = _typed_keys(node.upper) if node.upper is not None else None
+    # A bare date is a whole day, so which end of it bounds the range depends
+    # on the bracket: "[2024-03-01 TO 2024-03-31]" spans March 1st 00:00 to
+    # March 31st 23:59:59.999999, local time.
+    lower = _typed_keys(node.lower, "start" if node.include_lower else "end") if node.lower is not None else None
+    upper = _typed_keys(node.upper, "end" if node.include_upper else "start") if node.upper is not None else None
     for value in doc.values(node.field):
         keys = _typed_keys(value)
         for kind in _KINDS:

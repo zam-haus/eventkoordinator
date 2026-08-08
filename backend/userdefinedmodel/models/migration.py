@@ -7,7 +7,6 @@ class UserDefinedModelEntityMigration(MetaBase):
     class Action(models.TextChoices):
         MAP = "map"
         DISCARD = "discard"
-        OVERFLOW = "overflow"
 
     user_defined_model_entity = models.ForeignKey(
         "userdefinedmodel.UserDefinedModelEntity",

@@ -104,7 +104,6 @@ Root and submodel nodes have the **identical** shape; every node carries the UUI
   "parent_field_slug": "<slug|null>",
   "fields":   { "<slug>": { "data_type", "localized", "value" } },
   "children": { "<slug>": [ <NodeDocument> ] },
-  "overflow_data": {},
   "created_at": "<ISO-8601>", "updated_at": "<ISO-8601>"
 }
 ```

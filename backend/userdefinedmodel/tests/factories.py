@@ -344,7 +344,6 @@ class UserDefinedModelEntityFactory(DjangoModelFactory):
 
     config_version = factory.SubFactory(PublishedConfigVersionFactory)
     user_defined_model_type = factory.SubFactory(UserDefinedModelTypeFactory)
-    overflow_data = {}
 
 
 class SubmodelInstanceFactory(DjangoModelFactory):

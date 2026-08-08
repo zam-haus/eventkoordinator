@@ -633,7 +633,6 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
         )
         source_field_map = {f.slug: f for f in entity.config_version.field_definitions.all()}
         target_field_map = {f.slug: f for f in tgt_version.field_definitions.all()}
-        overflow = {}
 
         for mapping_in in payload.field_mappings:
             src_field = source_field_map.get(mapping_in.source_field_slug)
@@ -653,11 +652,8 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
                             new_fv, _ = FieldValue.objects.get_or_create(node=entity, field=tgt_field, language=fv.language)
                             new_fv.set_value(val, field=tgt_field)
                             new_fv.save()
-            elif action == "overflow":
-                if src_field.is_localized:
-                    overflow[src_field.slug] = {fv.language: str(fv.get_value()) for fv in fvs}
-                else:
-                    overflow[src_field.slug] = str(fvs[0].get_value())
+            # "discard": nothing to carry over — the old FieldValue rows belong
+            # to the source version and stop being serialized after the switch.
             MigrationFieldMapping.objects.create(
                 migration=migration,
                 source_field=src_field,
@@ -665,8 +661,6 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
                 target_field=target_field_map.get(mapping_in.target_field_slug) if mapping_in.target_field_slug else None,
             )
 
-        if overflow:
-            entity.overflow_data = {**entity.overflow_data, **overflow}
         entity.config_version = tgt_version
         entity.user_defined_model_type = tgt_type
         try:
@@ -675,7 +669,7 @@ def execute_migration(request, entity_id: uuid.UUID, payload: MigrationExecuteIn
             transaction.set_rollback(True)
             errors = exc.message_dict if hasattr(exc, "message_dict") else {"__all__": exc.messages}
             return JsonResponse({"errors": errors}, status=400)
-        entity.save(update_fields=["config_version", "user_defined_model_type", "overflow_data"])
+        entity.save(update_fields=["config_version", "user_defined_model_type"])
         entity.materialize_defaults()
         # Save gate on the MIGRATED state: evaluate "save" as if the new entity
         # were the preexisting one (old doc == new doc), so the policy verifies

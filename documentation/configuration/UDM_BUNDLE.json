@@ -418,23 +418,9 @@
       "parent_slug": "nav-general"
      },
      {
-      "slug": "save-button-4",
-      "data_type": "save_button",
-      "sort_order": 15,
-      "is_localized": false,
-      "is_preview": false,
-      "labels": null,
-      "help_texts": {},
-      "type_config": {},
-      "default": null,
-      "submodel_config_version_id": null,
-      "workflow_version_id": null,
-      "parent_slug": "nav-general-right"
-     },
-     {
       "slug": "next-general",
       "data_type": "tab_next",
-      "sort_order": 16,
+      "sort_order": 15,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -450,7 +436,7 @@
      {
       "slug": "tab-participants",
       "data_type": "tab",
-      "sort_order": 17,
+      "sort_order": 16,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -466,7 +452,7 @@
      {
       "slug": "is-basic-course",
       "data_type": "boolean",
-      "sort_order": 18,
+      "sort_order": 17,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -486,7 +472,7 @@
      {
       "slug": "max-participants",
       "data_type": "integer",
-      "sort_order": 19,
+      "sort_order": 18,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -503,7 +489,7 @@
      {
       "slug": "material-cost-eur",
       "data_type": "float",
-      "sort_order": 20,
+      "sort_order": 19,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -522,7 +508,7 @@
      {
       "slug": "nav-participants",
       "data_type": "hstack",
-      "sort_order": 21,
+      "sort_order": 20,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -536,7 +522,7 @@
      {
       "slug": "nav-participants-left",
       "data_type": "hstack_group",
-      "sort_order": 22,
+      "sort_order": 21,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -552,7 +538,7 @@
      {
       "slug": "prev-participants",
       "data_type": "tab_prev",
-      "sort_order": 23,
+      "sort_order": 22,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -568,7 +554,7 @@
      {
       "slug": "nav-participants-right",
       "data_type": "hstack_group",
-      "sort_order": 24,
+      "sort_order": 23,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -582,23 +568,9 @@
       "parent_slug": "nav-participants"
      },
      {
-      "slug": "save-button-3",
-      "data_type": "save_button",
-      "sort_order": 25,
-      "is_localized": false,
-      "is_preview": false,
-      "labels": null,
-      "help_texts": {},
-      "type_config": {},
-      "default": null,
-      "submodel_config_version_id": null,
-      "workflow_version_id": null,
-      "parent_slug": "nav-participants-right"
-     },
-     {
       "slug": "next-participants",
       "data_type": "tab_next",
-      "sort_order": 26,
+      "sort_order": 24,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -614,7 +586,7 @@
      {
       "slug": "tab-scheduling",
       "data_type": "tab",
-      "sort_order": 27,
+      "sort_order": 25,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -630,7 +602,7 @@
      {
       "slug": "duration-days",
       "data_type": "integer",
-      "sort_order": 28,
+      "sort_order": 26,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -650,7 +622,7 @@
      {
       "slug": "duration-time-per-day",
       "data_type": "text_short",
-      "sort_order": 29,
+      "sort_order": 27,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -670,7 +642,7 @@
      {
       "slug": "occurrence-count",
       "data_type": "integer",
-      "sort_order": 30,
+      "sort_order": 28,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -690,7 +662,7 @@
      {
       "slug": "preferred-dates",
       "data_type": "text_long",
-      "sort_order": 31,
+      "sort_order": 29,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -710,7 +682,7 @@
      {
       "slug": "nav-scheduling",
       "data_type": "hstack",
-      "sort_order": 32,
+      "sort_order": 30,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -724,7 +696,7 @@
      {
       "slug": "nav-scheduling-left",
       "data_type": "hstack_group",
-      "sort_order": 33,
+      "sort_order": 31,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -740,7 +712,7 @@
      {
       "slug": "prev-scheduling",
       "data_type": "tab_prev",
-      "sort_order": 34,
+      "sort_order": 32,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -756,7 +728,7 @@
      {
       "slug": "nav-scheduling-right",
       "data_type": "hstack_group",
-      "sort_order": 35,
+      "sort_order": 33,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -770,23 +742,9 @@
       "parent_slug": "nav-scheduling"
      },
      {
-      "slug": "save-button-2",
-      "data_type": "save_button",
-      "sort_order": 36,
-      "is_localized": false,
-      "is_preview": false,
-      "labels": null,
-      "help_texts": {},
-      "type_config": {},
-      "default": null,
-      "submodel_config_version_id": null,
-      "workflow_version_id": null,
-      "parent_slug": "nav-scheduling-right"
-     },
-     {
       "slug": "next-scheduling",
       "data_type": "tab_next",
-      "sort_order": 37,
+      "sort_order": 34,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -802,7 +760,7 @@
      {
       "slug": "tab-people",
       "data_type": "tab",
-      "sort_order": 38,
+      "sort_order": 35,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -818,7 +776,7 @@
      {
       "slug": "has-building-access",
       "data_type": "boolean",
-      "sort_order": 39,
+      "sort_order": 36,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -835,7 +793,7 @@
      {
       "slug": "editors",
       "data_type": "user_select_multi",
-      "sort_order": 40,
+      "sort_order": 37,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -853,9 +811,31 @@
       "parent_slug": "tab-people"
      },
      {
+      "slug": "speakers",
+      "data_type": "submodel_list",
+      "sort_order": 38,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Speakers",
+       "de": "Referent*innen"
+      },
+      "help_texts": {
+       "en": "People who will present this session. At least one speaker is required.",
+       "de": "Personen, die diese Veranstaltung pr\u00e4sentieren. Mindestens eine Referent*in ist erforderlich."
+      },
+      "type_config": {
+       "renderer": "list"
+      },
+      "default": null,
+      "submodel_config_version_id": "23b0eb2c-53cf-4e13-b516-416c38937d99",
+      "workflow_version_id": null,
+      "parent_slug": "tab-people"
+     },
+     {
       "slug": "nav-people",
       "data_type": "hstack",
-      "sort_order": 41,
+      "sort_order": 39,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -869,7 +849,7 @@
      {
       "slug": "nav-people-left",
       "data_type": "hstack_group",
-      "sort_order": 42,
+      "sort_order": 40,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -885,7 +865,7 @@
      {
       "slug": "prev-people",
       "data_type": "tab_prev",
-      "sort_order": 43,
+      "sort_order": 41,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -901,7 +881,7 @@
      {
       "slug": "nav-people-right",
       "data_type": "hstack_group",
-      "sort_order": 44,
+      "sort_order": 42,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -915,23 +895,9 @@
       "parent_slug": "nav-people"
      },
      {
-      "slug": "save-button",
-      "data_type": "save_button",
-      "sort_order": 45,
-      "is_localized": false,
-      "is_preview": false,
-      "labels": null,
-      "help_texts": {},
-      "type_config": {},
-      "default": null,
-      "submodel_config_version_id": null,
-      "workflow_version_id": null,
-      "parent_slug": "nav-people-right"
-     },
-     {
       "slug": "next-people",
       "data_type": "tab_next",
-      "sort_order": 46,
+      "sort_order": 43,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -947,7 +913,7 @@
      {
       "slug": "tab-submission",
       "data_type": "tab",
-      "sort_order": 47,
+      "sort_order": 44,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -963,7 +929,7 @@
      {
       "slug": "internal-notes",
       "data_type": "text_long",
-      "sort_order": 48,
+      "sort_order": 45,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -983,7 +949,7 @@
      {
       "slug": "moderation-comment",
       "data_type": "text_long",
-      "sort_order": 49,
+      "sort_order": 46,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1003,7 +969,7 @@
      {
       "slug": "requested-reviewer-groups",
       "data_type": "group_select_multi",
-      "sort_order": 50,
+      "sort_order": 47,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1023,7 +989,7 @@
      {
       "slug": "requested-reviewer-users",
       "data_type": "user_select_multi",
-      "sort_order": 51,
+      "sort_order": 48,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1043,7 +1009,7 @@
      {
       "slug": "nav-submission",
       "data_type": "hstack",
-      "sort_order": 52,
+      "sort_order": 49,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -1057,7 +1023,7 @@
      {
       "slug": "nav-submission-left",
       "data_type": "hstack_group",
-      "sort_order": 53,
+      "sort_order": 50,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -1073,7 +1039,7 @@
      {
       "slug": "prev-submission",
       "data_type": "tab_prev",
-      "sort_order": 54,
+      "sort_order": 51,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -1089,7 +1055,7 @@
      {
       "slug": "nav-submission-right",
       "data_type": "hstack_group",
-      "sort_order": 55,
+      "sort_order": 52,
       "is_localized": false,
       "is_preview": false,
       "labels": null,
@@ -1103,48 +1069,9 @@
       "parent_slug": "nav-submission"
      },
      {
-      "slug": "save-submission",
-      "data_type": "save_button",
-      "sort_order": 56,
-      "is_localized": false,
-      "is_preview": false,
-      "labels": null,
-      "help_texts": {},
-      "type_config": {
-       "label": "Save / Speichern",
-       "variant": "success"
-      },
-      "default": null,
-      "submodel_config_version_id": null,
-      "workflow_version_id": null,
-      "parent_slug": "nav-submission-right"
-     },
-     {
-      "slug": "speakers",
-      "data_type": "submodel_list",
-      "sort_order": 57,
-      "is_localized": false,
-      "is_preview": false,
-      "labels": {
-       "en": "Speakers",
-       "de": "Referent*innen"
-      },
-      "help_texts": {
-       "en": "People who will present this session. At least one speaker is required.",
-       "de": "Personen, die diese Veranstaltung pr\u00e4sentieren. Mindestens eine Referent*in ist erforderlich."
-      },
-      "type_config": {
-       "renderer": "list"
-      },
-      "default": null,
-      "submodel_config_version_id": "23b0eb2c-53cf-4e13-b516-416c38937d99",
-      "workflow_version_id": null,
-      "parent_slug": null
-     },
-     {
       "slug": "reviews",
       "data_type": "submodel_list",
-      "sort_order": 58,
+      "sort_order": 53,
       "is_localized": false,
       "is_preview": false,
       "labels": {

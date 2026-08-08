@@ -1,7 +1,12 @@
 """Unit tests for the Lucene-like dashboard filter query language."""
+from datetime import timedelta
+
+from django.conf import settings
 from django.test import SimpleTestCase
+from django.utils import timezone
 
 from userdefinedmodel.searchquery import (
+    _as_datetime,
     BoolQuery,
     Document,
     MatchAll,
@@ -325,6 +330,79 @@ class DateTests(SimpleTestCase):
         self.assertTrue(matches("city:[Amsterdam TO Cologne]", self.d))
 
 
+class TimezoneTests(SimpleTestCase):
+    """Stored datetimes carry an offset; typed ones are wall-clock in Django's
+    active timezone. Both must land on the same instant."""
+
+    def setUp(self):
+        # What a datetime field serializes to: 18:00 UTC, i.e. 19:00 in Berlin
+        # (CET, before the DST switch) — and 19:00 is what the UI shows there.
+        self.d = doc(starts_at="2024-03-15T18:00:00+00:00")
+
+    def test_stored_offset_is_converted_not_discarded(self):
+        same_instant = doc(starts_at="2024-03-15T19:00:00+01:00")
+        with timezone.override("UTC"):
+            self.assertTrue(matches("starts_at:[2024-03-15T18:00:00+00:00 TO *]", same_instant))
+            self.assertFalse(matches("starts_at:[2024-03-15T18:00:01+00:00 TO *]", same_instant))
+
+    def test_typed_time_is_read_in_the_active_timezone(self):
+        with timezone.override("Europe/Berlin"):
+            # 19:00 Berlin == the stored 18:00 UTC.
+            self.assertTrue(matches('starts_at:["2024-03-15 18:30" TO *]', self.d))
+            self.assertFalse(matches('starts_at:["2024-03-15 19:30" TO *]', self.d))
+        with timezone.override("UTC"):
+            self.assertFalse(matches('starts_at:["2024-03-15 18:30" TO *]', self.d))
+
+    def test_the_same_text_is_cached_per_timezone(self):
+        with timezone.override("Europe/Berlin"):
+            berlin = _as_datetime("2024-03-15 19:00")
+        with timezone.override("UTC"):
+            utc = _as_datetime("2024-03-15 19:00")
+        self.assertNotEqual(berlin, utc)
+        self.assertEqual(berlin, utc - timedelta(hours=1))
+
+    def test_the_configured_timezone_applies_without_an_override(self):
+        # settings.TIME_ZONE is the active timezone unless something overrides
+        # it, so the project's local time is what a typed time means.
+        self.assertEqual(str(timezone.get_current_timezone()), settings.TIME_ZONE)
+        offset = self.d.fields["starts_at"][0]
+        local = _as_datetime(offset).astimezone(timezone.get_current_timezone())
+        self.assertTrue(matches(f'starts_at:"{local.strftime("%Y-%m-%d %H:%M")}"', self.d))
+
+    def test_date_only_values_still_compare(self):
+        with timezone.override("Europe/Berlin"):
+            self.assertTrue(matches("starts_at:[2024-03-01 TO 2024-03-31]", self.d))
+
+    def test_a_bare_date_means_that_whole_local_day(self):
+        with timezone.override("Europe/Berlin"):
+            self.assertTrue(matches("starts_at:2024-03-15", self.d))
+            self.assertFalse(matches("starts_at:2024-03-16", self.d))
+
+    def test_which_day_an_instant_falls_on_follows_the_timezone(self):
+        # 22:30 UTC on Mar 31 is 00:30 on Apr 1 in Berlin (CEST).
+        late = doc(starts_at="2024-03-31T22:30:00+00:00")
+        with timezone.override("Europe/Berlin"):
+            self.assertTrue(matches("starts_at:2024-04-01", late))
+            self.assertFalse(matches("starts_at:2024-03-31", late))
+        with timezone.override("UTC"):
+            self.assertTrue(matches("starts_at:2024-03-31", late))
+            self.assertFalse(matches("starts_at:2024-04-01", late))
+
+    def test_an_inclusive_upper_bound_covers_the_whole_end_day(self):
+        evening = doc(starts_at="2024-03-15T21:00:00+01:00")
+        with timezone.override("Europe/Berlin"):
+            self.assertTrue(matches("starts_at:[2024-03-01 TO 2024-03-15]", evening))
+            # Exclusive excludes the entire day, not just its first instant.
+            self.assertFalse(matches("starts_at:[2024-03-01 TO 2024-03-15}", evening))
+            self.assertFalse(matches("starts_at:{2024-03-15 TO *}", evening))
+            self.assertTrue(matches("starts_at:[2024-03-15 TO *]", evening))
+
+    def test_a_quoted_datetime_compares_as_an_instant(self):
+        with timezone.override("Europe/Berlin"):
+            self.assertTrue(matches('starts_at:"2024-03-15 19:00"', self.d))
+            self.assertFalse(matches('starts_at:"2024-03-15 18:00"', self.d))
+
+
 class BuildDocumentTests(SimpleTestCase):
     def test_builds_fields_children_and_dashboard_columns(self):
         document = build_document({
@@ -335,14 +413,12 @@ class BuildDocumentTests(SimpleTestCase):
                 {"field_slug": "count", "value": 3, "language": ""},
                 {"field_slug": "empty", "value": None, "language": ""},
             ],
-            "overflow_data": {"legacy": "kept"},
             "dashboard_columns": [{"key": "seats", "label": "Seats", "renderer": "text", "value": 12}],
             "children": {"participants": [{"field_values": [{"field_slug": "name", "value": "Anna"}]}]},
         })
         self.assertEqual(document.fields["title"], ["Hello", "Hallo"])
         self.assertEqual(document.fields["count"], ["3"])
         self.assertEqual(document.fields["empty"], [])
-        self.assertEqual(document.fields["legacy"], ["kept"])
         self.assertEqual(document.fields["seats"], ["12"])
         self.assertEqual(document.children["participants"][0].fields["name"], ["Anna"])
         self.assertTrue(matches("title:hallo", document))

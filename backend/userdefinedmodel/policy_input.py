@@ -32,7 +32,7 @@ class FieldEntry(BaseModel):
 
 
 class NodeDocument(BaseModel):
-    model_config = ConfigDict(extra="allow")  # overflow_data, timestamps, …
+    model_config = ConfigDict(extra="allow")  # timestamps, …
 
     id: str
     schema_id: str
