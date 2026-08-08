@@ -85,24 +85,7 @@ actions contains {
 
 # ─── TRANSITION: accept (status field / proposal workflow) ───────────────────
 
-# Create the linked Event (events-and-sync.md §1.2). allow_multiple defaults
-# to true — accepting a proposal again (e.g. after a workflow reset) creates
-# another event rather than erroring; the "origin" field on Event is
-# immutable once set (event.rego) so the link itself can't be re-pointed.
 EVENT_TYPE_ID := "a7f7dcd6-9272-437e-9bd1-07f526b5c7ba"
-
-actions contains {
-	"type": "create_linked_entity",
-	"phase": "post",
-	"target_type": EVENT_TYPE_ID,
-	"reference_field": "origin",
-	"initial_fields": {},
-	"allow_multiple": true,
-} if {
-	input.action == "transition"
-	input.field == "status"
-	input.transition == "accept"
-}
 
 actions contains {
     "type": "send_notification",
@@ -118,6 +101,26 @@ actions contains {
     input.action == "transition"
     input.field == "status"
     input.transition == "accept"
+}
+
+
+# ─── TRANSITION: add-event (add_event field / add-event workflow) ────────────
+# A separate single-state workflow (events-and-sync.md §1.2): "add_event" only
+# ever self-loops ready -> ready, and transitions.rego permits it only while
+# the MAIN status field reads "accepted". Each firing creates one more linked
+# Event — allow_multiple is true because repeatability is the whole point.
+
+actions contains {
+    "type": "create_linked_entity",
+    "phase": "post",
+    "target_type": EVENT_TYPE_ID,
+    "reference_field": "origin",
+    "initial_fields": {},
+    "allow_multiple": true,
+} if {
+    input.action == "transition"
+    input.field == "add_event"
+    input.transition == "add-event"
 }
 
 

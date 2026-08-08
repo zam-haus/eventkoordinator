@@ -45,11 +45,14 @@ viewable_fields contains {"node": node.id, "field": f} if {
 	some f, _ in node.fields
 }
 
+_NO_VALUE_DISPLAY_TYPES := {"markdown_display", "backlink_list", "sync_status"}
+
 editable_fields contains {"node": node.id, "field": f} if {
 	input.user.is_staff
 	some node in udmtree.tree_nodes
-	some f, _ in node.fields
+	some f, entry in node.fields
 	f != "origin"
+	not entry.data_type in _NO_VALUE_DISPLAY_TYPES
 }
 
 editable_fields contains {"node": node.id, "field": "origin"} if {

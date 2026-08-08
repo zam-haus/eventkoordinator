@@ -629,6 +629,20 @@ new apps' suites; never the apiv1 suite).
       mode no-op, initial fields applied, failure logging. —
       `userdefinedmodel/tests/test_create_linked_entity.py` (6 tests); full
       suite green (`uv run manage.py test userdefinedmodel`, 305 tests).
+- [x] **Demo bundle refinement**: the demo initially fired
+      `create_linked_entity` on the main "accept" transition (fires once).
+      Replaced with a **separate single-state workflow** ("Add Event
+      Workflow": one state `ready`, one self-loop transition `add-event`
+      `ready -> ready`) bound to a new `add_event` workflow field on
+      Proposal. `transitions.rego` permits `add-event` only while the
+      **main** `status` field reads `accepted` (`workflow.current_status`,
+      unrelated to `add_event`'s own — constant — state);
+      `proposals-actions.rego` fires `create_linked_entity` on that
+      transition instead. Net effect: a moderator can click "Add event"
+      repeatedly on an accepted proposal, each click creating one more
+      linked Event — verified end-to-end (3 events from one proposal via
+      2× `add-event` after accept). Event also gained an `event-id`
+      `slug_id` field (prefix `EVENT-`), mirroring Proposal's `proposal-id`.
 
 ### Step 4 — effective values + markdown display + `entity_url` (1.3, 1.4, 1.6)
 
@@ -674,15 +688,40 @@ new apps' suites; never the apiv1 suite).
       validated via the new `_ELEMENT_TYPE_CONFIG_CLS` registry in
       `FormElementIn.validate_element` (also covers `markdown_display` from
       Step 4, previously unvalidated).
-- [ ] Frontend `BacklinkListPreview` in `src/udm-editors/`: renders preview
+- [x] Frontend `BacklinkListPreview` in `src/udm-editors/`: renders preview
       summaries as clickable entries with workflow badge; register in
-      `index.ts`. — **not built this pass**; backend serializes
-      `id`/`type_id`/`field_slug`/`workflow_state`/`preview` per backlink,
-      ready for a frontend component to consume.
+      `index.ts`. — `BacklinkListPreview.tsx` (fetches
+      `udmGetEntityBacklinks`, navigates to `/udm-entity/:id` on click,
+      colored workflow-state badge); exported from `udm-editors/index.ts`.
+      Wired into `UdmEntityEditor.tsx`'s structural-field renderer alongside
+      a `markdown_display` renderer (`UdfMarkdown`) and a minimal
+      `sync_status` badge row (`entity.sync_items`) — both needed once
+      `backlink_list`/`markdown_display`/`sync_status` started flowing
+      through `viewable_fields` (see below). `apiUdm.ts` gained
+      `udmGetEntityBacklinks`/`BacklinkOut` via a hand-typed `fetch` call,
+      not the generated `openapi-fetch` client — `schema_udm.d.ts` is
+      generated from a running backend and doesn't cover this endpoint or
+      `EntityOut.markdown_displays`/`sync_items` yet. A `refreshToken`
+      prop (bumped by `UdmEntityEditor`'s `load()` on every reload —
+      transitions/actions on THIS entity can change backlink data that
+      lives on an unrelated entity, so `entityId` alone doesn't change)
+      forces a refetch after any transition, e.g. the repeatable
+      `add-event` transition below.
+- [x] Visibility of `backlink_list`/`markdown_display`/`sync_status` is an
+      ordinary policy decision, not "always shown". — Added
+      `FormElement.NO_VALUE_DISPLAY_TYPES` (`models/config.py`) and included
+      it in `to_policy_document()`'s shape-compat emission (`models/node.py`)
+      alongside `STRUCTURAL_TYPES`, so these three element types land in
+      `entity.fields` with a null value and flow through the ordinary
+      `viewable_fields` mechanism — a policy grants or withholds them exactly
+      like any other field. Kept as a separate constant from
+      `STRUCTURAL_TYPES` (rather than folding in) since rego's
+      `config.STRUCTURAL_TYPES` static list (the save-grant exclusion) is a
+      distinct, hand-maintained concept that this doesn't touch.
 - [x] Tests: filtering, policy filtering hides unviewable entities, preview
       summary content. — `userdefinedmodel/tests/test_backlinks_endpoint.py`
-      (5 tests); full suite green (`uv run manage.py test userdefinedmodel`,
-      320 tests).
+      (5 tests); full suite green (`uv run manage.py test userdefinedmodel
+      sync_core`, 334 tests); `npx tsc -b --noEmit` clean.
 
 ### Step 6 — `sync_core` + target migration (3)
 

@@ -92,3 +92,21 @@ class BacklinksEndpointTests(TestCase):
         import uuid
         resp = self.get(uuid.uuid4())
         self.assertEqual(resp.status_code, 404)
+
+    def test_results_sorted_by_preview(self):
+        from userdefinedmodel.models import FormElement
+
+        target, *_ = make_entity_with_type()
+        titles = ["Zebra Talk", "Apple Talk", "Mango Talk"]
+        for title in titles:
+            referencing, _, ref_version, _ = make_entity_with_type(policy_source=ALLOW_ALL_POLICY)
+            title_field = ref_version.field_definitions.get(slug="title")
+            FieldValueFactory(node=referencing, field=title_field, value_text=title)
+            el = ref_version.form_elements.get(slug="title")
+            el.is_preview = True
+            el.save(update_fields=["is_preview"])
+            _link_origin(referencing, target)
+
+        resp = self.get(target.id)
+        body = json.loads(resp.content)
+        self.assertEqual([r["preview"] for r in body], sorted(titles))

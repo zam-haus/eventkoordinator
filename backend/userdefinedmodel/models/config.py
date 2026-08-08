@@ -416,6 +416,19 @@ class FormElement(MetaBase):
         ElementType.TAB_NEXT,
     })
 
+    # No-value display elements (events-and-sync.md §1.4/§1.5/§3.2): like
+    # STRUCTURAL_TYPES, these carry no FieldValue, but they are NOT layout
+    # controls — kept separate so config.STRUCTURAL_TYPES (rego-side, the
+    # save-grant exclusion list) is unaffected. Included in to_policy_document()
+    # emission for the SAME reason structural types are: so a policy can gate
+    # their visibility via the ordinary viewable_fields mechanism instead of
+    # them being unconditionally shown regardless of policy.
+    NO_VALUE_DISPLAY_TYPES = frozenset({
+        ElementType.MARKDOWN_DISPLAY,
+        ElementType.BACKLINK_LIST,
+        ElementType.SYNC_STATUS,
+    })
+
     version = models.ForeignKey(ConfigVersion, on_delete=models.CASCADE, related_name="form_elements")
     slug = models.SlugField(max_length=80)
     element_type = models.CharField(max_length=30, choices=ElementType)

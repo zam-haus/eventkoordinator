@@ -817,6 +817,35 @@ export async function udmSearchEntities(q = '', typeIds?: string | string[], ids
   return (data as EntityAutocompleteItem[]) || []
 }
 
+// ── Backlinks (events-and-sync.md §1.5) ────────────────────────────────────────
+// Hand-typed rather than routed through the generated openapi client:
+// schema_udm.d.ts is generated from a running backend and does not yet cover
+// this endpoint / EntityOut's markdown_displays & sync_items additions.
+
+export interface BacklinkOut {
+  id: string
+  type_id: string | null
+  field_slug: string
+  workflow_state: string | null
+  preview: string
+}
+
+export async function udmGetEntityBacklinks(
+  entityId: string,
+  sourceTypeIds?: string[],
+  sourceFieldSlug?: string,
+): Promise<BacklinkOut[]> {
+  const params = new URLSearchParams()
+  if (sourceTypeIds && sourceTypeIds.length) params.set('source_type_ids', sourceTypeIds.join(','))
+  if (sourceFieldSlug) params.set('source_field_slug', sourceFieldSlug)
+  const qs = params.toString()
+  const res = await fetch(`/api/udm/entities/${entityId}/backlinks/${qs ? `?${qs}` : ''}`, {
+    credentials: 'include',
+  })
+  if (!res.ok) return []
+  return (await res.json()) as BacklinkOut[]
+}
+
 // ── Staging files ─────────────────────────────────────────────────────────────
 
 export async function udmUploadStagingFile(

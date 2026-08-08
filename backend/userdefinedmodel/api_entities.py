@@ -210,6 +210,7 @@ def get_entity_backlinks(
             "workflow_state": _workflow_state(bl.entity),
             "preview": join_parts(parts, allowed_slugs=allowed),
         })
+    results.sort(key=lambda r: r["preview"])
     return results
 
 

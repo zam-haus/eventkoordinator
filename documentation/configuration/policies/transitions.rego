@@ -43,6 +43,19 @@ _transition_permitted(node_id, field_slug, name, _) if {
 	reviews.all_reviews_accepted
 }
 
+# add_event (events-and-sync.md §1.2): a separate single-state workflow whose
+# only transition self-loops (ready -> ready). Gated on the MAIN status field
+# being "accepted" — nothing to do with add_event's own state, which never
+# changes — so it can fire repeatedly, creating one more linked Event each
+# time (see proposals-actions.rego's create_linked_entity action).
+_transition_permitted(node_id, field_slug, name, _) if {
+	node_id == input.entity.id
+	field_slug == "add_event"
+	name == "add-event"
+	roles.is_moderator
+	current_status == "accepted"
+}
+
 # ─── allow: transition (real execution) ───────────────────────────────────────
 allow if {
 	input.action == "transition"
@@ -74,6 +87,11 @@ editable_fields contains {"node": input.entity.id, "field": "status"} if {
 editable_fields contains {"node": input.entity.id, "field": "status"} if {
 	roles.is_moderator
 	current_status in _MODERATOR_TRANSITION_SOURCES
+}
+
+editable_fields contains {"node": input.entity.id, "field": "add_event"} if {
+	roles.is_moderator
+	current_status == "accepted"
 }
 
 # ─── valid_transitions: preview matrix (§4, single evaluation) ────────────────

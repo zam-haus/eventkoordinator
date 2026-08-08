@@ -30,6 +30,8 @@ import { DateRangeEditor } from './udm-editors/DateRangeEditor'
 import { FieldCommitWrapper, LARGE_TYPES, BLUR_COMMIT_TYPES } from './udm-editors/FieldCommitWrapper'
 import { ReadonlyBadge } from './udm-editors/shared'
 import { UdmGrantsContext, type UdmGrants } from './udm-editors/grants'
+import { BacklinkListPreview } from './udm-editors/BacklinkListPreview'
+import { UdfMarkdown } from './UdfMarkdown'
 import styles from './UdmEntityEditor.module.css'
 import dsStyles from './DefaultScreen.module.css'
 
@@ -269,7 +271,15 @@ function WorkflowFieldWidget({ fd, entity, uiLang, onTransition, transitioning, 
 }
 
 // Structural layout fields carry no entity data and are always rendered.
-const STRUCTURAL = new Set(['tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next'])
+// backlink_list / markdown_display (events-and-sync.md §1.5/§1.4) carry no
+// FieldValue either, but — unlike tab/hstack/… — their visibility IS an
+// ordinary policy decision: the backend emits them into entity.fields
+// (NO_VALUE_DISPLAY_TYPES) purely so a policy can grant/deny them via
+// viewable_fields like any other field; see the `fields` filter below.
+const STRUCTURAL = new Set([
+  'tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next',
+  'backlink_list', 'markdown_display', 'sync_status',
+])
 
 // ── Field row ─────────────────────────────────────────────────────────────────
 
@@ -724,6 +734,11 @@ export function UdmEntityEditor() {
   const [config, setConfig] = useState<ConfigVersionOut | null>(null)
   const [dirty, setDirty] = useState<Record<string, unknown>>({})
   const [discardCount] = useState(0)
+  // Bumped on every successful load() — a transition/action on THIS entity
+  // (e.g. "add-event") can change data that lives elsewhere (a new Event
+  // referencing it), which a plain entity-identity check would miss. Passed
+  // to BacklinkListPreview so it refetches after any reload, not just once.
+  const [refreshToken, setRefreshToken] = useState(0)
   const [savingFields, setSavingFields] = useState<Set<string>>(new Set())
   const [fieldSaveErrors, setFieldSaveErrors] = useState<Record<string, PolicyMessage[]>>({})
   const [transitioning, setTransitioning] = useState(false)
@@ -828,6 +843,7 @@ export function UdmEntityEditor() {
     try {
       const e = await udmGetEntity(entityId)
       setEntity(e)
+      setRefreshToken(t => t + 1)
       // Load the entity's ACTUAL pinned config version (not the type's current
       // published config). This keeps the form aligned with the stored data even
       // when the entity is stuck on an archived version awaiting migration.
@@ -1224,6 +1240,53 @@ export function UdmEntityEditor() {
   function renderStructuralField(fd: (typeof sortedFields)[0]) {
     // save_button configs are obsolete — fields save individually on commit
     if (fd.data_type === 'save_button') return null
+    if (fd.data_type === 'backlink_list') {
+      const tc = fd.type_config as { source_type_ids?: string[]; source_field_slug?: string } | undefined
+      return (
+        <div key={fd.slug} style={{ marginBottom: '0.75rem' }}>
+          {fd.label?.[uiLang] || fd.label?.['en'] ? (
+            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.3rem' }}>
+              {fd.label?.[uiLang] || fd.label?.['en']}
+            </div>
+          ) : null}
+          <BacklinkListPreview entityId={entity!.id} typeConfig={tc} refreshToken={refreshToken} />
+        </div>
+      )
+    }
+    if (fd.data_type === 'sync_status') {
+      const syncItems = (entity as unknown as { sync_items?: Record<string, { status: string; derived_state: string; last_error: string }> }).sync_items ?? {}
+      const entries = Object.entries(syncItems)
+      if (entries.length === 0) return null
+      return (
+        <div key={fd.slug} style={{ marginBottom: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+          {entries.map(([target, item]) => (
+            <span key={target} title={item.last_error || undefined} style={{
+              padding: '0.15rem 0.55rem', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 600,
+              background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb',
+            }}>
+              {target}: {item.derived_state}
+            </span>
+          ))}
+        </div>
+      )
+    }
+    if (fd.data_type === 'markdown_display') {
+      const markdown = ((entity as unknown as { markdown_displays?: Record<string, string> }).markdown_displays)?.[fd.slug] ?? ''
+      if (!markdown) return null
+      const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
+      const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
+      return (
+        <div key={fd.slug} className={styles.fieldGroup}>
+          <div className={styles.fieldHeader}>
+            <div>
+              <div className={styles.fieldLabel}>{label}</div>
+              {helpText && <div className={styles.fieldHelp}>{helpText}</div>}
+            </div>
+          </div>
+          <UdfMarkdown content={markdown} />
+        </div>
+      )
+    }
     if (fd.data_type === 'tab_prev') {
       const tc = fd.type_config as { label?: string } | undefined
       return (

@@ -1122,6 +1122,26 @@
       "submodel_config_version_id": null,
       "workflow_version_id": null,
       "parent_slug": null
+     },
+     {
+      "slug": "add_event",
+      "data_type": "workflow",
+      "sort_order": 55,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Add event",
+       "de": "Event hinzuf\u00fcgen"
+      },
+      "help_texts": {
+       "en": "Creates another linked Event. Only available once the proposal is accepted."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": "9cb9bf83-d1fe-471a-bbf9-ca9b5ad5fae2",
+      "workflow_definition_id": "9cb9bf83-d1fe-471a-bbf9-ca9b5ad5fae2",
+      "parent_slug": null
      }
     ]
    }
@@ -1257,9 +1277,30 @@
     "notes": "",
     "fields": [
      {
+      "slug": "event-id",
+      "data_type": "slug_id",
+      "sort_order": 0,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Event ID",
+       "de": "Event-ID"
+      },
+      "help_texts": {
+       "en": "Auto-generated identifier, starts with \"EVENT-\""
+      },
+      "type_config": {
+       "prefix": "EVENT"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
       "slug": "title_override",
       "data_type": "text_short",
-      "sort_order": 0,
+      "sort_order": 1,
       "is_localized": false,
       "is_preview": true,
       "labels": {
@@ -1278,7 +1319,7 @@
      {
       "slug": "origin",
       "data_type": "entity_select",
-      "sort_order": 1,
+      "sort_order": 2,
       "is_localized": false,
       "is_preview": true,
       "labels": {
@@ -1297,7 +1338,7 @@
      {
       "slug": "summary",
       "data_type": "markdown_display",
-      "sort_order": 2,
+      "sort_order": 3,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1316,7 +1357,7 @@
      {
       "slug": "sync",
       "data_type": "sync_status",
-      "sort_order": 3,
+      "sort_order": 4,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1576,6 +1617,40 @@
      "to_state": "submitted",
      "source_handle": "top-left",
      "target_handle": "bottom-left"
+    }
+   ],
+   "virtual_node_positions": {}
+  },
+  {
+   "id": "9cb9bf83-d1fe-471a-bbf9-ca9b5ad5fae2",
+   "name": "Add Event Workflow",
+   "description": "Single-state self-loop: repeatedly firing 'add-event' (only allowed while the proposal is accepted) creates another linked Event.",
+   "states": [
+    {
+     "name": "ready",
+     "label": {
+      "en": "Ready",
+      "de": "Bereit"
+     },
+     "is_initial": true,
+     "position_x": 0.0,
+     "position_y": 0.0,
+     "background_color": "#a3b8ff",
+     "text_color": "#000000"
+    }
+   ],
+   "transitions": [
+    {
+     "name": "add-event",
+     "label": {
+      "en": "Add event",
+      "de": "Event hinzuf\u00fcgen"
+     },
+     "from_state": "ready",
+     "from_undefined_only": false,
+     "to_state": "ready",
+     "source_handle": "",
+     "target_handle": ""
     }
    ],
    "virtual_node_positions": {}

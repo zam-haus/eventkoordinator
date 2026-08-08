@@ -169,9 +169,13 @@ class UserDefinedModelEntityNode(MetaBase):
         # Shape-compat (C1): also emit STRUCTURAL FormElements into entity.fields
         # with element_type as data_type and a null value, so structural.rego /
         # config.STRUCTURAL_TYPES keep working unchanged (input_version=1).
+        # NO_VALUE_DISPLAY_TYPES (markdown_display/backlink_list/sync_status,
+        # events-and-sync.md §1.4/§1.5/§3.2) piggyback on the same mechanism so
+        # a policy can gate their visibility via viewable_fields like any other
+        # field, even though they hold no FieldValue and are never editable.
         from userdefinedmodel.models.config import FormElement
         for el in self.config_version.form_elements.filter(
-            element_type__in=FormElement.STRUCTURAL_TYPES
+            element_type__in=FormElement.STRUCTURAL_TYPES | FormElement.NO_VALUE_DISPLAY_TYPES
         ):
             fields_data[el.slug] = {
                 "data_type": el.element_type,
