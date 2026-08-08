@@ -229,7 +229,7 @@ export default function TemplatingTab() {
             <div className={styles.sectionTitle}>Plaintext body</div>
             <textarea
               aria-label="Plaintext body"
-              className={styles.textarea}
+              className={`${styles.textarea} ${styles.editorTextarea}`}
               rows={14}
               value={draft.body_text ?? ''}
               placeholder={TEXT_PLACEHOLDER}
@@ -241,7 +241,7 @@ export default function TemplatingTab() {
             <div className={styles.sectionTitle}>HTML body</div>
             <textarea
               aria-label="HTML body"
-              className={styles.textarea}
+              className={`${styles.textarea} ${styles.editorTextarea}`}
               rows={16}
               value={draft.body_html ?? ''}
               placeholder={HTML_PLACEHOLDER}
@@ -253,7 +253,7 @@ export default function TemplatingTab() {
             <div className={styles.sectionTitle}>Example input (JSON)</div>
             <textarea
               aria-label="Example input JSON"
-              className={styles.textarea}
+              className={`${styles.textarea} ${styles.editorTextarea}`}
               rows={10}
               value={exampleJson}
               onChange={e => setExampleJson(e.target.value)}

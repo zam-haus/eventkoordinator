@@ -425,6 +425,13 @@
   font-size: 0.875rem;
 }
 
+/* Editor textareas sit directly in a .section rather than a flex .formGroup,
+   so they need an explicit width instead of inheriting the stretch. */
+.editorTextarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .previewFrame {
   width: 100%;
   min-height: 480px;
