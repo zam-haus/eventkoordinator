@@ -1,7 +1,8 @@
 {
  "version": 1,
  "scope_type_ids": [
-  "e08720eb-1491-4920-9386-cc2fa520de25"
+  "e08720eb-1491-4920-9386-cc2fa520de25",
+  "a7f7dcd6-9272-437e-9bd1-07f526b5c7ba"
  ],
  "udm_types": [
   {
@@ -32,6 +33,17 @@
     "tabs",
     "framework",
     "structural"
+   ]
+  },
+  {
+   "id": "a7f7dcd6-9272-437e-9bd1-07f526b5c7ba",
+   "name": "Event",
+   "field_config_id": "9bb8f7c8-c0ef-49d7-a90a-bd203b1d9053",
+   "policy_slugs": [
+    "framework",
+    "udm",
+    "sudo",
+    "event"
    ]
   }
  ],
@@ -1086,6 +1098,30 @@
       "submodel_config_version_id": "07af4d8d-6c5a-44b9-bfc1-ace4dc2aeec2",
       "workflow_version_id": null,
       "parent_slug": null
+     },
+     {
+      "slug": "linked_events",
+      "data_type": "backlink_list",
+      "sort_order": 54,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Linked events",
+       "de": "Verkn\u00fcpfte Events"
+      },
+      "help_texts": {
+       "en": "Events created from this proposal on acceptance."
+      },
+      "type_config": {
+       "source_type_ids": [
+        "a7f7dcd6-9272-437e-9bd1-07f526b5c7ba"
+       ],
+       "source_field_slug": "origin"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
      }
     ]
    }
@@ -1190,6 +1226,104 @@
        "en": "Upload a JPG or PNG image up to 10 MB for this speaker.",
        "de": "Lade ein JPG- oder PNG-Bild bis zu 10 MB f\u00fcr diese Referent*in hoch."
       },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "9bb8f7c8-c0ef-49d7-a90a-bd203b1d9053",
+   "name": "Event",
+   "description": "Events created from accepted proposals (events-and-sync.md).",
+   "languages": [
+    {
+     "code": "en",
+     "label": "English",
+     "is_default": true,
+     "sort_order": 0
+    },
+    {
+     "code": "de",
+     "label": "Deutsch",
+     "is_default": false,
+     "sort_order": 1
+    }
+   ],
+   "draft": {
+    "notes": "",
+    "fields": [
+     {
+      "slug": "title_override",
+      "data_type": "text_short",
+      "sort_order": 0,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Title override",
+       "de": "Titel-Override"
+      },
+      "help_texts": {
+       "en": "Optional; falls back to the proposal's title when empty."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "origin",
+      "data_type": "entity_select",
+      "sort_order": 1,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Origin proposal",
+       "de": "Ursprungs-Vorschlag"
+      },
+      "help_texts": {
+       "en": "Set once at creation; immutable afterwards (see event.rego)."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "summary",
+      "data_type": "markdown_display",
+      "sort_order": 2,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Summary",
+       "de": "Zusammenfassung"
+      },
+      "help_texts": {},
+      "type_config": {
+       "template": "# {{ effective.title }}\n\n{% if entity.fields.origin.value %}[View originating proposal]({{ entity.fields.origin.value | entity_url }}){% else %}*(no proposal linked)*{% endif %}"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "sync",
+      "data_type": "sync_status",
+      "sort_order": 3,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Sync status",
+       "de": "Sync-Status"
+      },
+      "help_texts": {},
       "type_config": {},
       "default": null,
       "submodel_config_version_id": null,
@@ -1519,6 +1653,9 @@
   },
   {
    "slug": "structural"
+  },
+  {
+   "slug": "event"
   }
  ]
 }

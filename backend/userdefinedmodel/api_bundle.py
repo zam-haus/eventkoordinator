@@ -984,7 +984,14 @@ def _apply_draft_fields(
     form_elements = draft_data.get("form_elements") or []
     legacy_fields = draft_data.get("fields")
     if legacy_fields is not None and not data_fields and not form_elements:
-        structural_set = {"tab_container","tab","save_button","hstack","hstack_group","tab_prev","tab_next"}
+        # No-data display element types (structural layout + the events-and-sync
+        # additions: backlink_list/markdown_display/sync_status hold no
+        # FieldValue and bind to nothing) both go through the "no data field,
+        # no bindings" branch below.
+        structural_set = {
+            "tab_container", "tab", "save_button", "hstack", "hstack_group", "tab_prev", "tab_next",
+            "backlink_list", "markdown_display", "sync_status",
+        }
         for fd_data in legacy_fields:
             if fd_data.get("data_type") in structural_set:
                 form_elements.append({
