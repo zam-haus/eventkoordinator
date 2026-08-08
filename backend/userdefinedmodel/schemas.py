@@ -200,12 +200,23 @@ class SyncStatusTypeConfig(Schema):
 
 
 class CalendarTypeConfig(Schema):
-    """events-and-sync.md §6/Step 9: read-only aggregated calendar view.
+    """events-and-sync.md §6/Step 9: aggregated calendar view.
 
-    Each entry is either "type_id:start_field:end_field" (a UDM type;
-    end_field may be "") or "source:<key>" (a sync_core.CalendarSource key).
+    ``sources`` entries are each either "type_id:start_field:end_field" (a
+    UDM type; end_field may be "") or "source:<key>" (a sync_core
+    CalendarSource key) — background context shown alongside the widget.
+
+    ``bind_start``/``bind_end`` are optional sibling DataField slugs (same
+    version, same node) — when both are set, clicking/dragging a slot in the
+    widget writes to them (like date_range), making the calendar an editable
+    date-range picker instead of a purely read-only aggregation view. Slugs
+    only (not real FormElementBinding FK rows, unlike date_range) since a
+    calendar element's config mixes this same-entity reference with the
+    unrelated cross-type `sources` list.
     """
-    sources: list[str] = Field(..., min_length=1, max_length=50)
+    sources: list[str] = Field(default_factory=list, max_length=50)
+    bind_start: Optional[Slug] = None
+    bind_end: Optional[Slug] = None
     model_config = {"extra": "forbid"}
 
 

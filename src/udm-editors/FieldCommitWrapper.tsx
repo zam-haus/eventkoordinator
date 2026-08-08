@@ -55,12 +55,25 @@ export function FieldCommitWrapper({
   // Prevents blur + outside-click double-firing before the saving prop updates
   const firedRef = useRef(false)
   useEffect(() => { if (!dirty || saving) firedRef.current = false }, [dirty, saving])
+  // Tracks whether focus has actually entered this wrapper since it went
+  // dirty — the outside-pointerdown handler below must only auto-commit a
+  // field the user was really editing, not one that became dirty because
+  // something ELSE on the page wrote to it programmatically (e.g. the
+  // calendar widget setting bind_start/bind_end): without this, clicking
+  // anywhere inside that unrelated widget counts as "outside" this wrapper
+  // and fires a spurious, separate commit for a field nobody focused.
+  const hadFocusRef = useRef(false)
+  useEffect(() => { if (!dirty) hadFocusRef.current = false }, [dirty])
 
   function tryCommit() {
     const s = stateRef.current
     if (!s.dirty || s.saving || !s.blurCommit || s.disabled || firedRef.current) return
     firedRef.current = true
     s.onCommit()
+  }
+
+  function handleFocus() {
+    hadFocusRef.current = true
   }
 
   function handleBlur() {
@@ -78,6 +91,7 @@ export function FieldCommitWrapper({
   useEffect(() => {
     if (!dirty || !blurCommit || disabled) return
     function onPointerDown(ev: Event) {
+      if (!hadFocusRef.current) return
       const t = ev.target as Element | null
       if (!t || !(t instanceof Element)) return
       if (ref.current?.contains(t)) return
@@ -102,14 +116,14 @@ export function FieldCommitWrapper({
 
   if (large) {
     return (
-      <div ref={ref} onBlur={handleBlur}>
+      <div ref={ref} onBlur={handleBlur} onFocus={handleFocus}>
         {children}
         {buttons && <div className={styles.commitButtons}>{buttons}</div>}
       </div>
     )
   }
   return (
-    <div ref={ref} onBlur={handleBlur}
+    <div ref={ref} onBlur={handleBlur} onFocus={handleFocus}
       className={`p-inputgroup${showButtons ? ` ${styles.commitGroupDirty}` : ''}`}>
       <div className={styles.commitGroupField}>{children}</div>
       {buttons}

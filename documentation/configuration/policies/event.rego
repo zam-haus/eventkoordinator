@@ -45,7 +45,7 @@ viewable_fields contains {"node": node.id, "field": f} if {
 	some f, _ in node.fields
 }
 
-_NO_VALUE_DISPLAY_TYPES := {"markdown_display", "backlink_list", "sync_status"}
+_NO_VALUE_DISPLAY_TYPES := {"markdown_display", "backlink_list", "sync_status", "calendar"}
 
 editable_fields contains {"node": node.id, "field": f} if {
 	input.user.is_staff

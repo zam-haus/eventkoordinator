@@ -874,30 +874,64 @@ new apps' suites; never the apiv1 suite).
       returning normalized entries `{source, uid, title, start, end, url?,
       entity_id?}` from synced iCal items, CalDAV items, and UDM entities
       (date-range query on configured date fields); no live remote fetches.
-      — `GET /calendar/` in `api_entities.py`. **UDM entities only**: `sources`
-      is `"type_id:start_field:end_field"` specs (end optional → point-in-time).
-      iCal/CalDAV sources are N/A until sync_ical/sync_caldav are ported onto
-      sync_core (Step 6, deferred) — there are no synced items to read yet.
+      — `GET /calendar/` in `api_entities.py`. `sources` accepts
+      `"type_id:start_field:end_field"` (UDM types; end optional →
+      point-in-time) and `"source:<key>"` (a `sync_core.CalendarSource` —
+      see below). All datetimes normalized to aware UTC before comparison.
+- [x] iCal/CalDAV **read side**: `sync_core.CalendarSource` +
+      `RemoteCalendarEntry` — new pull-only models, distinct from
+      `SyncBaseTarget`/`SyncBaseItem` (the push side ported in Step 6,
+      still deferred). `fetch_calendar_source()` in `sync_core/models.py`
+      upserts `RemoteCalendarEntry` rows by `(source, uid)` from
+      `sync_core/calendar_fetch.py`'s `fetch_ical_occurrences`/
+      `fetch_caldav_occurrences` (fetch/parse logic lifted from
+      `sync_ical`/`sync_caldav`, not their Event-creation/push code — those
+      apps' push paths are untouched and still apiv1-coupled).
+      `fetch_calendar_source_task`/`fetch_all_calendar_sources` in
+      `sync_core/tasks.py` (no beat schedule wired yet — manual/task-queue
+      trigger only). The request path only ever reads `RemoteCalendarEntry`
+      — no live remote fetch inline with `GET /calendar/`.
 - [x] Access control: UDM entries via dashboard/view policies; external
       sources via per-source role/permission setting. — per-entity `view`
       policy check, same as the entity list/backlinks endpoints (silently
-      omitted, not surfaced as denied). External-source permission setting
-      N/A (no external sources exist).
-- [ ] `npm install @daypilot/daypilot-lite-javascript`; wrap as
+      omitted, not surfaced as denied). `CalendarSource` access is
+      coarser — `enabled` is the only gate; a per-source role/permission
+      field is a straightforward future addition to the model, not added
+      since nothing yet needs it.
+- [x] `npm install @daypilot/daypilot-lite-javascript`; wrap as
       `CalendarPreview` / `CalendarField` in `src/udm-editors/`, register in
-      `index.ts`. — **not built this pass**: a new npm dependency + a
-      genuinely large frontend component (month/week/day views, drag
-      interactions) deserves its own reviewed pass rather than being
-      bundled into this session's sweep; the aggregation endpoint above is
-      ready for it to consume.
-- [ ] Form element `calendar` config in `schemas.py`: sources, entity types
-      to show, `binds: {start, end}` field slugs; click/drag writes the bound
-      fields. — **deferred with the frontend component**.
-- [ ] Standalone dashboard calendar route reusing the same component, colored
-      by workflow state, click-through to entity forms. — **deferred with
-      the frontend component**.
-- [x] Tests: aggregation filtering and normalization, policy filtering,
-      date-write binding. — `date-write binding` is frontend-only, N/A here.
+      `index.ts`. — week view by default (switchable to month), backed
+      directly by `@daypilot/daypilot-lite-javascript`'s `DayPilot.Calendar`/
+      `DayPilot.Month` (not the separate `-react` package).
+- [x] Form element `calendar` config in `schemas.py`: `CalendarTypeConfig`
+      (`sources`, optional `bind_start`/`bind_end`). Unlike `date_range`,
+      `bind_start`/`bind_end` are plain sibling-DataField slugs in
+      `type_config`, not real `FormElementBinding` FK rows — a calendar
+      element mixes a same-entity binding with the unrelated cross-type
+      `sources` aggregation list, which the FK-based `_BINDING_ROLES`
+      mechanism doesn't accommodate. When bound, dragging an empty slot or
+      moving/resizing the rendered "this event" bar writes both fields via
+      one combined `PATCH` (see `saveFieldsCombined` in
+      `UdmEntityEditor.tsx` — two sequential single-field patches were
+      found to race into the entity edit lock's `concurrent_edit` 409).
+      `datetime` field values are timezone-aware ISO strings app-wide as of
+      this step (`src/timezone.ts`); a bare legacy-naive value falls back to
+      the viewer's browser timezone, then `Europe/Berlin` (matching
+      Django's configured `TIME_ZONE`).
+- [x] Standalone dashboard calendar route reusing the same component
+      (`/udm-calendar`, `UdmCalendarPage.tsx` + `Navbar.tsx` entry), letting
+      staff overlay `sync_core.CalendarSource`s (`GET
+      /calendar-sources/`). — **not** colored by workflow state yet
+      (`CalendarEntryOut` has no `workflow_state` field); click-through to
+      the entity form works for UDM-sourced entries (imported iCal/CalDAV
+      entries have no `entity_id`, so are inert on click, as expected).
+- [x] Tests: aggregation filtering and normalization (incl. timezone
+      normalization), policy filtering, `source:` spec filtering,
+      `CalendarSource` fetch/upsert/staleness/error-handling (mocked
+      HTTP/CalDAV client, inline ICS fixtures). Frontend drag-to-set
+      binding has no automated test — verified manually only; see the
+      session notes on the double-commit / concurrent-edit / timezone
+      fixes found this way.
       `userdefinedmodel/tests/test_calendar.py` (6 tests: range inclusion/
       exclusion, end-field extending the match window, policy filtering,
       invalid-date 400, empty sources); full suite green

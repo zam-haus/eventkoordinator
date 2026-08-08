@@ -1038,6 +1038,40 @@ export function UdmEntityEditor() {
     }
   }
 
+  /** PATCH several fields' payloads in ONE request — for multi-field widgets
+   *  (e.g. calendar's bind_start/bind_end) where two sequential single-field
+   *  PATCHes would take the entity's edit lock twice back-to-back and can
+   *  race into a concurrent_edit 409 (the lock isn't reentrant across
+   *  separate requests, even from the same client). */
+  async function saveFieldsCombined(slugs: string[]) {
+    const pending = slugs.filter(s => s in dirty)
+    if (pending.length === 0) return
+    if (pending.some(s => savingFields.has(s))) return
+    setSavingFields(prev => { const n = new Set(prev); for (const s of pending) n.add(s); return n })
+    for (const s of pending) clearFieldSaveError(s)
+    setErrors([])
+    setSuccess(null)
+    try {
+      const payload = Object.fromEntries(pending.map(s => [s, dirty[s]]))
+      const updated = await udmPatchEntity(resolvedEntityId, payload)
+      setEntity(updated)
+      setDirty(prev => {
+        const n = { ...prev }
+        for (const s of pending) delete n[s]
+        return n
+      })
+      setPolicyMessages((updated.policy_messages ?? []) as PolicyMessage[])
+    } catch (e) {
+      setFieldSaveErrors(prev => {
+        const n = { ...prev }
+        for (const s of pending) n[s] = errorToMessages(e)
+        return n
+      })
+    } finally {
+      setSavingFields(prev => { const n = new Set(prev); for (const s of pending) n.delete(s); return n })
+    }
+  }
+
   /** Immediately commit submodel ops (create/update/delete) for one field slug. Throws on failure. */
   async function saveSubmodelOps(slug: string, ops: unknown) {
     await savePayload(slug, ops)
@@ -1289,18 +1323,45 @@ export function UdmEntityEditor() {
       )
     }
     if (fd.data_type === 'calendar') {
-      const tc = fd.type_config as { sources?: string[] } | undefined
+      const tc = fd.type_config as { sources?: string[]; bind_start?: string; bind_end?: string } | undefined
       const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
       const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
+      const startSlug = tc?.bind_start
+      const endSlug = tc?.bind_end
+      // bind_start/bind_end are optional (unlike date_range's mandatory
+      // bindings) — a calendar with neither is a purely read-only
+      // aggregation view; with both, selecting a slot sets them.
+      const bound = !!(startSlug && endSlug)
+      const isDirty = bound && (startSlug! in dirty || endSlug! in dirty)
+      const boundEditable = bound && editableFieldSlugs.has(startSlug!) && editableFieldSlugs.has(endSlug!)
+      const boundSaving = bound && (savingFields.has(startSlug!) || savingFields.has(endSlug!))
+      const onSelectRange = bound && boundEditable
+        ? (start: string, end: string) => { handleDirty(startSlug!, start); handleDirty(endSlug!, end) }
+        : undefined
+      const commitBoth = () => saveFieldsCombined([startSlug!, endSlug!])
+      const resetBoth = () => { handleReset(startSlug!); handleReset(endSlug!) }
+      const boundRange = bound ? {
+        start: (startSlug! in dirty ? dirty[startSlug!] : getFieldValue(entity!, startSlug!)) as string | null,
+        end: (endSlug! in dirty ? dirty[endSlug!] : getFieldValue(entity!, endSlug!)) as string | null,
+      } : undefined
+      const body = (
+        <CalendarPreview sources={tc?.sources ?? []} refreshToken={refreshToken}
+          onSelectRange={onSelectRange} boundRange={boundRange} />
+      )
       return (
-        <div key={fd.slug} className={styles.fieldGroup}>
+        <div key={fd.slug} className={`${styles.fieldGroup} ${isDirty ? styles.fieldGroupDirty : ''}`}>
           <div className={styles.fieldHeader}>
             <div>
               <div className={styles.fieldLabel}>{label}</div>
               {helpText && <div className={styles.fieldHelp}>{helpText}</div>}
             </div>
           </div>
-          <CalendarPreview sources={tc?.sources ?? []} refreshToken={refreshToken} />
+          {bound ? (
+            <FieldCommitWrapper dirty={isDirty} saving={boundSaving} large={true} blurCommit={false}
+              disabled={!boundEditable} onCommit={commitBoth} onCancel={resetBoth}>
+              {body}
+            </FieldCommitWrapper>
+          ) : body}
         </div>
       )
     }
