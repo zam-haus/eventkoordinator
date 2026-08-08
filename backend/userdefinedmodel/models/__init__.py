@@ -10,6 +10,7 @@ from userdefinedmodel.models.config import (
     FormElementBinding,
     FieldDefaultValue,
     SlugIdSequence,
+    TypeEditorTabConfig,
 )
 from userdefinedmodel.models.workflow import (
     WorkflowDefinition,
@@ -73,6 +74,7 @@ __all__ = [
     "FormElementBinding",
     "FieldDefaultValue",
     "SlugIdSequence",
+    "TypeEditorTabConfig",
     "WorkflowDefinition",
     "WorkflowVersion",
     "WorkflowState",

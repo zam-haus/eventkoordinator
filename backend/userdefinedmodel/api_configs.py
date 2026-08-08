@@ -25,6 +25,9 @@ from userdefinedmodel.schemas import (
     FieldConfigCreateIn,
     FieldConfigOut,
     FieldConfigUpdateIn,
+    TypeEditorTabConfigIn,
+    TypeEditorTabConfigOut,
+    TypeEditorTabOut,
 )
 
 router = Router(auth=django_auth)
@@ -218,6 +221,56 @@ def get_config_version(request, version_id: uuid.UUID):
     except ConfigVersion.DoesNotExist:
         return JsonResponse({"detail": "Config version not found"}, status=404)
     return _serialize_config_version(version)
+
+
+@router.get("/type-editor-tabs/", response=list[TypeEditorTabOut], auth=django_auth)
+def list_type_editor_tabs(request):
+    """events-and-sync.md §5: every registered plugin tab (id + label). The
+    type editor asks this before rendering per-type config CRUD for each."""
+    from userdefinedmodel.type_editor_tabs import get_registered_tabs
+    return [{"id": t.id, "label": t.label} for t in get_registered_tabs()]
+
+
+@router.get(
+    "/config-versions/{version_id}/tab-configs/{tab_id}/",
+    response=TypeEditorTabConfigOut, auth=django_auth,
+)
+def get_type_editor_tab_config(request, version_id: uuid.UUID, tab_id: str):
+    from userdefinedmodel.models import ConfigVersion, TypeEditorTabConfig
+    try:
+        version = ConfigVersion.objects.get(id=version_id)
+    except ConfigVersion.DoesNotExist:
+        return JsonResponse({"detail": "Config version not found"}, status=404)
+    cfg = TypeEditorTabConfig.objects.filter(config_version=version, tab_id=tab_id).first()
+    return {"tab_id": tab_id, "config": cfg.config if cfg else {}}
+
+
+@router.put(
+    "/config-versions/{version_id}/tab-configs/{tab_id}/",
+    response=TypeEditorTabConfigOut, auth=django_auth,
+)
+def put_type_editor_tab_config(request, version_id: uuid.UUID, tab_id: str, payload: TypeEditorTabConfigIn):
+    from pydantic import ValidationError as PydanticValidationError
+    from userdefinedmodel.models import ConfigVersion, TypeEditorTabConfig
+    from userdefinedmodel.type_editor_tabs import get_tab
+
+    if denied := _require_perms(request, "userdefinedmodel.change_fieldconfig"):
+        return denied
+    descriptor = get_tab(tab_id)
+    if descriptor is None:
+        return JsonResponse({"detail": f"Unknown type editor tab {tab_id!r}"}, status=404)
+    try:
+        descriptor.config_schema.model_validate(payload.config)
+    except PydanticValidationError as exc:
+        return JsonResponse({"detail": "Invalid tab config", "errors": exc.errors()}, status=400)
+    try:
+        version = ConfigVersion.objects.get(id=version_id)
+    except ConfigVersion.DoesNotExist:
+        return JsonResponse({"detail": "Config version not found"}, status=404)
+    cfg, _ = TypeEditorTabConfig.objects.update_or_create(
+        config_version=version, tab_id=tab_id, defaults={"config": payload.config},
+    )
+    return {"tab_id": tab_id, "config": cfg.config}
 
 
 @router.get("/configs/{config_id}/versions/draft/", response=ConfigVersionOut, auth=django_auth)

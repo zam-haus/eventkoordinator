@@ -703,6 +703,22 @@ class EntityOut(Schema):
     sync_items: dict[str, Any] = {}
 
 
+class TypeEditorTabOut(Schema):
+    """events-and-sync.md §5: a registered plugin tab descriptor."""
+    id: str
+    label: str
+
+
+class TypeEditorTabConfigOut(Schema):
+    tab_id: str
+    config: dict[str, Any]
+
+
+class TypeEditorTabConfigIn(Schema):
+    config: dict[str, Any] = Field(default_factory=dict)
+    model_config = {"extra": "forbid"}
+
+
 class BacklinkOut(Schema):
     """One entity referencing the queried one via an entity_select field
     (events-and-sync.md §1.5)."""

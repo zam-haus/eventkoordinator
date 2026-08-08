@@ -832,19 +832,41 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 8 — plugin type-editor tabs (5)
 
-- [ ] Backend tab registry: `register_type_editor_tab(id, label,
-      config_schema)` called from each sync app's `AppConfig.ready`.
-- [ ] API: list registered tabs; per-type CRUD of each tab's config blob,
+- [x] Backend tab registry: `register_type_editor_tab(id, label,
+      config_schema)` called from each sync app's `AppConfig.ready`. —
+      `userdefinedmodel/type_editor_tabs.py`; `sync_core/apps.py::ready()`
+      registers a demo `sync_targets` tab (`sync_core/type_editor_tab.py`)
+      since no concrete plugin (Step 6 port, `sync_webhook`) exists yet to
+      register a real one.
+- [x] API: list registered tabs; per-type CRUD of each tab's config blob,
       validated against the plugin's pydantic schema, versioned with the type
-      config.
+      config. — `GET /type-editor-tabs/`, `GET`/`PUT
+      /config-versions/{id}/tab-configs/{tab_id}/` in `api_configs.py`; new
+      `TypeEditorTabConfig` model (FK to `ConfigVersion`, one row per
+      (version, tab_id)) — copied forward in `ConfigVersion._create_draft_copy`
+      so a config blob rolls to the next draft on publish, same as data
+      fields/form elements/rules.
 - [ ] Binding config contents per plugin: available concrete targets,
       effective-key → remote-property field binding (webhook: URL/auth
-      selection only).
+      selection only). — **deferred with the plugin ports themselves**
+      (Step 6); the demo `sync_targets` schema only covers "which target
+      keys" as a stand-in, no field-binding shape yet since there's no
+      concrete remote property list to bind to.
 - [ ] Frontend tab registry (`tabId → component`) in the type editor; tab
       components for caldav / ical / pretix / webhook; JSON-editor fallback
-      for tabs without a registered component.
-- [ ] Tests: registry listing, schema validation of config blobs, versioning
-      with type config, fallback rendering.
+      for tabs without a registered component. — **not built this pass**,
+      consistent with every other frontend gap logged in this checklist
+      (backlink_list/markdown_display/sync_status got theirs in Step 5; this
+      one's registry `GET /type-editor-tabs/` is ready for a frontend
+      consumer).
+- [x] Tests: registry listing, schema validation of config blobs, versioning
+      with type config, fallback rendering. — `fallback rendering` is
+      frontend-only, N/A here.
+      `userdefinedmodel/tests/test_type_editor_tabs.py` (10 tests: registry
+      duplicate-id guard, sync_core's startup registration, list/get/put API,
+      permission check, invalid-config 400, unknown-tab 404, draft-copy on
+      publish); full suite green (`uv run manage.py test userdefinedmodel
+      sync_core`, 354 tests).
 
 ### Step 9 — calendar (6)
 

@@ -273,7 +273,36 @@ class ConfigVersion(MetaBase):
                 if new_field:
                     MultiFieldRuleAssociation.objects.create(rule=real, field=new_field)
 
+        # Copy plugin type-editor tab configs (events-and-sync.md §5) so
+        # bindings roll with config versions like everything else here.
+        for old_tab_cfg in self.type_editor_tab_configs.all():
+            TypeEditorTabConfig.objects.create(
+                config_version=new_draft, tab_id=old_tab_cfg.tab_id, config=old_tab_cfg.config,
+            )
+
         return new_draft
+
+
+class TypeEditorTabConfig(MetaBase):
+    """A plugin type-editor tab's config blob for one ConfigVersion
+    (events-and-sync.md §5). `tab_id` matches a
+    userdefinedmodel.type_editor_tabs.TabDescriptor.id — not enforced by FK
+    since the registry is populated at app-startup, not migration time.
+    Validated against the plugin's own pydantic schema at the API layer."""
+
+    config_version = models.ForeignKey(
+        ConfigVersion, on_delete=models.CASCADE, related_name="type_editor_tab_configs",
+    )
+    tab_id = models.CharField(max_length=100)
+    config = models.JSONField(default=dict)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=["config_version", "tab_id"], name="unique_tab_config_per_version"),
+        ]
+
+    def __str__(self):
+        return f"{self.config_version} / {self.tab_id}"
 
 
 class SlugIdSequence(MetaBase):
