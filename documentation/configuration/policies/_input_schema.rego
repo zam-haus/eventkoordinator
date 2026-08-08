@@ -132,6 +132,8 @@ valid_input_doc(doc) if {
 	                         # the dotted path string, {} if none requested
 	is_object(doc.backlinks) # §2: requested reverse lookups (backlink_inputs),
 	                         # keyed by request "name", {} if none requested
+	is_object(doc.sync)      # §3.2: per-target sync state, keyed by target
+	                         # key; {} when sync_core has no items
 	valid_locale(doc)
 	valid_old_entity(doc)
 	valid_action_extras(doc)
@@ -441,6 +443,7 @@ example_inputs contains doc if {
 			"backlink_summary": {"count": 0, "by_type_field": []},
 			"linked": {},
 			"backlinks": {},
+			"sync": {},
 		},
 		example_extras(action, descriptor_variant),
 	)

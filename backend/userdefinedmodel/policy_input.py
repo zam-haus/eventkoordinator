@@ -166,6 +166,10 @@ class EntityActionInput(BaseModel):
     # a path that traversed an entity_select_multi segment.
     linked: dict[str, Any]
     backlinks: dict[str, list[Any]]
+    # §3.2: per-target sync state for this entity, keyed by target key.
+    # {"<target_key>": {"status", "derived_state", "last_error", "synced_at",
+    # "remote_uid"}}. {} when sync_core has no items for this entity.
+    sync: dict[str, Any]
 
     # transition action only:
     transition: Optional[str] = None

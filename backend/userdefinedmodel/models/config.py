@@ -402,6 +402,9 @@ class FormElement(MetaBase):
         # (events-and-sync.md §1.5). type_config: {"source_type_ids": [...],
         # "source_field_slug": "..."}. No data value, no bindings.
         BACKLINK_LIST = "backlink_list"
+        # Per-target sync state badges (events-and-sync.md §3.2). No
+        # type_config, no data value, no bindings — reads EntityOut.sync_items.
+        SYNC_STATUS = "sync_status"
 
     STRUCTURAL_TYPES = frozenset({
         ElementType.TAB_CONTAINER,

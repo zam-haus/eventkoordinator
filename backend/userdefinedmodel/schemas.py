@@ -193,6 +193,12 @@ class MarkdownDisplayTypeConfig(Schema):
     model_config = {"extra": "forbid"}
 
 
+class SyncStatusTypeConfig(Schema):
+    """events-and-sync.md §3.2: no configuration — shows every sync_items
+    entry for the entity."""
+    model_config = {"extra": "forbid"}
+
+
 _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
     DataType.TEXT_SHORT: TextTypeConfig, DataType.TEXT_LONG: TextTypeConfig,
     DataType.TEXT_MARKDOWN: TextTypeConfig, DataType.TEXT_RICHTEXT: TextTypeConfig,
@@ -223,6 +229,7 @@ _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
 _ELEMENT_TYPE_CONFIG_CLS: dict[str, type[Schema]] = {
     "backlink_list": BacklinkListTypeConfig,
     "markdown_display": MarkdownDisplayTypeConfig,
+    "sync_status": SyncStatusTypeConfig,
 }
 
 # ─── FieldDefinition schemas ──────────────────────────────────────────────────
@@ -691,6 +698,9 @@ class EntityOut(Schema):
     dashboard_columns: list[DashboardColumnOut] = []
     # markdown_display elements (§1.4), rendered server-side: {slug: markdown}.
     markdown_displays: dict[str, str] = {}
+    # Per-target sync state (§3.1/§3.2): {target_key: {status, derived_state,
+    # last_error, synced_at, remote_uid}}.
+    sync_items: dict[str, Any] = {}
 
 
 class BacklinkOut(Schema):

@@ -686,34 +686,66 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 6 — `sync_core` + target migration (3)
 
-- [ ] New `sync_core` app: `SyncBaseTarget` (with `enabled`/soft-delete flag,
+- [x] New `sync_core` app: `SyncBaseTarget` (with `enabled`/soft-delete flag,
       `secret_field_names`) and `SyncBaseItem` (`related_entity` FK to
       `UserDefinedModelEntity`, `status` CharField validated against the item
       class's declared set, `last_error`, `synced_payload`, `is_stale`,
-      `synced_at`, unique (entity, target)).
+      `synced_at`, unique (entity, target)). — `sync_core/models.py`;
+      `SyncBaseTarget.key` (unique slug) added beyond the original sketch as
+      the rego-facing identifier for `input.sync`; `remote_uid` added to
+      match the API shape described in §3.1. Registered in
+      `default_settings.py` INSTALLED_APPS; `sync_core/migrations/0001_initial.py`.
 - [ ] `SyncDiffData` / `PropertyDiff` moved to `sync_core`, diffing
-      `synced_payload` vs. current effective values.
-- [ ] `derived_state` computation (pending / error / synced / stale /
-      target_unavailable) as the single shared helper (3.2).
+      `synced_payload` vs. current effective values. — **deferred**: no
+      concrete item class exists yet to diff against (lands with Step 7's
+      worker / a ported plugin).
+- [x] `derived_state` computation (pending / error / synced / stale /
+      target_unavailable) as the single shared helper (3.2). —
+      `sync_core.models.compute_derived_state`; a subclass-defined status
+      outside the base three (e.g. `cancelled`) passes through as-is.
+      `target_unavailable` covers target soft-delete; the "no longer bound to
+      the type in the plugin tab config" case is deferred to Step 8 (no tab
+      registry exists yet).
 - [ ] Port `sync_ical`: import from `sync_core`, items keyed to UDM entities.
-- [ ] Port `sync_caldav`: same; push renders from the effective snapshot via
-      the binding config.
-- [ ] Port `sync_pretix`: same; declare any extra statuses (e.g.
-      `cancelled`).
+      — **deferred**, not attempted this pass (existing app, ~4000 lines
+      across the three sync apps combined; a real port needs its own
+      dedicated review, not a drive-by rewrite alongside the rest of this
+      checklist).
+- [ ] Port `sync_caldav`: same. — **deferred**, same reason.
+- [ ] Port `sync_pretix`: same. — **deferred**, same reason.
 - [ ] New `sync_webhook` app: target with URL, bearer token, constant custom
       headers (secrets via `secret_field_names`); POST body = effective JSON
       + entity id, target key, status, sequence number; no signing, no
-      templating.
-- [ ] Soft-delete admin behavior for targets; hard delete only without items.
-- [ ] No data/credential migration from apiv1 tables (deliberate).
-- [ ] Expose `input.sync` map + template `sync` context + entity-API
+      templating. — **deferred**; natural next slice once a first real
+      target exists to validate the payload shape against (Step 7).
+- [x] Soft-delete admin behavior for targets; hard delete only without items.
+      — `SyncBaseTarget.delete()` raises `ProtectedError` while `items`
+      exist; `enabled=False` is the intended soft-delete path (no Django
+      admin registration yet — no admin app wiring done this pass).
+- [x] No data/credential migration from apiv1 tables (deliberate). — new
+      app, no migration data operations at all.
+- [x] Expose `input.sync` map + template `sync` context + entity-API
       `sync_items` embedding (3.2); schema updates in `policy_input.py` /
-      `_input_schema.rego`.
-- [ ] `sync_status` display element (badges: state, error, last-synced) in
-      `schemas.py` + frontend component.
-- [ ] Tests: derived_state matrix (incl. stale and target_unavailable),
+      `_input_schema.rego`. — `engine.py::_sync_map_for_node` (lazy import,
+      the one place `userdefinedmodel` reads back from `sync_core`, keeping
+      the declared one-way dependency at the model-FK level only);
+      `EntityOut.sync_items`; `sync` added to both the markdown-display
+      context (`display_templates.py`) and the mail-template context
+      (`actions.build_notification_context`). **Not yet done:** enriching
+      backlink documents (`input.backlinks.<name>[].sync`) — only the root
+      entity's own `input.sync` is populated so far.
+- [x] `sync_status` display element (badges: state, error, last-synced) in
+      `schemas.py` + frontend component. — `FormElement.ElementType.SYNC_STATUS`
+      + `SyncStatusTypeConfig` registered in `_ELEMENT_TYPE_CONFIG_CLS`.
+      **Frontend component not built** (same gap as `backlink_list` in Step 5).
+- [x] Tests: derived_state matrix (incl. stale and target_unavailable),
       soft-delete visibility, webhook payload shape and headers, per-class
-      status validation.
+      status validation. — `sync_core/tests/test_derived_state.py` (11
+      tests covering the derived_state matrix, hard-delete protection,
+      summary shape) + `userdefinedmodel/tests/test_sync_input.py` (3 tests
+      for `input.sync` / `EntityOut.sync_items`). Webhook payload/header
+      tests are N/A until `sync_webhook` exists. Full suite green
+      (`uv run manage.py test userdefinedmodel sync_core`, 334 tests).
 
 ### Step 7 — `mark_sync` action + worker (4)
 

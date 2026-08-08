@@ -18,6 +18,7 @@ def render_markdown_display(
     entity: dict,
     linked: dict,
     backlinks: dict,
+    sync: dict | None = None,
 ) -> str:
     """Render one markdown_display element's template. Never raises — a
     template error yields an inline error marker so a broken template on one
@@ -29,6 +30,7 @@ def render_markdown_display(
         "entity": entity,
         "linked": linked,
         "backlinks": backlinks,
+        "sync": sync or {},
     })
     try:
         return get_environment(autoescape=False).from_string(template_source).render(**context)
@@ -53,6 +55,7 @@ def render_markdown_displays_for_entity(config_version, policy_output) -> dict[s
     entity = input_doc.get("entity") or {}
     linked = input_doc.get("linked") or {}
     backlinks = input_doc.get("backlinks") or {}
+    sync = input_doc.get("sync") or {}
 
     return {
         el.slug: render_markdown_display(
@@ -61,6 +64,7 @@ def render_markdown_displays_for_entity(config_version, policy_output) -> dict[s
             entity=entity,
             linked=linked,
             backlinks=backlinks,
+            sync=sync,
         )
         for el in elements
     }

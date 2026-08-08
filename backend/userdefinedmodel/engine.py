@@ -279,6 +279,19 @@ def get_udm_type_for_node(node: "UserDefinedModelEntityNode"):
         return root.user_defined_model_type if root else None
 
 
+def _sync_map_for_node(root_node: "UserDefinedModelEntityNode") -> dict:
+    """input.sync (§3.2): per-target sync state for root_node, read from
+    sync_core. Lazy import — sync_core -> userdefinedmodel is the declared
+    dependency direction; this is the one place userdefinedmodel reads back
+    from it, at call time, not at module load time."""
+    try:
+        from sync_core.models import sync_map_for_entity
+        return sync_map_for_entity(root_node.id)
+    except Exception:
+        logger.debug("sync map unavailable for node=%s", root_node.id, exc_info=True)
+        return {}
+
+
 def build_entity_document(node: "UserDefinedModelEntityNode") -> dict:
     """Root entity document for the tree containing ``node``."""
     root = node.get_root()
@@ -351,6 +364,7 @@ def build_policy_input(
         "backlink_summary": backlink_summary or {"count": 0, "by_type_field": []},
         "linked": {},
         "backlinks": {},
+        "sync": _sync_map_for_node(root),
     }
     if action == "transition":
         input_doc.update(

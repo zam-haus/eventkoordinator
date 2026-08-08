@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "polymorphic",
     "django_celery_beat",
     "userdefinedmodel",
+    "sync_core",
     # "ninja", # Does not work, attempts to access nonexistent http://localhost:5173/api/v1/static/ninja/swagger-ui.css
 ]
 

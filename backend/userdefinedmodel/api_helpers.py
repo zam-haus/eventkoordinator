@@ -108,6 +108,7 @@ def _entity_out_for_user(entity, user, policy_messages: list | None = None, view
     data["policy_messages"] = policy_messages or []
     data["dashboard_columns"] = policy.dashboard_columns
     data["markdown_displays"] = render_markdown_displays_for_entity(entity.config_version, policy)
+    data["sync_items"] = (policy.input_document or {}).get("sync", {})
     return EntityOut(**data)
 
 

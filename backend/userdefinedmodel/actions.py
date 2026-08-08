@@ -594,6 +594,7 @@ def build_notification_context(action: "SendNotificationOutput", ctx: ActionCont
     ``context``            the policy's own JSON, verbatim from the action
     ``input``              the full policy input document handed to Rego
     ``entity``             ``input.entity`` (convenience alias)
+    ``sync``               ``input.sync`` (convenience alias, §3.2)
     ``fields``             ``{slug: value}`` of the node the action fired on
     ``node``               ``{id, schema_id}`` of that node
     ``user``               ``input.user`` — the actor
@@ -622,6 +623,7 @@ def build_notification_context(action: "SendNotificationOutput", ctx: ActionCont
         "context": action.context or {},
         "input": policy_input,
         "entity": policy_input.get("entity", {}),
+        "sync": policy_input.get("sync", {}),
         "fields": {
             fv.field.slug: fv.get_value()
             for fv in ctx.node.field_values.select_related("field").all()
