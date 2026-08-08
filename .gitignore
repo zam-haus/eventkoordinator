@@ -31,3 +31,4 @@ dist-ssr
 .env
 backend/.env
 backend/.settings.secrets.toml
+/references/mermaid*
