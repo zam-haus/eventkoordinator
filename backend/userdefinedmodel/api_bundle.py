@@ -910,6 +910,16 @@ def _clone_field_config(cfg, languages_data: list, id=None) -> tuple:
     return new_cfg, new_draft
 
 
+def _draft_data_fields(draft_data: dict) -> list:
+    """Data fields of a bundle draft, in either the new or legacy shape.
+
+    New bundles carry ``data_fields``; older ones carry a mixed ``fields`` list.
+    :func:`_apply_draft_fields` accepts both, so anything reasoning about a
+    draft's fields must accept both too — otherwise it silently sees none.
+    """
+    return draft_data.get("data_fields") or draft_data.get("fields") or []
+
+
 def _toposort_configs(fc_by_id: dict) -> list[str]:
     """Return config IDs in dependency order (leaf submodels first)."""
     result = []
@@ -921,7 +931,7 @@ def _toposort_configs(fc_by_id: dict) -> list[str]:
         visited.add(cfg_id)
         fc_data = fc_by_id.get(cfg_id)
         if fc_data:
-            for fd in (fc_data.get("draft", {}).get("data_fields") or []):
+            for fd in _draft_data_fields(fc_data.get("draft", {})):
                 sub_id = fd.get("submodel_config_version_id")
                 if sub_id and str(sub_id) in fc_by_id:
                     # submodel_config_version_id is a FieldConfig UUID in this bundle
