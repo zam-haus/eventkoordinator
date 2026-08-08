@@ -25,7 +25,7 @@ DB models or migrations.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Union
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Optional, Union
 
 from django.conf import settings
 
@@ -231,6 +231,32 @@ class CreateLinkedEntityOutput(BaseModel):
     allow_multiple: bool = True
 
 
+class ViaReferencingSpec(BaseModel):
+    """mark_sync fan-out target: every entity of `type` whose `field`
+    (an entity_select slug) references the triggering entity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(description="Referencing UserDefinedModelType id (UUID string)")
+    field: str = Field(description="entity_select(_multi) slug on that type")
+
+
+class MarkSyncOutput(BaseModel):
+    """Create/flip a per-target sync item (events-and-sync.md §4.1).
+
+    Without ``via_referencing``, applies to the triggering entity itself.
+    With it, applies to every entity of ``via_referencing.type`` whose
+    ``via_referencing.field`` references the trigger — e.g. a proposal
+    re-marking every event created from it.
+    """
+
+    type: Literal["mark_sync"]
+    phase: Literal["pre", "post"]
+    target: str = Field(description="SyncBaseTarget.key")
+    status: str = Field(description="Status to set — validated against the item class's allowed_statuses()")
+    via_referencing: Optional[ViaReferencingSpec] = None
+
+
 PolicyActionOutput = Annotated[
     Union[
         SetFieldValueOutput,
@@ -238,6 +264,7 @@ PolicyActionOutput = Annotated[
         SendNotificationOutput,
         CreateSubmodelItemOutput,
         CreateLinkedEntityOutput,
+        MarkSyncOutput,
     ],
     Field(discriminator="type"),
 ]
@@ -801,3 +828,29 @@ def _handle_create_linked_entity(action: CreateLinkedEntityOutput, ctx: ActionCo
     # skip_policy: the triggering policy already authorized this creation;
     # the new entity's own create/save policy is not re-evaluated here.
     apply_patch(entity, seeded, ctx.user, edit_group=ctx.edit_group, skip_policy=True)
+
+
+@policy_action("mark_sync", schema=MarkSyncOutput)
+def _handle_mark_sync(action: MarkSyncOutput, ctx: ActionContext) -> None:
+    from sync_core.models import mark_sync
+    from userdefinedmodel.backlinks import find_backlinks
+    from userdefinedmodel.engine import evaluate_policy
+
+    trigger_root = ctx.node.get_root()
+
+    if action.via_referencing is None:
+        target_entities = [trigger_root]
+    else:
+        target_entities = [
+            bl.entity for bl in find_backlinks(trigger_root.id)
+            if bl.type_id == action.via_referencing.type and bl.field_slug == action.via_referencing.field
+        ]
+
+    for entity in target_entities:
+        effective = None
+        if action.status == "pending":
+            # Snapshot semantics (§4.2): exactly what's current NOW, never
+            # re-evaluated at push time. A fresh "view" evaluation gives the
+            # same `effective` a save/transition pass would.
+            effective = evaluate_policy(entity, ctx.user, "view").effective
+        mark_sync(entity.id, action.target, action.status, effective=effective)

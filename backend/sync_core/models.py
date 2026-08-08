@@ -90,6 +90,16 @@ class SyncBaseItem(PolymorphicMetaBase):
     def derived_state(self) -> str:
         return compute_derived_state(self)
 
+    def push(self) -> None:
+        """Push synced_payload to the remote target. Concrete item classes
+        (a ported sync_ical/sync_caldav/sync_pretix or sync_webhook, none of
+        which exist yet) override this; the base implementation makes the
+        worker's contract explicit rather than silently doing nothing."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement push() — no concrete "
+            "sync target plugin is wired up yet (events-and-sync.md Step 6)."
+        )
+
     def __str__(self):
         return f"SyncBaseItem(entity={self.related_entity_id}, target={self.sync_target_id}, status={self.status})"
 
@@ -124,6 +134,54 @@ def sync_item_summary(item: SyncBaseItem) -> dict:
         "synced_at": item.synced_at.isoformat() if item.synced_at else None,
         "remote_uid": item.remote_uid or None,
     }
+
+
+def mark_sync(entity_id, target_key: str, status: str, *, effective: dict | None = None) -> SyncBaseItem:
+    """Create/flip the (entity, target) item to `status` (§4.1).
+
+    When `status` implies a push (pending), the caller's `effective` snapshot
+    is stored verbatim in synced_payload — "the worker pushes exactly what
+    was current when mark_sync fired" (§4.2), never re-evaluated later.
+    Raises ValueError for an unknown/disabled target or a status the item
+    class does not allow from policy.
+    """
+    try:
+        target = SyncBaseTarget.objects.get(key=target_key)
+    except SyncBaseTarget.DoesNotExist:
+        raise ValueError(f"mark_sync: unknown target {target_key!r}")
+    if not target.enabled:
+        raise ValueError(f"mark_sync: target {target_key!r} is disabled")
+
+    # No concrete SyncBaseItem subclass exists yet (Step 6 port is deferred),
+    # so the base class is always the real instance; once a plugin lands,
+    # existing rows resolve polymorphically via SyncBaseItem.objects here too.
+    item, _ = SyncBaseItem.objects.get_or_create(
+        related_entity_id=entity_id, sync_target=target, defaults={"status": status},
+    )
+    real = item.get_real_instance()
+    if status not in real.allowed_statuses():
+        raise ValueError(
+            f"mark_sync: status {status!r} is not allowed by {type(real).__name__} "
+            f"(allowed: {sorted(real.allowed_statuses())})"
+        )
+    real.status = status
+    if status == DERIVED_STATE_PENDING:
+        real.synced_payload = effective if effective is not None else {}
+        real.is_stale = False
+    real.save()
+    return real
+
+
+def recompute_staleness(entity_id, effective: dict) -> None:
+    """Post-save staleness check (§3.2/§4.3): compare the fresh `effective`
+    against each SYNCED item's synced_payload, no input.changed_fields
+    involved (deliberate — see events-and-sync.md §4.3)."""
+    items = SyncBaseItem.objects.filter(related_entity_id=entity_id, status=DERIVED_STATE_SYNCED)
+    for item in items:
+        stale = item.synced_payload != effective
+        if stale != item.is_stale:
+            item.is_stale = stale
+            item.save(update_fields=["is_stale"])
 
 
 def sync_map_for_entity(entity_id) -> dict[str, dict]:

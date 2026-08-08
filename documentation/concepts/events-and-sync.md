@@ -788,23 +788,47 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 7 — `mark_sync` action + worker (4)
 
-- [ ] Register `mark_sync` action: single `target`, single `status`, optional
-      `via_referencing {type, field}`, `phase`.
-- [ ] Handler: create/flip the item row; snapshot `effective` when the status
+- [x] Register `mark_sync` action: single `target`, single `status`, optional
+      `via_referencing {type, field}`, `phase`. — `MarkSyncOutput` +
+      `ViaReferencingSpec` in `actions.py`.
+- [x] Handler: create/flip the item row; snapshot `effective` when the status
       implies a push; validate target enabled for the type and status allowed
-      by the item class; dispatch error otherwise.
-- [ ] `via_referencing` fan-out via the reverse-lookup helper.
-- [ ] Post-save staleness: after evaluation, compare fresh `effective`
+      by the item class; dispatch error otherwise. — `_handle_mark_sync` +
+      `sync_core.models.mark_sync`; "status implies a push" = `status ==
+      "pending"` (the base contract's only push-triggering status; a
+      subclass-defined status doesn't imply one). **Partial**: validates the
+      target is `enabled`, not yet "enabled for the type" — that needs the
+      Step 8 plugin-tab registry, which doesn't exist.
+- [x] `via_referencing` fan-out via the reverse-lookup helper. — reuses
+      `backlinks.find_backlinks`, filtered by `type`/`field`.
+- [x] Post-save staleness: after evaluation, compare fresh `effective`
       against each item's `synced_payload`, store `is_stale`. No
-      `input.changed_fields` (deliberate).
-- [ ] Celery worker (beat + manually triggerable): process `pending` items
+      `input.changed_fields` (deliberate). — `sync_core.models.
+      recompute_staleness`, called after POST-phase action dispatch in both
+      `writer.apply_patch` (save) and `engine.execute_transition`
+      (transition); lazy import, `except Exception: pass` guarded like the
+      other `sync_core` read-back in `engine.py`.
+- [x] Celery worker (beat + manually triggerable): process `pending` items
       grouped by target, push the stored snapshot, set `synced`/`error`;
       one attempt per marking, no default retry (item classes may override
       with their own backoff); manual bulk-sync trigger enqueues the same
-      task.
-- [ ] Tests: mark on transition, post-save re-mark on stale, snapshot
+      task. — `sync_core/tasks.py`: `push_pending_sync_items()` (plain
+      function, synchronous, same convention as
+      `userdefinedmodel.tasks.run_bulk_migration`) + `push_pending_sync_items_task`
+      (`@shared_task` wrapper). `SyncBaseItem.push()` raises `NotImplementedError`
+      in the base class — no concrete item class exists yet (Step 6 port
+      deferred), so every push currently fails with a clear, catchable error
+      rather than silently doing nothing. **Not done**: an actual
+      `django_celery_beat` `PeriodicTask` row (no existing convention in
+      this codebase to follow — beat schedules appear to be configured via
+      the admin UI at deploy time, not in code) and an admin "sync now"
+      button (no admin UI work in this pass).
+- [x] Tests: mark on transition, post-save re-mark on stale, snapshot
       immutability (later edits don't change what's pushed), error stays
       until re-marked, per-class status rejection, via_referencing fan-out.
+      — `sync_core/tests/test_mark_sync.py` (9 tests, incl. the worker);
+      full suite green (`uv run manage.py test userdefinedmodel sync_core`,
+      344 tests).
 
 ### Step 8 — plugin type-editor tabs (5)
 

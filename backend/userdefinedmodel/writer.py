@@ -235,7 +235,20 @@ def apply_patch(
     post_ctx = pre_ctx.model_copy(update={"phase": "post"})
     dispatch_actions(output.actions, post_ctx)
 
+    _recompute_sync_staleness(node, output.effective)
+
     return edit_group, messages
+
+
+def _recompute_sync_staleness(node, effective: dict) -> None:
+    """Post-save staleness check (events-and-sync.md §3.2/§4.3). Lazy import:
+    sync_core -> userdefinedmodel is the declared dependency direction."""
+    try:
+        from sync_core.models import recompute_staleness
+        root = node.get_root()
+        recompute_staleness(root.id, effective)
+    except Exception:
+        logger.debug("sync staleness recompute skipped for node=%s", node.id, exc_info=True)
 
 
 def _evaluate_save_policy(node, user, changed_fields: dict, old_entity_doc: dict | None = None, locale: str | None = None):

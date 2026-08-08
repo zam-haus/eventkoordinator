@@ -935,6 +935,12 @@ def execute_transition(
     post_ctx = pre_ctx.model_copy(update={"phase": "post"})
     dispatch_actions(output.actions, post_ctx)
 
+    try:
+        from sync_core.models import recompute_staleness
+        recompute_staleness(node.get_root().id, output.effective)
+    except Exception:
+        logger.debug("sync staleness recompute skipped for node=%s", node.id, exc_info=True)
+
     return output.messages
 
 
