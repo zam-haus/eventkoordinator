@@ -21,6 +21,7 @@ from userdefinedmodel.api_helpers import (
 )
 from userdefinedmodel.schemas import (
     BacklinkOut,
+    CalendarEntryOut,
     EditGroupOut,
     EditHistoryOut,
     EntityCreateIn,
@@ -155,6 +156,81 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
     except PolicyError as e:
         return JsonResponse({"policy_messages": e.messages}, status=422)
     return 201, _entity_out_for_user(entity, request.user)
+
+
+@router.get("/calendar/", response=list[CalendarEntryOut], auth=django_auth)
+def get_calendar(request, start: str, end: str, sources: str = ""):
+    """events-and-sync.md §6: aggregated calendar entries in [start, end].
+
+    ``sources`` is a comma-separated list of ``"type_id:start_field:end_field"``
+    specs — one per UDM type to include (``end_field`` may be empty, in which
+    case entries are point-in-time, `end == start`). UDM entities only for
+    now: iCal/CalDAV sources land once sync_ical/sync_caldav are ported onto
+    sync_core (Step 6, deferred) — synced items don't exist there yet.
+    Read access is policy-filtered per entity exactly like the entity list.
+    """
+    import datetime as _dt
+
+    from userdefinedmodel.engine import evaluate_policy
+    from userdefinedmodel.models import UserDefinedModelEntity
+    from userdefinedmodel.summaries import compute_node_summary_parts, join_parts
+
+    try:
+        range_start = _dt.datetime.fromisoformat(start)
+        range_end = _dt.datetime.fromisoformat(end)
+    except ValueError:
+        return JsonResponse({"detail": "start/end must be ISO-8601"}, status=400)
+
+    def _as_datetime(value):
+        if value is None:
+            return None
+        if isinstance(value, _dt.datetime):
+            return value
+        if isinstance(value, _dt.date):
+            return _dt.datetime.combine(value, _dt.time.min)
+        return None
+
+    entries = []
+    for spec in sources.split(","):
+        spec = spec.strip()
+        if not spec:
+            continue
+        parts = spec.split(":")
+        if len(parts) != 3:
+            continue
+        type_id, start_field, end_field = parts
+        candidates = (
+            UserDefinedModelEntity.objects.filter(user_defined_model_type_id=type_id)
+            .filter(field_values__field__slug=start_field)
+            .distinct()
+        )
+        for entity in candidates:
+            start_fv = entity.field_values.filter(field__slug=start_field, language="").first()
+            start_val = _as_datetime(start_fv.get_value() if start_fv else None)
+            if start_val is None:
+                continue
+            end_val = start_val
+            if end_field:
+                end_fv = entity.field_values.filter(field__slug=end_field, language="").first()
+                end_val = _as_datetime(end_fv.get_value() if end_fv else None) or start_val
+            if end_val < range_start or start_val > range_end:
+                continue
+            policy = evaluate_policy(entity, request.user, "view", locale=_locale(request))
+            if not policy.allow:
+                continue
+            parts_ = compute_node_summary_parts(entity)
+            allowed = policy.viewable_fields.get(str(entity.id))
+            title = join_parts(parts_, allowed_slugs=allowed) or str(entity.id)
+            entries.append({
+                "source": "udm",
+                "uid": str(entity.id),
+                "title": title,
+                "start": start_val.isoformat(),
+                "end": end_val.isoformat(),
+                "url": f"/udm-entity/{entity.id}",
+                "entity_id": str(entity.id),
+            })
+    return entries
 
 
 @router.get("/entities/{entity_id}/backlinks/", response=list[BacklinkOut], auth=django_auth)

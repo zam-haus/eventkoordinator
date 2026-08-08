@@ -719,6 +719,17 @@ class TypeEditorTabConfigIn(Schema):
     model_config = {"extra": "forbid"}
 
 
+class CalendarEntryOut(Schema):
+    """events-and-sync.md §6: one normalized calendar entry."""
+    source: str
+    uid: str
+    title: str
+    start: Optional[str] = None
+    end: Optional[str] = None
+    url: Optional[str] = None
+    entity_id: Optional[str] = None
+
+
 class BacklinkOut(Schema):
     """One entity referencing the queried one via an entity_select field
     (events-and-sync.md §1.5)."""

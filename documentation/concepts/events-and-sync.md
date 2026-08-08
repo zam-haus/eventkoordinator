@@ -870,22 +870,38 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 9 — calendar (6)
 
-- [ ] Aggregation endpoint `GET /api/udm/calendar?start=…&end=…&sources=…`
+- [x] Aggregation endpoint `GET /api/udm/calendar?start=…&end=…&sources=…`
       returning normalized entries `{source, uid, title, start, end, url?,
       entity_id?}` from synced iCal items, CalDAV items, and UDM entities
       (date-range query on configured date fields); no live remote fetches.
-- [ ] Access control: UDM entries via dashboard/view policies; external
-      sources via per-source role/permission setting.
+      — `GET /calendar/` in `api_entities.py`. **UDM entities only**: `sources`
+      is `"type_id:start_field:end_field"` specs (end optional → point-in-time).
+      iCal/CalDAV sources are N/A until sync_ical/sync_caldav are ported onto
+      sync_core (Step 6, deferred) — there are no synced items to read yet.
+- [x] Access control: UDM entries via dashboard/view policies; external
+      sources via per-source role/permission setting. — per-entity `view`
+      policy check, same as the entity list/backlinks endpoints (silently
+      omitted, not surfaced as denied). External-source permission setting
+      N/A (no external sources exist).
 - [ ] `npm install @daypilot/daypilot-lite-javascript`; wrap as
       `CalendarPreview` / `CalendarField` in `src/udm-editors/`, register in
-      `index.ts`.
+      `index.ts`. — **not built this pass**: a new npm dependency + a
+      genuinely large frontend component (month/week/day views, drag
+      interactions) deserves its own reviewed pass rather than being
+      bundled into this session's sweep; the aggregation endpoint above is
+      ready for it to consume.
 - [ ] Form element `calendar` config in `schemas.py`: sources, entity types
       to show, `binds: {start, end}` field slugs; click/drag writes the bound
-      fields.
+      fields. — **deferred with the frontend component**.
 - [ ] Standalone dashboard calendar route reusing the same component, colored
-      by workflow state, click-through to entity forms.
-- [ ] Tests: aggregation filtering and normalization, policy filtering,
-      date-write binding.
+      by workflow state, click-through to entity forms. — **deferred with
+      the frontend component**.
+- [x] Tests: aggregation filtering and normalization, policy filtering,
+      date-write binding. — `date-write binding` is frontend-only, N/A here.
+      `userdefinedmodel/tests/test_calendar.py` (6 tests: range inclusion/
+      exclusion, end-field extending the match window, policy filtering,
+      invalid-date 400, empty sources); full suite green
+      (`uv run manage.py test userdefinedmodel sync_core`, 360 tests).
 
 ### Step 10 — apiv1 removal (7)
 
