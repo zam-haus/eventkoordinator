@@ -1,7 +1,7 @@
 # Concept: Events as UDM Entities, Calendar Element, and Workflow-Driven Sync
 
-Status: draft concept, 2026-08-08. Decisions below were made interactively; open
-questions are collected at the end.
+Status: concept finalized 2026-08-08. All decisions below were made
+interactively; no open questions remain.
 
 ## Goals
 
@@ -25,8 +25,12 @@ questions are collected at the end.
 
 | Topic | Decision |
 |---|---|
-| Event ↔ proposal link | New `entity_reference` field kind (FK to another UDM entity, allowed target type declared in config) |
-| Rego linked-entity access | Declared link expansion; declaration lives **in the policy file** (metadata annotation) |
+| Event ↔ proposal link | Existing `entity_select` field kind (`EntitySelectTypeConfig` with `limit_to_type_ids`), extended where needed |
+| Rego linked-entity access | Dynamic link requests: any rego file contributes to `linked_inputs` / `backlink_inputs` set rules, evaluated in a request phase before the main evaluation |
+| Events per proposal | Multiple (`allow_multiple: true` default for event creation) |
+| Referenced-entity deletion | Protect (application-level, values are raw ids) + `delete.rego` override; dangling ids read as `null` |
+| Proposal → events navigation | New `backlink_list` form element (filterable by originating type + field slug) |
+| Entity links in markdown | `entity_url` Jinja filter (entity id → clickable frontend URL) in markdown + mail templates |
 | Sync framework | New `sync_core` app; `SyncBaseItem.related_entity` = FK to `UserDefinedModelEntity` |
 | apiv1 | Freeze, then remove. **No data migration.** |
 | Field overrides | Explicit override fields on the event + rego coalesce into an `effective` object |
@@ -35,7 +39,8 @@ questions are collected at the end.
 | Sync trigger | Transition action sets per-target pending status; Celery worker pushes everything pending (bulk = same worker) |
 | Event creation | Workflow transition action on the proposal creates the linked event |
 | Ticketing targets | Pretix (adapted) + a new generic webhook target |
-| Per-target sync state | One `SyncItem` row per (entity, target) with status `pending/synced/error`; not workflow lanes, not injected fields |
+| Per-target sync state | One `SyncItem` row per (entity, target); base statuses `pending/synced/error`, extensible per item class; not workflow lanes, not injected fields |
+| Sync-state visibility | Single computed `derived_state` (pending/error/synced/stale/target_unavailable) exposed as `input.sync` (rego), `sync` (jinja), and a `sync_status` form element; staleness stored post-save; targets soft-deleted |
 | Target configuration UI | Per-plugin **type-editor tab**, extensible: backend registry + frontend component registry keyed by tab id |
 | Staleness after sync | Rego **post-save action** re-marks affected targets pending when relevant values change |
 
@@ -45,26 +50,37 @@ An "Event" is an ordinary `UserDefinedModelType` with its own config, fields,
 workflow, and policies. Nothing in the engine knows the word "event"; the
 behaviors below are generic capabilities that any type can use.
 
-### 1.1 New field kind: `entity_reference`
+### 1.1 Reuse the existing `entity_select` field kind
 
-A new field data type in the type config:
+The link is an ordinary field of the existing `DataType.ENTITY_SELECT`
+(`schemas.py:62`), configured via `EntitySelectTypeConfig` with
+`limit_to_type_ids` restricting it to the proposal type:
 
 ```yaml
 - slug: origin
-  data_type: entity_reference
-  target_type: proposal        # UDM type name the reference must point to
-  required: true
-  immutable_after_create: true # optional; for origin links usually true
+  data_type: entity_select
+  type_config: {limit_to_type_ids: [<proposal type id>]}
 ```
 
-Storage: `FieldValue` gains (or reuses, via the typed-value mechanism) a FK/UUID
-column referencing `UserDefinedModelEntity`. Validation on save checks the
-target exists and has the configured type. Deletion behavior of the target
-entity (protect vs. null) is part of the field config (default: protect).
+Gaps to close on top of what exists today:
 
-The frontend renders it as an autocomplete picker (reusing
-`api_autocomplete`), read-only when `immutable_after_create` and the entity
-already exists.
+- **Immutability:** an origin link set by the creation action should normally
+  not be editable afterwards. Either an `immutable_after_create` flag on
+  `EntitySelectTypeConfig`, or simply a rego save rule forbidding the change
+  (preferred: no schema change, policies already gate field edits).
+- **Deletion behavior — protect + policy override.** `entity_select` values
+  are raw id strings in `TypedValue`, not DB foreign keys, so enforcement is
+  application-level: the entity delete path runs the backlink reverse lookup
+  (same query as the `backlink_list` element, 1.5) and refuses deletion while
+  backlinks exist, listing the referencing entities. The delete-policy input
+  gains a backlink summary (count, per referencing type + field slug) so
+  `delete.rego` can allow forced deletion (e.g. for sudo users); a forced
+  delete leaves the referencing ids dangling. Any dangling id — forced delete,
+  races, historic data — uniformly resolves to `null` in `input.linked`,
+  templates, and the UI (deleted-entity placeholder), so readers must always
+  handle `null` and never break on missing targets.
+- **Link expansion** (section 2) follows `entity_select` field slugs; the
+  `_MULTI` variant naturally yields a list of linked documents.
 
 ### 1.2 Creation via transition action
 
@@ -82,12 +98,17 @@ A new registered policy action (via the existing `policy_action` registry in
 ```
 
 Emitted by the proposal's transition policy (e.g. on "accept"). The handler
-creates a new entity of `target_type`, sets its `entity_reference` field
+creates a new entity of `target_type`, sets its `entity_select` field
 `reference_field` to the triggering entity, and initializes fields. It runs in
 the same EditGroup as the transition, consistent with existing action handlers.
-Idempotency: if an entity of that type already references this proposal via
-that field, the action is a no-op (configurable `allow_multiple: true` to
-opt out).
+
+**Multiple events per proposal are a first-class requirement** (e.g. repeated
+sessions, workshop + talk). `allow_multiple: true` is therefore the default
+for this use case: every firing of the action creates a new linked event.
+`allow_multiple: false` remains available for links that must be unique
+(no-op if an entity of that type already references the proposal via that
+field). Navigation back from the proposal to its events is provided by the
+backlinks form field (1.5).
 
 A policy-gated manual creation path is possible later but is not part of this
 concept (decision: transition action is the standard flow).
@@ -121,44 +142,128 @@ contexts. Rendering happens server-side when the form document is built, so
 the frontend just displays markdown as it already does for other display
 fields.
 
-## 2. Rego access to linked entities
+### 1.6 Jinja filter for entity links
 
-### 2.1 Declared link expansion
+The markdown-template environment gains an `entity_url` filter that converts a
+UDM entity id into the frontend URL of that entity's form, so templates can
+render clickable backlink/link lists:
 
-The policy input is extended with `input.linked`, containing pre-resolved
-documents for declared link paths. Resolution happens in `policy_input.py`
-before evaluation — no OPA callbacks, no lazy fetching, evaluation stays pure
-and cacheable.
-
-### 2.2 Declaration in the policy file
-
-Links are declared as rego metadata annotations at package level:
-
-```rego
-# METADATA
-# custom:
-#   linked_inputs:
-#     - origin
-#     - origin.owner
-package udm.types.event
+```jinja
+{% for ev in backlinks.events %}
+- [{{ ev.fields.title }}]({{ ev.id | entity_url }}) — {{ ev.workflow_state }}
+{% endfor %}
 ```
 
-The engine parses annotations (OPA exposes them via `ast`/`opa inspect`; the
-Python side can parse the YAML metadata block directly) when a policy version
-is saved, stores the resolved list on the policy version record, and the input
-builder uses that stored list at evaluation time — parsing happens once per
-policy save, not per evaluation.
+The template context for markdown display fields therefore includes
+`backlinks` (from the policy's requested `backlink_inputs`) alongside
+`effective`, `entity`, and `linked`. The filter resolves ids to routes
+server-side (base URL from settings), and is also available in mail templates
+so notifications can deep-link to entities. Rendered markdown links to
+same-origin entity routes are permitted by the frontend markdown renderer.
+
+### 1.5 Backlinks form field
+
+A new display element `backlink_list` shows, on an entity's form, the entities
+that reference it via an `entity_select` field — e.g. on the proposal form,
+all events whose `origin` points at it. Element config:
+
+```yaml
+- slug: linked_events
+  data_type: backlink_list
+  type_config:
+    source_type_ids: [<event type id>]   # filter: referencing entity type(s)
+    source_field_slug: origin            # filter: which entity_select field
+```
+
+Each backlink is rendered using the referencing type's **existing preview
+mechanism** — the summary built from that type's `is_preview` form elements
+(`summaries.py`), as already used by `EntitySelectPreview` and the submodel
+history preview. There is deliberately no per-element display-field
+configuration: how an event previews is defined once, on the event type.
+
+Backend: a query endpoint on `api_entities` resolving backlinks (reverse
+lookup over entity_select field values, filterable by originating type and
+field slug) and returning the preview summaries, policy-filtered so users only
+see backlinks they may view. Frontend: renders the previews as clickable
+entries navigating to the referencing entity's form, with workflow-state
+badge. This is the primary navigation from a proposal to its events.
+
+## 2. Rego access to linked entities
+
+### 2.1 Link expansion
+
+The engine already resolves `entity_select` targets into
+`input.linked_entities`, a flat id→document map, exactly
+`LINKED_ENTITY_DEPTH = 1` deep (`engine.py`, contract §3.2-8). This concept
+extends that mechanism rather than replacing it: requested paths
+(`linked_inputs`) allow **deeper** expansion along named routes and add the
+convenience of path-shaped access (`input.linked.origin` next to the flat
+map), and `backlink_inputs` adds reverse lookups. Resolution stays where it is
+today — computed in Python before evaluation, no OPA callbacks, no lazy
+fetching, evaluation pure and cacheable. Whether `input.linked` is a new
+structure or sugar resolved from `linked_entities` ids is an implementation
+detail; the flat map remains for backward compatibility.
+
+### 2.2 Dynamic link requests from rego
+
+Required links are not statically declared — they are **evaluated**. Every
+rego file can contribute to two well-known set rules (accumulating via
+`contains`, in the shared policy package alongside the existing framework
+rules):
+
+```rego
+# any policy file may contribute:
+linked_inputs contains "origin"
+linked_inputs contains "origin.owner" if {
+    input.entity.workflow_state == "published"   # requests may be conditional
+}
+
+backlink_inputs contains {
+    "name": "events",          # key under input.backlinks
+    "source_type": "event",    # referencing type
+    "source_field": "origin",  # entity_select slug on that type
+}
+```
+
+Evaluation becomes two-phase:
+
+1. **Request phase:** the engine evaluates `linked_inputs` /
+   `backlink_inputs` against the base input (entity, schemas, flat
+   `linked_entities` map — everything except the expanded structures). Because
+   these are ordinary rules, requests can depend on input (type, workflow
+   state, field values), and every loaded policy file contributes to the same
+   sets.
+2. **Expansion + main phase:** the engine resolves the requested forward paths
+   into `input.linked` and the requested reverse lookups into
+   `input.backlinks`, then runs the actual evaluation.
+
+If a request in turn depends on data that only becomes available after
+expansion (e.g. a path conditional on a linked entity's field), the request
+phase is re-run with the expanded input until the requested set is stable,
+bounded by a small fixed iteration limit (e.g. 3); requests still unstable at
+the limit are an evaluation error. The compiled engine is cloned per phase as
+today, so the extra pass costs one cheap evaluation, not a recompile — but
+resolution now happens per request rather than once per policy save.
+
+`linked_inputs` entries are forward paths (following `entity_select` values);
+each `backlink_inputs` entry makes `input.backlinks.<name>` a **list** of
+NodeDocuments for all entities of `source_type` whose `source_field`
+references the current entity. This is how a proposal's policy can coalesce or
+aggregate over its events, and how backlink lists reach markdown templates
+(1.6). Expansion is uncapped: every requested path and every matching backlink
+is resolved in full.
 
 Path semantics:
 
-- Each path segment is an `entity_reference` field slug on the current level's
+- Each path segment is an `entity_select` field slug on the current level's
   type; `origin.owner` means "follow `origin`, then that entity's `owner`".
 - A path resolves to a `NodeDocument`-shaped object (fields, workflow state,
   type name, id) — the same shape as `input.entity`, so rules are reusable.
 - Broken/unset references resolve to `null`; policies must handle that.
-- Depth limit (e.g. 3 segments) and a cap on expanded entities guard against
-  pathological configs. To-many expansion (e.g. `origin.reviews`) is a listed
-  open question.
+- No depth or count caps: requested expansion always resolves in full.
+  Policy authors are responsible for not requesting pathological amounts of
+  data; the request-phase rules being conditional on input makes that
+  manageable.
 
 The pydantic mirror of the input schema (`policy_input.py`) gains a
 `linked: dict[str, NodeDocument | None]` member, and
@@ -194,12 +299,17 @@ class SyncBaseItem(PolymorphicMetaBase):
   `synced_payload` vs. current effective values.
 - `sync_ical`, `sync_caldav`, `sync_pretix` are migrated to import from
   `sync_core` and to read event data from UDM effective values instead of the
-  apiv1 `Event` model. A new `sync_webhook` app provides the generic
-  HTTP target (configurable URL, auth header, payload template over
-  `effective`).
-- Existing sync item rows referencing apiv1 events are **not migrated**
-  (consistent with the no-migration decision); targets (server credentials,
-  URLs) are worth carrying over manually or via a small one-off command.
+  apiv1 `Event` model. A new `sync_webhook` app provides the generic HTTP
+  target: it POSTs the **effective-values snapshot as JSON** verbatim — no
+  payload templating; receivers adapt to the effective object's shape.
+  Authentication is a configurable `Authorization: Bearer <token>` header plus
+  arbitrary constant custom headers on the target (token and header values are
+  `secret_field_names`); no request signing. The body also carries entity id, target key,
+  status, and a monotonically increasing sequence so receivers can order and
+  deduplicate deliveries.
+- Nothing is migrated from the apiv1-era tables: neither sync item rows nor
+  target configurations. Targets (server URLs, credentials) are re-entered
+  manually in the new `sync_core` admin.
 
 ### 3.1 Per-target sync state
 
@@ -207,13 +317,70 @@ The `status` on `SyncBaseItem` is the "workflow status mark per sync target":
 
 - `pending` — marked for push; the worker will pick it up.
 - `synced` — remote is up to date with `synced_payload`.
-- `error` — last push failed; `last_error` holds the reason; worker retries
-  with backoff, UI shows the error badge.
+- `error` — last push failed; `last_error` holds the reason; the UI shows the
+  error badge. By default the worker does **not** retry: one attempt per
+  marking, and the item stays in `error` until something sets it `pending`
+  again (a policy re-mark or a manual bulk sync). A concrete item class may
+  instead define its own retry/backoff behavior where the remote warrants it.
+
+These three are the base contract every item class supports.
+Sync state is exposed to policies, templates, and forms via a single derived
+representation — see 3.2. A concrete
+`SyncBaseItem` subclass may define **additional statuses** with their own
+worker semantics, and declares which statuses the `mark_sync` action (4.1) may
+set from policy — e.g. a Pretix item adding `cancelled` (push a cancellation
+instead of an update) or a CalDAV item adding `delete_pending` (remove the
+remote VEVENT). The `status` column is therefore a plain CharField validated
+against the item class's declared status set, not a global choices enum.
 
 The entity's own workflow state remains single-valued; per-target sync state
 lives only in these rows. The entity API embeds
 `sync_items: [{target, status, remote_uid, last_error}]` so the frontend can
 show per-target badges on forms and dashboards.
+
+### 3.2 Exposing sync state to rego, jinja, and forms
+
+For each item, `sync_core` computes a **`derived_state`** in one place, and
+every surface consumes that same value:
+
+- `pending` — push queued.
+- `error` — last push failed (`last_error` available).
+- `synced` — remote matches `synced_payload`.
+- `stale` — status is synced, but current effective values differ from
+  `synced_payload` and nothing is pending ("target is stale but no sync
+  pending").
+- `target_unavailable` — the item row exists but its target was soft-deleted
+  / disabled, or is no longer bound to the type in the plugin tab config.
+
+Surfaces:
+
+1. **Policy input:** `input.sync`, a map keyed by target key:
+   `{"caldav:main-calendar": {"status": ..., "derived_state": ...,
+   "last_error": ..., "synced_at": ..., "remote_uid": ...}}`. Present for the
+   root entity and on backlink documents, so e.g. a proposal policy can
+   aggregate over its events' sync states.
+2. **Templates:** the same `sync` map is part of the markdown- and
+   mail-template context alongside `effective` / `entity` / `linked` /
+   `backlinks`.
+3. **Forms:** the entity API embeds the map (per 3.1); a new `sync_status`
+   display element renders per-target badges (state, error message,
+   last-synced time); markdown display fields can render custom views via the
+   template context.
+
+Two consequences for the data model:
+
+- **Staleness is a stored flag, not computed in-input.** Effective values are
+  a policy *output*, so `input.sync` cannot compare them live (circular).
+  Instead, after each save/transition evaluation, action dispatch compares the
+  freshly computed `effective` object against each item's `synced_payload` and
+  stores `is_stale` on the item row; subsequent evaluations, templates, and
+  API reads see it as plain data. A post-save rule can therefore react to
+  `derived_state == "stale"` and decide whether to emit `mark_sync` — or
+  deliberately leave the item stale for human review.
+- **Targets are soft-deleted.** `SyncBaseItem.sync_target` must not cascade
+  away the evidence: targets get an `enabled`/soft-delete flag (hard delete
+  only when no items reference them), so `target_unavailable` remains
+  observable on the items.
 
 ## 4. Workflow-driven sync
 
@@ -222,21 +389,32 @@ show per-target badges on forms and dashboards.
 A new registered policy action:
 
 ```json
-{"type": "mark_sync_pending", "targets": ["caldav:main-calendar", "pretix:prod"], "phase": "post"}
+{"type": "mark_sync", "target": "caldav:main-calendar", "status": "pending", "phase": "post"}
 ```
 
-Emitted by transition policies (e.g. on "publish"). The handler creates or
-flips the matching `SyncBaseItem` rows to `pending`, recording the effective
-values snapshot to be pushed. Which targets a policy may name is constrained
-to the targets enabled for the type (see 5); unknown targets are a dispatch
-error logged to history like other failed actions.
+Each action names exactly **one** target and sets exactly one status; marking
+several targets means emitting several actions (rego set rules naturally
+produce one action per target). The valid statuses depend on the concrete
+`SyncBaseItem` implementation of the addressed target: the base set is
+`pending`/`synced`/`error` plus item-class-defined additions (a subclass
+declares which statuses policies may set — e.g. a ticketing item might add
+`cancelled` to trigger remote cancellation instead of an update push). The
+handler creates or flips the matching item row to the requested status,
+recording the effective values snapshot when the status implies a push. Which
+target a policy may name is constrained to the targets enabled for the type
+(see 5); an unknown target or a status the item class does not allow from
+policy is a dispatch error logged to history like other failed actions.
 
 ### 4.2 The worker
 
 One Celery task (beat-scheduled + triggerable): fetch all `pending` items,
 group by target, push, set `synced`/`error`. Properties pushed come from the
 stored effective-values snapshot rendered through the target's binding config
-(see 5). Bulk sync after the fact is the same task — transitions only ever set
+(see 5). **Snapshot semantics are deliberate:** the worker pushes exactly
+what was current when `mark_sync` fired — it never re-evaluates the policy at
+push time. Later edits reach the remote only through a new marking (post-save
+staleness rules, 4.3), which keeps pushes deterministic, auditable
+(`synced_payload` is literally what was sent), and safe to retry. Bulk sync after the fact is the same task — transitions only ever set
 `pending`; nothing pushes synchronously in the request cycle. A manual
 "sync now" admin/bulk button enqueues the same task.
 
@@ -245,21 +423,26 @@ stored effective-values snapshot rendered through the target's binding config
 When a proposal or event is saved, its post-save policy can re-mark targets:
 
 ```rego
-actions contains {"type": "mark_sync_pending", "targets": ["caldav:main-calendar"], "phase": "post"} if {
+actions contains {"type": "mark_sync", "target": "caldav:main-calendar", "status": "pending", "phase": "post"} if {
     input.entity.workflow_state == "published"
-    # optionally: only when sync-relevant fields changed
 }
 ```
+
+There is **no field-level change detection** in the input (no
+`input.changed_fields`): whether a re-mark is warranted is decided from the
+stored per-target state — `derived_state == "stale"` (3.2) already means the
+effective values differ from what was pushed, which is the only change that
+matters for sync.
 
 For proposal edits to re-mark *events that reference the proposal*, the action
 handler supports a reverse direction:
 
 ```json
-{"type": "mark_sync_pending", "via_referencing": {"type": "event", "field": "origin"}, "targets": [...]}
+{"type": "mark_sync", "via_referencing": {"type": "event", "field": "origin"}, "target": "caldav:main-calendar", "status": "pending"}
 ```
 
-meaning "for every event whose `origin` points at me, mark these targets
-pending". This keeps the fan-out in the Python handler (a simple reverse FK
+meaning "for every event whose `origin` points at me, set this target's item
+to the given status". This keeps the fan-out in the Python handler (a simple reverse FK
 query) rather than requiring the proposal's policy input to contain all its
 events.
 
@@ -289,7 +472,8 @@ versions). A plugin's binding config typically declares:
   for this type,
 - how effective-value keys map to remote properties (field binding, e.g.
   `effective.start → DTSTART`, `effective.title → SUMMARY`),
-- plugin-specific options (e.g. webhook payload template).
+- plugin-specific options (e.g. webhook URL/auth header selection; the
+  webhook payload itself is always the effective JSON, not templated).
 
 ### 5.2 Frontend registry
 
@@ -327,9 +511,11 @@ remote fetch in the request path). Read access is policy-filtered per source:
 UDM entries via the existing dashboard/view policies; external calendar
 sources via a per-source role/permission setting.
 
-Frontend: use an established calendar component (evaluate PrimeReact
-compatibility; likely FullCalendar) wrapped as `CalendarPreview` /
-`CalendarField` in `src/udm-editors/`.
+Frontend: **DayPilot Lite** (`npm install
+@daypilot/daypilot-lite-javascript`, Apache-2.0) wrapped as `CalendarPreview`
+/ `CalendarField` in `src/udm-editors/`; its month/week/day components cover
+the availability view, click/drag date picking, and the standalone dashboard
+calendar.
 
 ## 7. apiv1 deprecation
 
@@ -345,38 +531,198 @@ Phased, no data migration:
    drop its tables. Legacy event data disappears with it (accepted).
    The apiv1 Playwright UX tests are removed with the app.
 
-## 8. Suggested implementation order
+## 8. Implementation checklist
 
-1. `entity_reference` field kind + validation + frontend picker (1.1)
-2. `input.linked` + policy-metadata link declaration + schema updates (2)
-3. `create_linked_entity` action (1.2)
-4. Effective-values pattern: rego output convention + markdown template
-   display field (1.3–1.4)
-5. `sync_core` app + migrate `sync_ical` / `sync_caldav` / `sync_pretix`,
-   add `sync_webhook` (3)
-6. `mark_sync_pending` action (incl. `via_referencing`) + worker (4)
-7. Type-editor tab registries (backend + frontend) + per-plugin binding
-   configs (5)
-8. Calendar element + aggregation endpoint + dashboard page (6)
-9. apiv1 removal (7)
+Steps 1–5 are independent of 6–8 and can proceed in parallel. Each step
+should land with its tests (`uv run manage.py test userdefinedmodel` plus the
+new apps' suites; never the apiv1 suite).
 
-Steps 1–4 are independent of 5–7 and can proceed in parallel.
+### Step 1 — `entity_select` gap-closing (1.1)
+
+- [ ] Backlink reverse-lookup query helper: given an entity id, find all
+      `FieldValue` rows on `entity_select` / `entity_select_multi` fields
+      containing that id, returning (entity, type, field slug). Shared by
+      delete protection (step 1), the backlink endpoint (step 5), and
+      `backlink_inputs` (step 2).
+- [ ] Delete protection: entity delete path refuses deletion while backlinks
+      exist, error message listing referencing entities.
+- [ ] Delete-policy input: add backlink summary (count, per referencing
+      type + field slug) to the delete evaluation input; extend
+      `policy_input.py` and `_input_schema.rego` accordingly.
+- [ ] Forced-delete path: when `delete.rego` allows despite backlinks, delete
+      and leave referencing ids dangling.
+- [ ] Dangling-id semantics: verify every reader (engine `linked_entities`
+      resolution, API serialization, previews) resolves a missing entity id
+      to `null` / placeholder instead of erroring; add tests.
+- [ ] Immutability: document the rego save-rule pattern forbidding changes to
+      an origin-type `entity_select` field once set (policy example in
+      `documentation/configuration/policies/`); no schema change.
+- [ ] Tests: protect blocks delete, policy override force-deletes, dangling
+      id reads as null, immutability rule rejects edits.
+
+### Step 2 — dynamic link expansion (2)
+
+- [ ] Request-phase evaluation in `engine.py`: evaluate `linked_inputs` /
+      `backlink_inputs` set rules against the base input (clone of compiled
+      session).
+- [ ] Path resolver: forward paths over `entity_select` slugs (any depth,
+      `_MULTI` segments yield lists), producing `input.linked` shaped as
+      NodeDocuments; keep the flat `linked_entities` map unchanged.
+- [ ] Backlink resolver: `backlink_inputs` entries → `input.backlinks.<name>`
+      lists (reuses the step-1 query helper).
+- [ ] Fixpoint loop: re-run the request phase with expanded input until the
+      requested sets are stable; fixed iteration limit (e.g. 3); instability
+      at the limit is an evaluation error.
+- [ ] Schema updates: `linked` and `backlinks` members in `policy_input.py`,
+      `_input_schema.rego`, `check_input_schema.py`; align with the rego
+      contract refactor documents.
+- [ ] Tests: unconditional and input-conditional requests, deep paths,
+      `_MULTI` lists, backlinks, fixpoint convergence and the instability
+      error, null for dangling/missing targets.
+
+### Step 3 — `create_linked_entity` action (1.2)
+
+- [ ] Register action via `policy_action` with pydantic schema:
+      `target_type`, `reference_field`, `initial_fields`, `allow_multiple`
+      (default true), `phase`.
+- [ ] Handler: create entity of `target_type`, set the `entity_select`
+      `reference_field` to the triggering entity, apply `initial_fields`,
+      run in the triggering EditGroup; respect the target type's workflow
+      initial state.
+- [ ] `allow_multiple: false` no-op when a referencing entity already exists.
+- [ ] Failure handling: unknown type/field or field-validation failure logged
+      to history like other failed actions.
+- [ ] Tests: creation on transition, multiple events per proposal, unique
+      mode no-op, initial fields applied, failure logging.
+
+### Step 4 — effective values + markdown display + `entity_url` (1.3, 1.4, 1.6)
+
+- [ ] Output convention: `effective` object in `PolicyEvaluationOutput`;
+      document the coalesce pattern in the policy docs/templates.
+- [ ] Markdown display field: type-config declares a Jinja template
+      (mailtemplate engine) rendered server-side into a read-only display
+      field; context = `effective`, `entity`, `linked`, `backlinks`, `sync`.
+- [ ] `entity_url` Jinja filter: entity id → frontend form URL (base URL from
+      settings); register in both markdown-display and mail template
+      environments; frontend markdown renderer permits same-origin entity
+      routes.
+- [ ] Tests: coalesce example policy produces expected `effective`, template
+      renders with links, filter output format, null-origin handling.
+
+### Step 5 — backlinks in the UI (1.5)
+
+- [ ] Endpoint on `api_entities`: backlinks of an entity, filterable by
+      `source_type_ids` / `source_field_slug`, returning preview summaries
+      (`summaries.py`) + workflow state; policy-filtered (view policy per
+      referencing entity).
+- [ ] `backlink_list` element type in `schemas.py` (`type_config`:
+      `source_type_ids`, `source_field_slug`) + config validation.
+- [ ] Frontend `BacklinkListPreview` in `src/udm-editors/`: renders preview
+      summaries as clickable entries with workflow badge; register in
+      `index.ts`.
+- [ ] Tests: filtering, policy filtering hides unviewable entities, preview
+      summary content.
+
+### Step 6 — `sync_core` + target migration (3)
+
+- [ ] New `sync_core` app: `SyncBaseTarget` (with `enabled`/soft-delete flag,
+      `secret_field_names`) and `SyncBaseItem` (`related_entity` FK to
+      `UserDefinedModelEntity`, `status` CharField validated against the item
+      class's declared set, `last_error`, `synced_payload`, `is_stale`,
+      `synced_at`, unique (entity, target)).
+- [ ] `SyncDiffData` / `PropertyDiff` moved to `sync_core`, diffing
+      `synced_payload` vs. current effective values.
+- [ ] `derived_state` computation (pending / error / synced / stale /
+      target_unavailable) as the single shared helper (3.2).
+- [ ] Port `sync_ical`: import from `sync_core`, items keyed to UDM entities.
+- [ ] Port `sync_caldav`: same; push renders from the effective snapshot via
+      the binding config.
+- [ ] Port `sync_pretix`: same; declare any extra statuses (e.g.
+      `cancelled`).
+- [ ] New `sync_webhook` app: target with URL, bearer token, constant custom
+      headers (secrets via `secret_field_names`); POST body = effective JSON
+      + entity id, target key, status, sequence number; no signing, no
+      templating.
+- [ ] Soft-delete admin behavior for targets; hard delete only without items.
+- [ ] No data/credential migration from apiv1 tables (deliberate).
+- [ ] Expose `input.sync` map + template `sync` context + entity-API
+      `sync_items` embedding (3.2); schema updates in `policy_input.py` /
+      `_input_schema.rego`.
+- [ ] `sync_status` display element (badges: state, error, last-synced) in
+      `schemas.py` + frontend component.
+- [ ] Tests: derived_state matrix (incl. stale and target_unavailable),
+      soft-delete visibility, webhook payload shape and headers, per-class
+      status validation.
+
+### Step 7 — `mark_sync` action + worker (4)
+
+- [ ] Register `mark_sync` action: single `target`, single `status`, optional
+      `via_referencing {type, field}`, `phase`.
+- [ ] Handler: create/flip the item row; snapshot `effective` when the status
+      implies a push; validate target enabled for the type and status allowed
+      by the item class; dispatch error otherwise.
+- [ ] `via_referencing` fan-out via the reverse-lookup helper.
+- [ ] Post-save staleness: after evaluation, compare fresh `effective`
+      against each item's `synced_payload`, store `is_stale`. No
+      `input.changed_fields` (deliberate).
+- [ ] Celery worker (beat + manually triggerable): process `pending` items
+      grouped by target, push the stored snapshot, set `synced`/`error`;
+      one attempt per marking, no default retry (item classes may override
+      with their own backoff); manual bulk-sync trigger enqueues the same
+      task.
+- [ ] Tests: mark on transition, post-save re-mark on stale, snapshot
+      immutability (later edits don't change what's pushed), error stays
+      until re-marked, per-class status rejection, via_referencing fan-out.
+
+### Step 8 — plugin type-editor tabs (5)
+
+- [ ] Backend tab registry: `register_type_editor_tab(id, label,
+      config_schema)` called from each sync app's `AppConfig.ready`.
+- [ ] API: list registered tabs; per-type CRUD of each tab's config blob,
+      validated against the plugin's pydantic schema, versioned with the type
+      config.
+- [ ] Binding config contents per plugin: available concrete targets,
+      effective-key → remote-property field binding (webhook: URL/auth
+      selection only).
+- [ ] Frontend tab registry (`tabId → component`) in the type editor; tab
+      components for caldav / ical / pretix / webhook; JSON-editor fallback
+      for tabs without a registered component.
+- [ ] Tests: registry listing, schema validation of config blobs, versioning
+      with type config, fallback rendering.
+
+### Step 9 — calendar (6)
+
+- [ ] Aggregation endpoint `GET /api/udm/calendar?start=…&end=…&sources=…`
+      returning normalized entries `{source, uid, title, start, end, url?,
+      entity_id?}` from synced iCal items, CalDAV items, and UDM entities
+      (date-range query on configured date fields); no live remote fetches.
+- [ ] Access control: UDM entries via dashboard/view policies; external
+      sources via per-source role/permission setting.
+- [ ] `npm install @daypilot/daypilot-lite-javascript`; wrap as
+      `CalendarPreview` / `CalendarField` in `src/udm-editors/`, register in
+      `index.ts`.
+- [ ] Form element `calendar` config in `schemas.py`: sources, entity types
+      to show, `binds: {start, end}` field slugs; click/drag writes the bound
+      fields.
+- [ ] Standalone dashboard calendar route reusing the same component, colored
+      by workflow state, click-through to entity forms.
+- [ ] Tests: aggregation filtering and normalization, policy filtering,
+      date-write binding.
+
+### Step 10 — apiv1 removal (7)
+
+- [ ] Preconditions verified: no imports of `apiv1` outside `apiv1/`
+      (`grep -rn "from apiv1\|import apiv1" backend/ --include=*.py`), no
+      frontend calls to apiv1 endpoints, sync apps fully on `sync_core`.
+- [ ] Delete the `apiv1` app: code, URLs, admin, Playwright UX tests.
+- [ ] Migrations to drop apiv1 tables (legacy event data disappears —
+      accepted).
+- [ ] Remove apiv1 references from settings, docs, and OpenWiki sources; let
+      OpenWiki regenerate.
+- [ ] Full test run of remaining suites; smoke-test sync round trip against
+      a real CalDAV target.
 
 ## 9. Open questions
 
-- **To-many link expansion:** should `linked_inputs` support reverse/list
-  paths like `origin.reviews` (lists of NodeDocuments), and with what caps?
-- **Effective-values snapshot vs. live:** worker pushes the snapshot taken at
-  marking time (current design). Should it instead re-evaluate the policy at
-  push time so the very latest values win even without a re-mark?
-- **Which calendar component** (FullCalendar vs. alternatives) fits the
-  PrimeReact-based frontend and licensing constraints?
-- **Webhook target contract:** payload template language (Jinja over
-  `effective`?), retry/backoff policy, signature header for receivers?
-- **Change detection for staleness:** should `mark_sync_pending` post-save
-  rules get a diff of changed field slugs in input (e.g.
-  `input.changed_fields`) so re-marking can be limited to sync-relevant
-  fields?
-- **Target credentials handoff:** one-off management command to copy existing
-  sync target rows (server URLs, credentials) from the apiv1-era tables into
-  `sync_core`, or manual re-entry?
+None — all questions raised during drafting have been decided and folded into
+the sections above.
