@@ -61,6 +61,9 @@ ACTIONS := {
 #         {"viewable": [..], "editable": [..]}}},        # may create; value =
 #                                                        # new-item field grant
 #     "actions":           [<ActionObject>],
+#     "force_delete":      <bool>,  # action == "delete" only: overrides the
+#                                   # app-level backlink-protect block; ignored
+#                                   # otherwise (events-and-sync.md §1.1)
 #     "dashboard_columns": [<ColumnObject>],
 #     "additional_result": <object>,          # policy-defined carry-over: the
 #                                             # VIEW pass's additional_result is
@@ -119,6 +122,11 @@ valid_input_doc(doc) if {
 	                               # {"<slug>": {"value": <scalar>}}
 	is_object(doc.additional_result) # result.additional_result of the VIEW
 	                                 # pre-check on old_entity; {} if none ran
+	is_object(doc.backlink_summary) # action == "delete" only: referencing
+	                                # entities blocking the app-level protect
+	                                # (events-and-sync.md §1.1); {"count": 0,
+	                                # "by_type_field": []} for every other
+	                                # action
 	valid_locale(doc)
 	valid_old_entity(doc)
 	valid_action_extras(doc)
@@ -425,6 +433,7 @@ example_inputs contains doc if {
 			"user": example_user,
 			"changed_fields": {},
 			"additional_result": {},
+			"backlink_summary": {"count": 0, "by_type_field": []},
 		},
 		example_extras(action, descriptor_variant),
 	)

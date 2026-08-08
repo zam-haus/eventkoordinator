@@ -68,17 +68,23 @@ Gaps to close on top of what exists today:
   not be editable afterwards. Either an `immutable_after_create` flag on
   `EntitySelectTypeConfig`, or simply a rego save rule forbidding the change
   (preferred: no schema change, policies already gate field edits).
-- **Deletion behavior — protect + policy override.** `entity_select` values
-  are raw id strings in `TypedValue`, not DB foreign keys, so enforcement is
-  application-level: the entity delete path runs the backlink reverse lookup
-  (same query as the `backlink_list` element, 1.5) and refuses deletion while
-  backlinks exist, listing the referencing entities. The delete-policy input
-  gains a backlink summary (count, per referencing type + field slug) so
-  `delete.rego` can allow forced deletion (e.g. for sudo users); a forced
-  delete leaves the referencing ids dangling. Any dangling id — forced delete,
-  races, historic data — uniformly resolves to `null` in `input.linked`,
-  templates, and the UI (deleted-entity placeholder), so readers must always
-  handle `null` and never break on missing targets.
+- **Deletion behavior — protect + policy override.** `entity_select` stores a
+  real FK (`TypedValue.value_node`, `on_delete=SET_NULL`); only
+  `entity_select_multi` stores raw id strings (`value_json`), so the reverse
+  lookup has two query paths — an FK filter for singles, a JSON-containment
+  filter for multi. Enforcement is application-level: the entity delete path
+  runs the backlink reverse lookup (same query as the `backlink_list` element,
+  1.5) and refuses deletion while backlinks exist, listing the referencing
+  entities. The delete-policy input gains a backlink summary (count, per
+  referencing type + field slug) so `delete.rego` can grant a separate
+  `force_delete` rule (OR-ed like `allow`, alongside the normal `allow` for
+  the same "delete" action) to override the block — e.g. for sudo users. A
+  forced delete on a single `entity_select` clears the reference automatically
+  (`SET_NULL`); on `entity_select_multi` the id is left dangling in the JSON
+  list. Any dangling id — forced delete, races, historic data — uniformly
+  resolves to `null` in `input.linked`, templates, and the UI (deleted-entity
+  placeholder), so readers must always handle `null` and never break on
+  missing targets.
 - **Link expansion** (section 2) follows `entity_select` field slugs; the
   `_MULTI` variant naturally yields a list of linked documents.
 
@@ -539,26 +545,37 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 1 — `entity_select` gap-closing (1.1)
 
-- [ ] Backlink reverse-lookup query helper: given an entity id, find all
+- [x] Backlink reverse-lookup query helper: given an entity id, find all
       `FieldValue` rows on `entity_select` / `entity_select_multi` fields
       containing that id, returning (entity, type, field slug). Shared by
       delete protection (step 1), the backlink endpoint (step 5), and
-      `backlink_inputs` (step 2).
-- [ ] Delete protection: entity delete path refuses deletion while backlinks
-      exist, error message listing referencing entities.
-- [ ] Delete-policy input: add backlink summary (count, per referencing
+      `backlink_inputs` (step 2). — `userdefinedmodel/backlinks.py`
+      (`find_backlinks`, `backlink_summary`).
+- [x] Delete protection: entity delete path refuses deletion while backlinks
+      exist, error message listing referencing entities. — `api_entities.py`
+      `delete_entity` returns 409 with the backlink summary.
+- [x] Delete-policy input: add backlink summary (count, per referencing
       type + field slug) to the delete evaluation input; extend
-      `policy_input.py` and `_input_schema.rego` accordingly.
-- [ ] Forced-delete path: when `delete.rego` allows despite backlinks, delete
-      and leave referencing ids dangling.
-- [ ] Dangling-id semantics: verify every reader (engine `linked_entities`
+      `policy_input.py` and `_input_schema.rego` accordingly. — added
+      `backlink_summary` to `EntityActionInput`/`valid_input_doc`; a new
+      `force_delete` result key (OR-ed like `allow`) added to `udm.rego`,
+      `PolicyEvaluationOutput`, and the test-framework `RESULT_SUFFIX`.
+- [x] Forced-delete path: when `delete.rego` allows despite backlinks, delete
+      and leave referencing ids dangling. — example in `delete.rego`
+      (`force_delete` gated on `input.user.sudo`).
+- [x] Dangling-id semantics: verify every reader (engine `linked_entities`
       resolution, API serialization, previews) resolves a missing entity id
-      to `null` / placeholder instead of erroring; add tests.
-- [ ] Immutability: document the rego save-rule pattern forbidding changes to
+      to `null` / placeholder instead of erroring; add tests. — confirmed
+      existing behavior (`build_lookup_maps` simply omits unresolved ids);
+      `entity_select` additionally self-heals via `SET_NULL` on forced delete.
+- [x] Immutability: document the rego save-rule pattern forbidding changes to
       an origin-type `entity_select` field once set (policy example in
-      `documentation/configuration/policies/`); no schema change.
-- [ ] Tests: protect blocks delete, policy override force-deletes, dangling
-      id reads as null, immutability rule rejects edits.
+      `documentation/configuration/policies/`); no schema change. — pattern
+      documented at the end of `save.rego`.
+- [x] Tests: protect blocks delete, policy override force-deletes, dangling
+      id reads as null, immutability rule rejects edits. —
+      `userdefinedmodel/tests/test_backlinks.py` (7 tests); full suite green
+      (`uv run manage.py test userdefinedmodel`, 292 tests).
 
 ### Step 2 — dynamic link expansion (2)
 

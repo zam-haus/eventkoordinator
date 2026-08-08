@@ -16,7 +16,6 @@ from userdefinedmodel.api_helpers import (
     _entity_out_for_user,
     _http409_concurrent,
     _locale,
-    _policy_allows,
     _require_perms,
     _set_lock_timeout_ms,
 )
@@ -214,6 +213,8 @@ def patch_entity(request, entity_id: uuid.UUID, payload: EntityPatchIn):
 @router.delete("/entities/{entity_id}/", auth=django_auth)
 def delete_entity(request, entity_id: uuid.UUID):
     from django.http import HttpResponse
+    from userdefinedmodel.backlinks import backlink_summary
+    from userdefinedmodel.engine import evaluate_policy
     from userdefinedmodel.models import UserDefinedModelEntity
     with transaction.atomic():
         try:
@@ -224,10 +225,26 @@ def delete_entity(request, entity_id: uuid.UUID):
             return JsonResponse({"detail": "Not found"}, status=404)
         except OperationalError:
             return _http409_concurrent()
+        # Backlinks are computed BEFORE policy evaluation: they feed the
+        # delete-policy input (events-and-sync.md §1.1).
+        summary = backlink_summary(entity.id)
         # Object-level delete authorization is delegated to the entity's policy
         # ("delete" action). Default-deny: no policy means no delete.
-        if not _policy_allows(entity, request.user, "delete", locale=_locale(request)):
+        policy = evaluate_policy(
+            entity, request.user, "delete", locale=_locale(request), backlink_summary=summary,
+        )
+        if not policy.allow:
             return JsonResponse({"detail": "Delete denied by policy"}, status=403)
+        # Application-level protect: refuse while backlinks exist unless the
+        # policy explicitly forces deletion (leaving referencing ids dangling).
+        if summary["count"] > 0 and not policy.force_delete:
+            return JsonResponse(
+                {
+                    "detail": "Cannot delete: other entities reference this one",
+                    "backlink_summary": summary,
+                },
+                status=409,
+            )
         entity.delete()
     return HttpResponse(status=204)
 

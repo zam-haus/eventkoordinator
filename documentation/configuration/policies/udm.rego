@@ -13,6 +13,9 @@ import data.udm.udmframeworkv1.modules.sudo
 #   allow, error_messages, success_messages,
 #   viewable_fields / editable_fields   — sets of {"node": id, "field": slug},
 #   valid_transitions                   — sets of {"node", "field", "name"},
+#   force_delete (bool, OR-ed like allow; action == "delete" only) —
+#     overrides the app-level backlink-protect block; read input.backlink_summary
+#     to decide (events-and-sync.md §1.1),
 #   actions, dashboard_columns, additional_result (object),
 #   protected_fields (INTERNAL convention only — never part of result),
 #   public_type_fields / TYPE_DESCRIPTION (type_result only).
@@ -24,6 +27,8 @@ import data.udm.udmframeworkv1.modules.sudo
 default allow := false
 
 default deny := false
+
+default force_delete := false
 
 # ─── allow / deny ─────────────────────────────────────────────────────────────
 
@@ -42,6 +47,12 @@ allow if {
 deny if {
 	any_critical_error
 	print("[udm:deny] Denying due to critical error.")
+}
+
+force_delete if {
+	some name
+	udmframeworkv1.modules[name].force_delete
+	print("[udm:force_delete] Module ", name, " forces deletion despite backlinks.")
 }
 
 deny if {
@@ -248,6 +259,7 @@ result := {
 	"deletable_nodes": [n | some n in deletable_nodes],
 	"creatable_submodels": creatable_submodels_map,
 	"actions": [a | some a in actions],
+	"force_delete": force_delete,
 	"dashboard_columns": [c | some c in dashboard_columns],
 	"additional_result": additional_result,
 }

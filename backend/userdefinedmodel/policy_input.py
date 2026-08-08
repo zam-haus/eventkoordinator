@@ -31,6 +31,24 @@ class FieldEntry(BaseModel):
     value: Any
 
 
+class BacklinkSummaryEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type_id: Optional[str]
+    field_slug: str
+    count: int
+
+
+class BacklinkSummary(BaseModel):
+    """Referencing-entity summary for action == "delete" (application-level
+    protect, events-and-sync.md §1.1). Empty for every other action."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    count: int
+    by_type_field: list[BacklinkSummaryEntry]
+
+
 class NodeDocument(BaseModel):
     model_config = ConfigDict(extra="allow")  # timestamps, …
 
@@ -141,6 +159,7 @@ class EntityActionInput(BaseModel):
     user: UserDocument
     changed_fields: dict[str, Any]
     additional_result: dict[str, Any]  # VIEW pre-check carry-over
+    backlink_summary: "BacklinkSummary"  # only populated for action == "delete"
 
     # transition action only:
     transition: Optional[str] = None

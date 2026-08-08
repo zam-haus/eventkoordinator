@@ -244,6 +244,8 @@ default _tf_allow := false
 
 _tf_allow := allow
 
+default force_delete := false
+
 _tf_fields := _tf_grant_all if _tf_allow
 
 else := {}
@@ -263,6 +265,7 @@ result := {
     "editable_fields": _tf_fields,
     "valid_transitions": [t | some t in valid_transitions],
     "actions": [a | some a in actions],
+    "force_delete": force_delete,
     "dashboard_columns": [c | some c in dashboard_columns],
     "additional_result": {
         "view_allowed": _tf_allow,

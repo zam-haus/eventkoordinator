@@ -96,3 +96,25 @@ deletable_nodes contains node.id if {
 	node.parent_field_slug != null
 	not node.parent_field_slug in config.PROTECTED_FIELDS
 }
+
+# ─── Immutable-after-create pattern (events-and-sync.md §1.1) ────────────────
+# An origin-type entity_select field (e.g. an event's link back to the
+# proposal it was created from) should not be re-pointed after creation. No
+# schema flag exists for this — policies already gate field edits, so it is
+# just an editable_fields EXCLUSION once the field carries a value. This type
+# does not have such a field; the pattern for a type that does:
+#
+# editable_fields contains {"node": node.id, "field": f} if {
+# 	roles.is_owner_or_editor
+# 	workflow.is_status_editable
+# 	some node in udmtree.tree_nodes
+# 	some f, entry in node.fields
+# 	not entry.data_type in config.STRUCTURAL_TYPES
+# 	not _protected(node, f)
+# 	not _immutable_once_set(node, f)
+# }
+#
+# _immutable_once_set(node, f) if {
+# 	f == "origin"
+# 	node.fields.origin.value != null
+# }

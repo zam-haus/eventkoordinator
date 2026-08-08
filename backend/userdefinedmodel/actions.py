@@ -250,6 +250,9 @@ class PolicyEvaluationOutput(BaseModel):
     creatable_submodels: dict[str, dict[str, dict]] = {}
     dashboard_columns: list[dict] = []
     actions: list[dict] = []
+    # Only meaningful for action == "delete": overrides the application-level
+    # backlink-protect block (events-and-sync.md §1.1). Ignored otherwise.
+    force_delete: bool = False
     additional_result: dict = {}
     input_document: dict = {}
     """The input document this evaluation was given. Not part of the Rego result
