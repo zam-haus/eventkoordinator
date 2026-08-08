@@ -16,6 +16,9 @@ import data.udm.udmframeworkv1.modules.sudo
 #   force_delete (bool, OR-ed like allow; action == "delete" only) —
 #     overrides the app-level backlink-protect block; read input.backlink_summary
 #     to decide (events-and-sync.md §1.1),
+#   linked_inputs / backlink_inputs (sets, unioned across ALL modules; read in
+#     a REQUEST PHASE before the main evaluation, resolved into input.linked /
+#     input.backlinks — not part of data.udm.result; events-and-sync.md §2.2),
 #   actions, dashboard_columns, additional_result (object),
 #   protected_fields (INTERNAL convention only — never part of result),
 #   public_type_fields / TYPE_DESCRIPTION (type_result only).
@@ -53,6 +56,20 @@ force_delete if {
 	some name
 	udmframeworkv1.modules[name].force_delete
 	print("[udm:force_delete] Module ", name, " forces deletion despite backlinks.")
+}
+
+# ─── Dynamic link requests (§2.2) — request-phase rule paths, NOT part of
+# data.udm.result. The engine reads these directly (data.udm.linked_inputs /
+# data.udm.backlink_inputs) before resolving input.linked / input.backlinks.
+
+linked_inputs contains p if {
+	some name
+	some p in udmframeworkv1.modules[name].linked_inputs
+}
+
+backlink_inputs contains b if {
+	some name
+	some b in udmframeworkv1.modules[name].backlink_inputs
 }
 
 deny if {

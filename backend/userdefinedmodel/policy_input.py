@@ -160,6 +160,12 @@ class EntityActionInput(BaseModel):
     changed_fields: dict[str, Any]
     additional_result: dict[str, Any]  # VIEW pre-check carry-over
     backlink_summary: "BacklinkSummary"  # only populated for action == "delete"
+    # §2: forward paths (linked_inputs) and reverse lookups (backlink_inputs)
+    # requested by any policy file, resolved before the main evaluation.
+    # linked values are NodeDocument | None, or list[NodeDocument | None] for
+    # a path that traversed an entity_select_multi segment.
+    linked: dict[str, Any]
+    backlinks: dict[str, list[Any]]
 
     # transition action only:
     transition: Optional[str] = None

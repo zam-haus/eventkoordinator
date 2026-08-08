@@ -127,6 +127,11 @@ valid_input_doc(doc) if {
 	                                # (events-and-sync.md §1.1); {"count": 0,
 	                                # "by_type_field": []} for every other
 	                                # action
+	is_object(doc.linked)    # §2: requested forward paths (linked_inputs),
+	                         # resolved before the main evaluation; keyed by
+	                         # the dotted path string, {} if none requested
+	is_object(doc.backlinks) # §2: requested reverse lookups (backlink_inputs),
+	                         # keyed by request "name", {} if none requested
 	valid_locale(doc)
 	valid_old_entity(doc)
 	valid_action_extras(doc)
@@ -434,6 +439,8 @@ example_inputs contains doc if {
 			"changed_fields": {},
 			"additional_result": {},
 			"backlink_summary": {"count": 0, "by_type_field": []},
+			"linked": {},
+			"backlinks": {},
 		},
 		example_extras(action, descriptor_variant),
 	)

@@ -579,23 +579,33 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 2 — dynamic link expansion (2)
 
-- [ ] Request-phase evaluation in `engine.py`: evaluate `linked_inputs` /
+- [x] Request-phase evaluation in `engine.py`: evaluate `linked_inputs` /
       `backlink_inputs` set rules against the base input (clone of compiled
-      session).
-- [ ] Path resolver: forward paths over `entity_select` slugs (any depth,
+      session). — `_eval_request_rules` / `_eval_optional_set_rule` read
+      `data.udm.linked_inputs` / `data.udm.backlink_inputs` (aggregated in
+      `udm.rego`, unioned across modules like `allow`); tolerates policies
+      that never define them (regorus "not a valid rule path").
+- [x] Path resolver: forward paths over `entity_select` slugs (any depth,
       `_MULTI` segments yield lists), producing `input.linked` shaped as
-      NodeDocuments; keep the flat `linked_entities` map unchanged.
-- [ ] Backlink resolver: `backlink_inputs` entries → `input.backlinks.<name>`
-      lists (reuses the step-1 query helper).
-- [ ] Fixpoint loop: re-run the request phase with expanded input until the
+      NodeDocuments; keep the flat `linked_entities` map unchanged. —
+      `_resolve_forward_path` / `_lookup_node_doc`.
+- [x] Backlink resolver: `backlink_inputs` entries → `input.backlinks.<name>`
+      lists (reuses the step-1 query helper). — `_resolve_backlink`, built on
+      `backlinks.find_backlinks`.
+- [x] Fixpoint loop: re-run the request phase with expanded input until the
       requested sets are stable; fixed iteration limit (e.g. 3); instability
-      at the limit is an evaluation error.
-- [ ] Schema updates: `linked` and `backlinks` members in `policy_input.py`,
+      at the limit is an evaluation error. — `resolve_linked_and_backlinks`,
+      `LINK_FIXPOINT_LIMIT = 3`, raises `LinkResolutionError`.
+- [x] Schema updates: `linked` and `backlinks` members in `policy_input.py`,
       `_input_schema.rego`, `check_input_schema.py`; align with the rego
-      contract refactor documents.
-- [ ] Tests: unconditional and input-conditional requests, deep paths,
+      contract refactor documents. — added to `EntityActionInput`,
+      `valid_input_doc`, and the generated example documents (all 110
+      examples still pass `check_input_schema.py`).
+- [x] Tests: unconditional and input-conditional requests, deep paths,
       `_MULTI` lists, backlinks, fixpoint convergence and the instability
-      error, null for dangling/missing targets.
+      error, null for dangling/missing targets. —
+      `userdefinedmodel/tests/test_link_expansion.py` (7 tests); full suite
+      green (`uv run manage.py test userdefinedmodel`, 299 tests).
 
 ### Step 3 — `create_linked_entity` action (1.2)
 

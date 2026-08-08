@@ -133,6 +133,28 @@ error_messages contains msg if {
 	}
 }
 
+# ── linked_inputs / backlink_inputs (§2.2 dynamic link requests) ────────────
+# Sets, unioned across ALL policy files, read in a REQUEST PHASE before the
+# main evaluation — not part of data.udm.result. Requests may be conditional
+# on input (type, workflow state, field values).
+#
+# linked_inputs contains "origin"                # forward path: follow the
+#                                                 # entity_select field "origin"
+# linked_inputs contains "origin.owner" if {      # deeper path: origin, then
+#     input.entity.workflow_state == "published"  # ITS "owner" field
+# }
+#
+# backlink_inputs contains {
+# 	"name": "events",          # key under input.backlinks
+# 	"source_type": "<event type id>",  # referencing UDMType id (UUID string)
+# 	"source_field": "origin",  # entity_select slug on that type
+# }
+#
+# Resolved paths land in input.linked (NodeDocument | null, or a LIST for a
+# path that traverses an entity_select_multi segment); resolved backlinks
+# land in input.backlinks.<name> as a list of NodeDocuments. Broken/unset
+# references resolve to null — handle it, never assume presence.
+
 # ── deletable_nodes / creatable_submodels (§6 submodel operations) ───────────
 # deletable_nodes: set of child node ids the user may delete (list buttons).
 # creatable_submodels: set of {"node": parent_id, "field": slug,

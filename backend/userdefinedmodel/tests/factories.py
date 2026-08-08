@@ -258,6 +258,10 @@ valid_transitions contains {"node": n, "field": f, "name": name} if {
     some name, _ in wf.transitions
 }
 
+additional_result["view_allowed"] := _tf_allow
+
+additional_result["editable"] := [{"node": nid, "field": fs} | some nid, slugs in _tf_fields; some fs in slugs]
+
 result := {
     "allow": _tf_allow,
     "messages": [m | some m in messages],
@@ -267,10 +271,7 @@ result := {
     "actions": [a | some a in actions],
     "force_delete": force_delete,
     "dashboard_columns": [c | some c in dashboard_columns],
-    "additional_result": {
-        "view_allowed": _tf_allow,
-        "editable": [{"node": nid, "field": fs} | some nid, slugs in _tf_fields; some fs in slugs],
-    },
+    "additional_result": additional_result,
 }
 """
 

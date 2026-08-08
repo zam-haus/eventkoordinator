@@ -349,6 +349,8 @@ def build_policy_input(
         "changed_fields": changed_fields or {},
         "additional_result": additional_result or {},
         "backlink_summary": backlink_summary or {"count": 0, "by_type_field": []},
+        "linked": {},
+        "backlinks": {},
     }
     if action == "transition":
         input_doc.update(
@@ -409,6 +411,133 @@ def _normalize_policy_messages(messages) -> list[dict]:
     return result
 
 
+# ─── Dynamic link expansion (§2: linked_inputs / backlink_inputs) ────────────
+# Every policy file may contribute forward path requests (linked_inputs) and
+# reverse lookup requests (backlink_inputs); the engine resolves them in a
+# request phase BEFORE the main evaluation. See events-and-sync.md §2.
+
+LINK_FIXPOINT_LIMIT = 3
+
+
+class LinkResolutionError(Exception):
+    """linked_inputs/backlink_inputs did not stabilize within the iteration
+    limit — a request kept depending on newly-expanded input forever."""
+
+
+def _lookup_node_doc(entity_id: str, node_cache: dict[str, Optional[dict]]) -> Optional[dict]:
+    from userdefinedmodel.models.node import UserDefinedModelEntityNode
+
+    if entity_id not in node_cache:
+        try:
+            node = UserDefinedModelEntityNode.objects.get(id=entity_id)
+            node_cache[entity_id] = node.to_policy_document()
+        except UserDefinedModelEntityNode.DoesNotExist:
+            node_cache[entity_id] = None
+    return node_cache[entity_id]
+
+
+def _resolve_forward_path(path: str, context_doc: dict, node_cache: dict[str, Optional[dict]]):
+    """Follow a dotted entity_select path from context_doc (the root document).
+
+    Each segment is an entity_select(_multi) field slug on the CURRENT level's
+    type. A path resolves to a NodeDocument, None (broken/unset reference), or
+    — if any segment traversed was `_MULTI` — a list of NodeDocument | None.
+    """
+    current: list[Optional[dict]] = [context_doc]
+    is_multi = False
+    for seg in path.split("."):
+        next_level: list[Optional[dict]] = []
+        for doc in current:
+            if doc is None:
+                continue
+            entry = (doc.get("fields") or {}).get(seg)
+            if entry is None:
+                continue
+            dt = entry.get("data_type")
+            val = entry.get("value")
+            if dt == "entity_select_multi":
+                is_multi = True
+                ids = [str(v) for v in (val or [])]
+            elif dt == "entity_select":
+                ids = [str(val)] if val is not None else []
+            else:
+                ids = []
+            for eid in ids:
+                next_level.append(_lookup_node_doc(eid, node_cache))
+        current = next_level
+    if is_multi:
+        return current
+    return current[0] if current else None
+
+
+def _resolve_backlink(entry: dict, context_entity_id: str) -> list[dict]:
+    """Resolve one backlink_inputs entry {"name","source_type","source_field"}
+    to a list of NodeDocuments referencing context_entity_id."""
+    from userdefinedmodel.backlinks import find_backlinks
+
+    source_type = entry.get("source_type")
+    source_field = entry.get("source_field")
+    docs = []
+    for bl in find_backlinks(context_entity_id):
+        if bl.type_id != source_type or bl.field_slug != source_field:
+            continue
+        docs.append(bl.entity.to_policy_document())
+    return docs
+
+
+def _eval_optional_set_rule(session: "RegoSession", input_doc: dict, rule_path: str) -> list:
+    """Like session.evaluate, but tolerates policies that never define the
+    rule at all: regorus raises "not a valid rule path" for a path no loaded
+    module contributes to (distinct from a defined-but-unmatched rule, which
+    evaluates to an empty set/undefined instead)."""
+    try:
+        value, _ = session.evaluate(input_doc, rule_path)
+    except RuntimeError as exc:
+        if "not a valid rule path" not in str(exc):
+            raise
+        return []
+    return value or []
+
+
+def _eval_request_rules(session: "RegoSession", input_doc: dict) -> tuple[set[str], list[dict]]:
+    linked_paths = _eval_optional_set_rule(session, input_doc, "data.udm.linked_inputs")
+    backlink_reqs = _eval_optional_set_rule(session, input_doc, "data.udm.backlink_inputs")
+    return set(linked_paths), list(backlink_reqs)
+
+
+def resolve_linked_and_backlinks(
+    session: "RegoSession", base_input: dict, context_doc: dict, context_entity_id: str,
+) -> tuple[dict, dict]:
+    """Request-phase evaluation + expansion (contract §2.2). Requests may
+    depend on already-expanded input, so this re-evaluates the request rules
+    after every expansion until the requested sets stabilize, bounded by
+    LINK_FIXPOINT_LIMIT. Raises LinkResolutionError if never stable."""
+    node_cache: dict[str, Optional[dict]] = {}
+    linked: dict = dict(base_input.get("linked") or {})
+    backlinks: dict = dict(base_input.get("backlinks") or {})
+    prev_request = None
+    for _ in range(LINK_FIXPOINT_LIMIT + 1):
+        probe_input = {**base_input, "linked": linked, "backlinks": backlinks}
+        paths, backlink_reqs = _eval_request_rules(session, probe_input)
+        names = {b["name"] for b in backlink_reqs if isinstance(b, dict) and b.get("name")}
+        request_key = (frozenset(paths), frozenset(names))
+        if request_key == prev_request:
+            return linked, backlinks
+        prev_request = request_key
+        for p in paths:
+            if p not in linked:
+                linked[p] = _resolve_forward_path(p, context_doc, node_cache)
+        for entry in backlink_reqs:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("name")
+            if name and name not in backlinks:
+                backlinks[name] = _resolve_backlink(entry, context_entity_id)
+    raise LinkResolutionError(
+        "linked_inputs/backlink_inputs did not converge within the iteration limit"
+    )
+
+
 # ─── Policy evaluation ────────────────────────────────────────────────────────
 
 def evaluate_policy(
@@ -436,6 +565,12 @@ def evaluate_policy(
 
     try:
         input_doc = build_policy_input(node, user, action, **kwargs)
+        context_doc = input_doc["entity"]
+        linked, backlinks = resolve_linked_and_backlinks(
+            session, input_doc, context_doc, context_doc["id"],
+        )
+        input_doc = {**input_doc, "linked": linked, "backlinks": backlinks}
+        validate_policy_input(input_doc)
         gather = logger.isEnabledFor(logging.DEBUG)
         raw_result, prints = session.evaluate(input_doc, "data.udm.result", gather_prints=gather)
         if prints:
