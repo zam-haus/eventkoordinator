@@ -28,6 +28,114 @@ This document provides comprehensive documentation for all API endpoints in the 
    - [Bundle Endpoints](#bundle-endpoints)
    - [Staging Endpoints](#staging-endpoints)
    - [Autocomplete Endpoints](#autocomplete-endpoints)
+   - [Mail Templates Endpoints](#mail-templates-endpoints)
+
+## Mail Templates Endpoints
+
+The mail templates API provides endpoints for managing email templates used in policy actions and workflow transitions.
+
+### Mail Templates Endpoints
+
+**Endpoint**: `GET /mail-templates/`
+
+**Description**: List all mail templates.
+
+**Authentication**: Required
+
+**Response**:
+```json
+[
+  {
+    "slug": "proposal-submitted-owner",
+    "description": "Sent to the owner when a proposal is submitted"
+  }
+]
+```
+
+**Endpoint**: `POST /mail-templates/`
+
+**Description**: Create a new mail template.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "slug": "proposal-submitted-owner",
+  "description": "Sent to the owner when a proposal is submitted",
+  "subject": "Einreichung eingegangen / Submission received: {{ proposal.title }}",
+  "body_text": "Hallo {{ user.username }},\n\ndeine Einreichung wurde empfangen.\n",
+  "body_html": "<p>Hallo {{ user.username }},</p><p>deine Einreichung wurde empfangen.</p>",
+  "example_input": {}
+}
+```
+
+**Response**: `201 Created`
+
+**Endpoint**: `PUT /mail-templates/{slug}/`
+
+**Description**: Update a mail template.
+
+**Authentication**: Required
+
+**Request Body**: Same as POST
+
+**Response**: Updated template
+
+**Endpoint**: `GET /mail-templates/{slug}/`
+
+**Description**: Get a specific mail template.
+
+**Authentication**: Required
+
+**Response**: Template object with all fields
+
+**Endpoint**: `DELETE /mail-templates/{slug}/`
+
+**Description**: Delete a mail template.
+
+**Authentication**: Required
+
+**Response**: `204 No Content`
+
+**Endpoint**: `POST /mail-templates/preview/`
+
+**Description**: Preview a template with a sample context.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "subject": "Test",
+  "body_text": "Hallo {{ user.username }}",
+  "body_html": "<p>Hallo {{ user.username }}</p>",
+  "context": {
+    "user": {"username": "testuser"}
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "subject": "Test",
+  "text": "Hallo testuser",
+  "html": "<p>Hallo testuser</p>",
+  "error": null
+}
+```
+
+**Errors**:
+- `401`: Not authenticated
+- `403`: Permission denied
+- `422`: Template syntax error (returned as HTTP 200 with `error` field)
+
+**Templating System**:
+- Templates use Jinja2 syntax
+- Sandboxed environment for security
+- Context is JSON round-tripped
+- Available filters: `timezone`, `isoformat`, `htmlquote`, `userinput`
 
 2. [Sync Endpoints](#sync-endpoints)
    - [Sync Target Endpoints](#sync-target-endpoints)
