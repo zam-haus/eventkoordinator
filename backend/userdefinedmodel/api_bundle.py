@@ -156,8 +156,18 @@ def _collect_bundle_scope(
         mail_templates = list(MailTemplate.objects.all())
     else:
         template_slugs: set[str] = set(extra_template_slugs or [])
-        for policy in policies:
-            template_slugs.update(_TEMPLATE_NAME_RE.findall(policy.source or ""))
+        sources = [p.source or "" for p in policies]
+        for source in sources:
+            template_slugs.update(_TEMPLATE_NAME_RE.findall(source))
+        # Also take any existing template whose slug appears as a literal
+        # anywhere in an in-scope policy. That covers the `mail_templates`
+        # manifest rule, which names templates sent by application code rather
+        # than by a send_notification action — without it they would silently
+        # be left out of the ZIP.
+        known_slugs = MailTemplate.objects.values_list("slug", flat=True)
+        template_slugs.update(
+            slug for slug in known_slugs if any(f'"{slug}"' in source for source in sources)
+        )
         mail_templates = list(MailTemplate.objects.filter(slug__in=template_slugs))
 
     return udm_types, field_configs, workflows, policies, mail_templates

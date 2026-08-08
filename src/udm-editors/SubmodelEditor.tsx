@@ -12,7 +12,7 @@ import { PolicyMessageList } from './shared'
 import { FieldInput } from './FieldInput'
 import { FieldCommitWrapper, LARGE_TYPES, BLUR_COMMIT_TYPES } from './FieldCommitWrapper'
 import { useUdmGrants, type NewItemGrant } from './grants'
-import { ReadonlyBadge } from './shared'
+import { ReadonlyBadge, FieldSlug } from './shared'
 import { FieldPreview } from './FieldPreview'
 import { PreviewTable, type PreviewRow } from './PreviewTable'
 import styles from '../UdmEntityEditor.module.css'
@@ -358,7 +358,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                         <i id={tooltipId} className={`pi ${SUB_SEV_ICON[sev] ?? 'pi-info-circle'} ${styles.severityIcon} ${SUB_SEV_CLASS[sev] ?? ''}`} />
                       </>
                     )}
-                    <span className={styles.compactLabel}>{subLabel}{(disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user || (item.id == null && subFd.data_type === 'workflow')) && <ReadonlyBadge />}</span>
+                    <span className={styles.compactLabel}>{subLabel}<FieldSlug slug={subFd.slug} />{(disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user || (item.id == null && subFd.data_type === 'workflow')) && <ReadonlyBadge />}</span>
                   </div>
                   {(() => {
                     const fieldDisabled = disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user
@@ -380,7 +380,7 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
                 ...(sev ? { outline: `2px solid ${subColor}`, borderRadius: '4px', padding: '0.25rem' } : {}),
               }}>
                 <div style={{ fontSize: '0.82rem', fontWeight: 600, color: sev ? subColor : '#444', marginBottom: '0.2rem' }}>
-                  {subLabel} <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#999' }}>({subFd.data_type})</span>
+                  {subLabel}<FieldSlug slug={subFd.slug} /> <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#999' }}>({subFd.data_type})</span>
                   {(disabled || !fieldEditable(subFd.slug) || !!(subFd.type_config as Record<string, unknown>)?.default_current_user || (item.id == null && subFd.data_type === 'workflow')) && <ReadonlyBadge />}
                 </div>
                 {(() => {
@@ -988,7 +988,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
                             <i id={tooltipId} className={`pi ${SUB_SEV_ICON[sev] ?? 'pi-info-circle'} ${styles.severityIcon} ${SUB_SEV_CLASS[sev] ?? ''}`} />
                           </>
                         )}
-                        <span className={styles.compactLabel}>{subLabel}</span>
+                        <span className={styles.compactLabel}>{subLabel}<FieldSlug slug={subFd.slug} /></span>
                       </div>
                       {wrapSelectCommit(subFd, langs.map(lang => (
                         <FieldInput key={lang || 'nolang'} fd={subFd}
@@ -1007,7 +1007,7 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
                     ...(sev ? { outline: `2px solid ${subColor}`, borderRadius: '4px', padding: '0.25rem' } : {}),
                   }}>
                     <div style={{ fontSize: '0.82rem', fontWeight: 600, color: sev ? subColor : '#444', marginBottom: '0.2rem' }}>
-                      {subLabel} <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#999' }}>({subFd.data_type})</span>
+                      {subLabel}<FieldSlug slug={subFd.slug} /> <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#999' }}>({subFd.data_type})</span>
                     </div>
                     {wrapSelectCommit(subFd, langs.map(lang => (
                       <FieldInput

@@ -28,6 +28,19 @@ export function PolicyMessageList({ messages }: { messages: PolicyMessage[] }) {
   )
 }
 
+/** The field's slug, shown next to its label — it is what filter queries and
+ *  policies address the field by, and it is not derivable from the label. */
+export function FieldSlug({ slug }: { slug: string }) {
+  return (
+    <code style={{
+      fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 400,
+      color: '#6b7280', marginLeft: '0.35rem',
+    }}>
+      {slug}
+    </code>
+  )
+}
+
 /** Small badge shown next to a field label when the policy leaves it read-only. */
 export function ReadonlyBadge() {
   return (

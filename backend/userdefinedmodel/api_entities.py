@@ -38,13 +38,41 @@ router = Router(auth=django_auth)
 
 # ─── Entities ─────────────────────────────────────────────────────────────────
 
+def _slug_id_prefixes(config_version) -> dict[str, str]:
+    """{slug: prefix} for slug_id fields, so the filter query can match the
+    displayed form ("PROP-6") and not just the stored number."""
+    return {
+        fd.slug: (fd.type_config or {}).get("prefix")
+        for fd in config_version.field_definitions.all()
+        if fd.data_type == "slug_id" and (fd.type_config or {}).get("prefix")
+    }
+
 @router.get("/entities/", response=list[EntityOut], auth=django_auth)
-def list_entities(request, type_id: uuid.UUID, page_size: int = 200):
+def list_entities(request, type_id: uuid.UUID, page_size: int = 200, q: str = ""):
     """List entities for a single UDM type, filtered to those the user may view.
     Field values are reduced to the viewable set per entity (policy-enforced).
+
+    ``q`` is an optional Lucene-like filter query (see
+    :mod:`userdefinedmodel.searchquery`). It is evaluated against the
+    policy-redacted serialization, so it can never match a hidden field.
     """
     from userdefinedmodel.models import UserDefinedModelEntity
     from userdefinedmodel.engine import evaluate_policy
+    from userdefinedmodel.searchquery import (
+        QuerySyntaxError,
+        UnsupportedQueryFeature,
+        build_document,
+        match,
+        parse_query,
+        validate_query,
+    )
+
+    try:
+        query = parse_query(q)
+        validate_query(query)
+    except (QuerySyntaxError, UnsupportedQueryFeature) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
     _prefetch = [
         "field_values__field",
         "config_version__field_definitions",
@@ -59,11 +87,17 @@ def list_entities(request, type_id: uuid.UUID, page_size: int = 200):
     )
     results = []
     cap = min(max(1, page_size), 200)
+    prefixes_by_version: dict[uuid.UUID, dict[str, str]] = {}
     for entity in qs.iterator(chunk_size=200):
         policy = evaluate_policy(entity, request.user, "view", locale=_locale(request))
         if not policy.allow:
             continue
-        results.append(_entity_out_for_user(entity, request.user, view_policy=policy))
+        out = _entity_out_for_user(entity, request.user, view_policy=policy)
+        if entity.config_version_id not in prefixes_by_version:
+            prefixes_by_version[entity.config_version_id] = _slug_id_prefixes(entity.config_version)
+        if not match(query, build_document(out, prefixes_by_version[entity.config_version_id])):
+            continue
+        results.append(out)
         if len(results) >= cap:
             break
     return results

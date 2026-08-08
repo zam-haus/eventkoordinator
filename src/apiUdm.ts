@@ -620,9 +620,10 @@ export async function udmRemovePolicy(typeId: string, slug: string): Promise<voi
 
 // ── Entities ──────────────────────────────────────────────────────────────────
 
-export async function udmListEntitiesByType(typeId: string, pageSize = 200): Promise<EntityOut[]> {
+export async function udmListEntitiesByType(typeId: string, pageSize = 200, q = ''): Promise<EntityOut[]> {
+  const query = q ? `&q=${encodeURIComponent(q)}` : ''
   const resp = await fetch(
-    `/api/udm/entities/?type_id=${encodeURIComponent(typeId)}&page_size=${pageSize}`,
+    `/api/udm/entities/?type_id=${encodeURIComponent(typeId)}&page_size=${pageSize}${query}`,
     { credentials: 'include' },
   )
   if (!resp.ok) return throwRawFetchError(resp, 'Failed to list entities')

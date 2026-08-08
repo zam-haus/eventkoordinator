@@ -37,7 +37,9 @@ dependencies = [
     #"celine-regorus>=0.9.1.post20260227075446",
     "regorus>=0.10.1",
     "nh3>=0.2.21",
+    "pyparsing>=3.3.2",
     "factory-boy>=3.3.3",
+    "dateparser>=1.4.2",
 ]
 default-groups = []
 [tool.uv.sources]

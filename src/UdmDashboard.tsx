@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { TreeTable } from 'primereact/treetable'
 import { Column } from 'primereact/column'
 import { MultiSelect } from 'primereact/multiselect'
+import { InputText } from 'primereact/inputtext'
+import { Button } from 'primereact/button'
 import type { TreeNode } from 'primereact/treenode'
 import {
   udmListTypes,
@@ -21,6 +23,21 @@ import { getLang, FieldPreview, fieldPreviewText } from './udm-editors'
 const SKIP_DATA_TYPES = new Set([
   'tab_container', 'tab', 'save_button', 'hstack', 'hstack_group', 'tab_prev', 'tab_next',
 ])
+
+const FILTER_HELP = [
+  'Lucene-like filter query:',
+  '  term            berlin          (any field, submodels included)',
+  '  field           city:Berlin',
+  '  phrase          title:"hello world"',
+  '  wildcards       name:an*   name:B?rlin',
+  '  ranges          age:[18 TO 30]   age:{18 TO 30}   age:[18 TO *]',
+  '  booleans        a AND b, a OR b, NOT a, +a -b, (a OR b) AND c',
+  '  submodels       any(participants: status:confirmed)',
+  '                  all(participants: status:confirmed)',
+  '                  none(participants: status:rejected)',
+  '                  participants.name:anna   (shorthand for any)',
+  'Not supported yet: fuzzy (a~2), proximity ("a b"~3), boosting (a^2).',
+].join('\n')
 
 const DASH_PREFIX = '__dash__:'
 function dashId(key: string) { return `${DASH_PREFIX}${key}` }
@@ -125,6 +142,10 @@ export function UdmDashboard() {
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({})
   const [selectedColumns, setSelectedColumns] = useState<string[]>([])
   const [typesLoading, setTypesLoading] = useState(true)
+  // `filterText` is what the user types; `appliedFilter` is what the server saw.
+  const [filterText, setFilterText] = useState('')
+  const [appliedFilter, setAppliedFilter] = useState('')
+  const [filterError, setFilterError] = useState<string | null>(null)
 
   useEffect(() => {
     udmListTypes()
@@ -192,6 +213,30 @@ export function UdmDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultSelectedIds.join(',')])
 
+  const loadEntities = useCallback((typeId: string, query: string) => {
+    setLoadingTypeIds(prev => new Set([...prev, typeId]))
+    udmListEntitiesByType(typeId, 200, query)
+      .then(entities => {
+        setEntitiesByTypeId(prev => ({ ...prev, [typeId]: entities }))
+        setFilterError(null)
+      })
+      .catch((err: unknown) => {
+        setEntitiesByTypeId(prev => ({ ...prev, [typeId]: [] }))
+        // A rejected query is a property of the query, not of the type — one
+        // message for the whole dashboard.
+        if (query) setFilterError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => setLoadingTypeIds(prev => { const n = new Set(prev); n.delete(typeId); return n }))
+  }, [])
+
+  // Re-run every already-expanded type against a newly applied filter.
+  useEffect(() => {
+    setFilterError(null)
+    for (const typeId of expandedTypeIds) loadEntities(typeId, appliedFilter)
+  // Only on filter change: expanding a type loads it via handleExpand.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedFilter])
+
   function handleExpand(event: { node: TreeNode }) {
     const typeId = event.node.key as string
     if (!configByTypeId[typeId]) {
@@ -199,13 +244,7 @@ export function UdmDashboard() {
         .then(config => setConfigByTypeId(prev => ({ ...prev, [typeId]: config })))
         .catch(() => {})
     }
-    if (!entitiesByTypeId[typeId]) {
-      setLoadingTypeIds(prev => new Set([...prev, typeId]))
-      udmListEntitiesByType(typeId)
-        .then(entities => setEntitiesByTypeId(prev => ({ ...prev, [typeId]: entities })))
-        .catch(() => setEntitiesByTypeId(prev => ({ ...prev, [typeId]: [] })))
-        .finally(() => setLoadingTypeIds(prev => { const n = new Set(prev); n.delete(typeId); return n }))
-    }
+    if (!entitiesByTypeId[typeId]) loadEntities(typeId, appliedFilter)
   }
 
   const treeNodes: TreeNode[] = types.map(type => ({
@@ -230,6 +269,17 @@ export function UdmDashboard() {
   function tableMinWidth() {
     const base = 220  // label column
     return visibleColumns.reduce((sum, c) => sum + (c.kind === 'dash' ? 200 : 160), base)
+  }
+
+  // The slug under the label is what the filter query expects as a field name.
+  function columnHeader(col: ColOpt) {
+    const slug = col.kind === 'field' ? col.slug : col.key
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+        <span>{col.label}</span>
+        <code style={{ fontSize: '0.7rem', fontWeight: 400, color: '#6b7280' }}>{slug}</code>
+      </div>
+    )
   }
 
   // ── Cell renderers ───────────────────────────────────────────────────────────
@@ -281,6 +331,28 @@ export function UdmDashboard() {
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>UDM Dashboard</h1>
+        <form
+          onSubmit={e => { e.preventDefault(); setAppliedFilter(filterText) }}
+          style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}
+        >
+          <InputText
+            value={filterText}
+            onChange={e => setFilterText(e.target.value)}
+            placeholder='Filter, e.g. city:Berlin AND none(participants: status:rejected)'
+            title={FILTER_HELP}
+            style={{ minWidth: '320px', borderColor: filterError ? '#dc2626' : undefined }}
+          />
+          <Button type="submit" label="Filter" size="small" />
+          {(filterText || appliedFilter) && (
+            <Button
+              type="button"
+              label="Clear"
+              size="small"
+              outlined
+              onClick={() => { setFilterText(''); setAppliedFilter('') }}
+            />
+          )}
+        </form>
         {allColumns.length > 0 && (
           <MultiSelect
             value={selectedColumns}
@@ -292,6 +364,18 @@ export function UdmDashboard() {
           />
         )}
       </div>
+
+      {filterError && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: '1rem', padding: '0.5rem 0.75rem', borderRadius: '4px',
+            background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '0.85rem',
+          }}
+        >
+          {filterError}
+        </div>
+      )}
 
       {typesLoading && <p style={{ color: '#888' }}>Loading…</p>}
       {!typesLoading && types.length === 0 && <p style={{ color: '#888' }}>No UDM types available.</p>}
@@ -315,7 +399,7 @@ export function UdmDashboard() {
             {visibleColumns.map(col => (
               <Column
                 key={col.id}
-                header={col.label}
+                header={columnHeader(col)}
                 body={makeColBody(col)}
                 style={colStyle(col)}
               />

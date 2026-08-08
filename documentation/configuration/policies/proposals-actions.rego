@@ -15,12 +15,10 @@ import rego.v1
 #   set_field_value        Write a field value on the node or a submodel
 #   trigger_transition     Fire a workflow transition on self or children
 #
-# MailTemplate slugs used here (shipped in the bundle under templates/):
-#   proposal-submitted-owner
-#   proposal-submitted-contact
-#   proposal-accepted
-#   proposal-rejected
-#   proposal-revision-requested
+# MailTemplate slugs sent by the actions below (shipped in the bundle under
+# templates/): proposal-submitted-owner, proposal-submitted-contact,
+# proposal-accepted, proposal-rejected, proposal-revision-requested,
+# review-requested, review-given.
 #
 # Each action passes a `context` object; the engine additionally injects the
 # input document and the calculated decision fields. The templates read
@@ -169,3 +167,86 @@ proposal_context := {
     "moderation_comment": object.get(input.entity.fields, ["moderation_comment", "value"], ""),
     "url": sprintf("/entities/%v", [input.entity.id]),
 }
+
+
+# ─── Review notifications (reviews submodel / vote workflow) ─────────────────
+# A vote transition fires on the review node itself, so `recipient_field`
+# resolves against that node and input.node_id identifies which review it was.
+
+# The review node the current transition is acting on.
+_review_node := r if {
+	some r in object.get(input.entity.children, "reviews", [])
+	r.id == input.node_id
+}
+
+# Shape expected by the review-* templates.
+_review_context := {
+	"comment": object.get(_review_node.fields, ["comment", "value"], ""),
+	# The input document predates the state change, so the vote field still
+	# holds the old value here — the descriptor's target state is the new one.
+	"status": input.transition_descriptor.to_state,
+	"reviewer_name": object.get(_review_node.fields, ["author", "value"], ""),
+	"reviewer_is_system": false,
+}
+
+# Re-opening a vote is a fresh request to that reviewer.
+
+actions contains {
+	"type": "send_notification",
+	"phase": "post",
+	"subject": sprintf(
+		"Bitte um Gutachten / Review requested: %v",
+		[object.get(input.entity.fields, ["title", "value"], "")],
+	),
+	"template_name": "review-requested",
+	"recipient_field": "author",
+	"context": {
+		"proposal": proposal_context,
+		"reviewer": {"username": object.get(_review_node.fields, ["author", "value"], "")},
+	},
+} if {
+	input.action == "transition"
+	input.field == "vote"
+	input.transition == "reset"
+}
+
+# Any cast vote notifies the programme contact.
+
+actions contains {
+	"type": "send_notification",
+	"phase": "post",
+	"subject": sprintf(
+		"Gutachten eingegangen / Review submitted: %v",
+		[object.get(input.entity.fields, ["title", "value"], "")],
+	),
+	"template_name": "review-given",
+	"recipient_field": null,
+	"extra_recipients": ["programm@example.org"],
+	"context": {
+		"proposal": proposal_context,
+		"review": _review_context,
+	},
+} if {
+	input.action == "transition"
+	input.field == "vote"
+	input.transition in {"accept", "reject", "revise"}
+}
+
+
+# ─── Templates sent by application code ──────────────────────────────────────
+# Everything above is sent by a send_notification post-action. These seven are
+# not: events live in apiv1 (Event/EventFlow), not in the UDM model, so there is
+# no entity, workflow or transition for a policy to hook. They are sent by
+# apiv1/flows.py. They are named here only so bundle export still collects them
+# — remove this list once events are modelled as a UDM type with its own
+# workflow, and drive them from actions like the ones above.
+
+apiv1_mail_templates := [
+	"event-submitted-owner",
+	"event-approved-contact",
+	"event-rejected-contact",
+	"event-confirmed-owner",
+	"event-confirmed-contact",
+	"event-canceled-owner",
+	"event-canceled-contact",
+]

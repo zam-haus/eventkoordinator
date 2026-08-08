@@ -1633,6 +1633,91 @@ class BundleExportTests(BaseAPITest):
             self.assertIn("allow", zf.read(policy_file).decode())
 
 
+    def _import_zip(self, zip_bytes, scope_type_id):
+        import io
+        resp = self.client.post(
+            "/api/udm/import-bundle-zip/",
+            {"file": io.BytesIO(zip_bytes), "scope_type_ids": scope_type_id},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        return resp
+
+    def _make_template(self, slug, **kw):
+        from userdefinedmodel.models import MailTemplate
+        return MailTemplate.objects.create(
+            slug=slug, body_text=kw.get("body_text", "hi"),
+            body_html=kw.get("body_html", "<p>hi</p>"),
+            subject=kw.get("subject", "S"), description=kw.get("description", ""),
+            example_input=kw.get("example_input", {}),
+        )
+
+    def test_export_includes_templates_named_by_a_send_notification(self):
+        import zipfile, io, json as _json
+        from userdefinedmodel.models import Policy
+        udm_type, _c, _v, _w, policy = self._make_udm_type_with_workflow()
+        self._make_template("used-by-action", example_input={"a": 1})
+        self._make_template("not-referenced")
+        policy.source += '\n# {"type": "send_notification", "template_name": "used-by-action"}\n'
+        policy.save()
+
+        with zipfile.ZipFile(io.BytesIO(self._export_zip([str(udm_type.id)]))) as zf:
+            names = zf.namelist()
+            self.assertIn("templates/used-by-action.txt.j2", names)
+            self.assertIn("templates/used-by-action.html.j2", names)
+            self.assertIn("templates/used-by-action.json", names)
+            # Templates no policy mentions stay out — bundles are per-type,
+            # templates are global, so exporting all would clobber on import.
+            self.assertNotIn("templates/not-referenced.txt.j2", names)
+            bundle = _json.loads(zf.read("UDM_BUNDLE.json").decode())
+            slugs = [t["slug"] for t in bundle["mail_templates"]]
+            self.assertEqual(slugs, ["used-by-action"])
+            # Bodies live in the files, not the JSON.
+            for t in bundle["mail_templates"]:
+                self.assertNotIn("body_text", t)
+                self.assertNotIn("body_html", t)
+
+    def test_export_includes_templates_only_named_in_a_manifest_list(self):
+        """Templates sent by application code are declared in a `mail_templates`
+        rule; a bare slug literal must be enough to pull them into the ZIP."""
+        import zipfile, io
+        udm_type, _c, _v, _w, policy = self._make_udm_type_with_workflow()
+        self._make_template("sent-by-python")
+        policy.source += '\nmail_templates := ["sent-by-python"]\n'
+        policy.save()
+
+        with zipfile.ZipFile(io.BytesIO(self._export_zip([str(udm_type.id)]))) as zf:
+            self.assertIn("templates/sent-by-python.txt.j2", zf.namelist())
+
+    def test_template_round_trips_through_export_and_import(self):
+        from userdefinedmodel.models import MailTemplate
+        udm_type, _c, _v, _w, policy = self._make_udm_type_with_workflow()
+        self._make_template(
+            "round-trip", body_text="Hallo {{ name }}", subject="Betreff",
+            description="d", example_input={"name": "Ada"},
+        )
+        policy.source += '\nmail_templates := ["round-trip"]\n'
+        policy.save()
+        zip_bytes = self._export_zip([str(udm_type.id)])
+
+        MailTemplate.objects.filter(slug="round-trip").delete()
+        self._import_zip(zip_bytes, str(udm_type.id))
+
+        t = MailTemplate.objects.get(slug="round-trip")
+        self.assertEqual(t.body_text, "Hallo {{ name }}")
+        self.assertEqual(t.body_html, "<p>hi</p>")
+        self.assertEqual(t.subject, "Betreff")
+        self.assertEqual(t.description, "d")
+        self.assertEqual(t.example_input, {"name": "Ada"})
+
+    def test_import_without_templates_dir_leaves_existing_rows_alone(self):
+        from userdefinedmodel.models import MailTemplate
+        udm_type, *_ = self._make_udm_type_with_workflow()
+        zip_bytes = self._export_zip([str(udm_type.id)])  # no templates referenced
+        self._make_template("pre-existing", body_text="keep me")
+        self._import_zip(zip_bytes, str(udm_type.id))
+        self.assertEqual(MailTemplate.objects.get(slug="pre-existing").body_text, "keep me")
+
     def test_parse_bundle_zip(self):
         import io
         udm_type, *_ = self._make_udm_type_with_workflow()
@@ -2195,3 +2280,51 @@ class PolicyEvaluatorTests(BaseAPITest):
             f"&action=transition&transition=submit&node_id={other_child.id}",
         )
         self.assertEqual(resp.status_code, 400)
+
+
+# ─── Dashboard filter query ───────────────────────────────────────────────────
+
+class EntityFilterQueryTests(BaseAPITest):
+    """GET /entities/?q=... — Lucene-like filter over the policy-redacted view."""
+
+    def _entity_with_title(self, title):
+        from userdefinedmodel.models import FieldValue, DataField
+        entity, udm_type, version, _ = make_entity_with_type()
+        field = DataField.objects.get(version=version, slug="title")
+        FieldValue.objects.create(node=entity, field=field, language="", value_text=title)
+        return entity, udm_type
+
+    def test_unfiltered_list_returns_the_entity(self):
+        entity, udm_type = self._entity_with_title("Berlin Meetup")
+        resp = self.get(f"/entities/?type_id={udm_type.id}")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual([e["id"] for e in resp.json()], [str(entity.id)])
+
+    def test_matching_and_non_matching_queries(self):
+        entity, udm_type = self._entity_with_title("Berlin Meetup")
+        matching = self.get(f"/entities/?type_id={udm_type.id}&q=title:berlin")
+        self.assertEqual([e["id"] for e in matching.json()], [str(entity.id)])
+
+        other = self.get(f"/entities/?type_id={udm_type.id}&q=title:paris")
+        self.assertEqual(other.json(), [])
+
+    def test_syntax_error_is_a_400_with_a_message(self):
+        _, udm_type = self._entity_with_title("Berlin Meetup")
+        resp = self.get(f"/entities/?type_id={udm_type.id}&q=title%3A(berlin")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Invalid query", resp.json()["detail"])
+
+    def test_unsupported_feature_is_a_400_naming_the_feature(self):
+        _, udm_type = self._entity_with_title("Berlin Meetup")
+        for query, expected in [("berlin~2", "Fuzzy"), ("berlin%5E2", "Boost"), ("%22a+b%22~3", "Proximity")]:
+            with self.subTest(query=query):
+                resp = self.get(f"/entities/?type_id={udm_type.id}&q={query}")
+                self.assertEqual(resp.status_code, 400, resp.content)
+                self.assertIn(expected, resp.json()["detail"])
+
+    def test_unsupported_feature_is_rejected_even_with_no_entities(self):
+        _, udm_type, _, _ = make_entity_with_type()
+        from userdefinedmodel.models import UserDefinedModelEntity
+        UserDefinedModelEntity.objects.filter(user_defined_model_type=udm_type).delete()
+        resp = self.get(f"/entities/?type_id={udm_type.id}&q=berlin~2")
+        self.assertEqual(resp.status_code, 400, resp.content)
