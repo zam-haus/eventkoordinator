@@ -50,3 +50,20 @@ def push_pending_sync_items() -> dict:
 @shared_task
 def push_pending_sync_items_task() -> dict:
     return push_pending_sync_items()
+
+
+@shared_task
+def fetch_calendar_source_task(source_id) -> dict:
+    from sync_core.models import fetch_calendar_source
+    return fetch_calendar_source(source_id)
+
+
+@shared_task
+def fetch_all_calendar_sources() -> None:
+    """Dispatch fetch_calendar_source_task for every enabled CalendarSource."""
+    from sync_core.models import CalendarSource
+
+    source_ids = list(CalendarSource.objects.filter(enabled=True).values_list("pk", flat=True))
+    logger.info("Dispatching fetch for %d calendar source(s)", len(source_ids))
+    for source_id in source_ids:
+        fetch_calendar_source_task.delay(source_id)

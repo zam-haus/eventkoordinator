@@ -196,3 +196,108 @@ def sync_map_for_entity(entity_id) -> dict[str, dict]:
             continue
         result[item.sync_target.key] = sync_item_summary(item)
     return result
+
+
+class CalendarSource(PolymorphicMetaBase):
+    """A read-only remote calendar pulled into local RemoteCalendarEntry rows
+    for the calendar view to query (§6/Step 9).
+
+    This is the *pull* side — reading busy blocks from an iCal feed or CalDAV
+    calendar — and is deliberately separate from SyncBaseTarget/SyncBaseItem
+    (the *push* side, ported from sync_ical/sync_caldav in Step 6). The same
+    remote calendar could in principle be configured on both independently.
+    """
+
+    KIND_ICAL = "ical"
+    KIND_CALDAV = "caldav"
+    KIND_CHOICES = [(KIND_ICAL, "iCal feed"), (KIND_CALDAV, "CalDAV calendar")]
+
+    #: Fields whose values must never be exposed through the public API.
+    secret_field_names: ClassVar[list[str]] = ["password"]
+
+    key = models.SlugField(max_length=200, unique=True)
+    name = models.CharField(max_length=200)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    url = models.URLField(max_length=2000)
+    username = models.CharField(max_length=200, blank=True, default="")
+    password = models.CharField(max_length=200, blank=True, default="")
+    calendar_display_name = models.CharField(max_length=200, blank=True, default="")
+    enabled = models.BooleanField(default=True)
+    last_fetched_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+
+    def __str__(self):
+        return self.name
+
+
+class RemoteCalendarEntry(PolymorphicMetaBase):
+    """One fetched occurrence from a CalendarSource. Upserted by (source, uid)
+    on each fetch; the request path (GET /calendar/) only ever reads these —
+    no live remote fetch happens inline with a request (§6)."""
+
+    source = models.ForeignKey(CalendarSource, on_delete=models.CASCADE, related_name="entries")
+    uid = models.CharField(max_length=500)
+    title = models.CharField(max_length=500, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    start = models.DateTimeField()
+    end = models.DateTimeField()
+    all_day = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["source", "uid"], name="unique_remote_calendar_entry_per_source"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.source.key})"
+
+
+def fetch_calendar_source(source_id) -> dict:
+    """Fetch+parse a CalendarSource and upsert its RemoteCalendarEntry rows
+    (§6). Plain function (see push_pending_sync_items convention) so it can
+    be called synchronously from tests/management commands without a broker.
+    Entries no longer present on the remote are deleted. One attempt — on any
+    fetch/parse error, records source.last_error and leaves existing entries
+    untouched.
+    """
+    from django.utils.timezone import now
+
+    try:
+        source = CalendarSource.objects.get(pk=source_id)
+    except CalendarSource.DoesNotExist:
+        raise ValueError(f"fetch_calendar_source: unknown source {source_id!r}")
+
+    if source.kind == CalendarSource.KIND_ICAL:
+        from sync_core.calendar_fetch import fetch_ical_occurrences
+        fetch_fn = fetch_ical_occurrences
+    elif source.kind == CalendarSource.KIND_CALDAV:
+        from sync_core.calendar_fetch import fetch_caldav_occurrences
+        fetch_fn = fetch_caldav_occurrences
+    else:
+        raise ValueError(f"fetch_calendar_source: unknown kind {source.kind!r}")
+
+    try:
+        occurrences = fetch_fn(source)
+    except Exception as exc:
+        source.last_error = str(exc)
+        source.save(update_fields=["last_error"])
+        return {"fetched": 0, "error": str(exc)}
+
+    seen_uids = {occ["uid"] for occ in occurrences}
+    for occ in occurrences:
+        RemoteCalendarEntry.objects.update_or_create(
+            source=source, uid=occ["uid"],
+            defaults={
+                "title": occ["title"],
+                "description": occ.get("description", ""),
+                "start": occ["start"],
+                "end": occ["end"],
+                "all_day": occ.get("all_day", False),
+            },
+        )
+    RemoteCalendarEntry.objects.filter(source=source).exclude(uid__in=seen_uids).delete()
+
+    source.last_fetched_at = now()
+    source.last_error = ""
+    source.save(update_fields=["last_fetched_at", "last_error"])
+    return {"fetched": len(occurrences)}

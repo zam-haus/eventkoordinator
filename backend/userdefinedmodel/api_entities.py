@@ -162,22 +162,36 @@ def create_entity(request, payload: EntityCreateIn, validate: bool = False):
 def get_calendar(request, start: str, end: str, sources: str = ""):
     """events-and-sync.md §6: aggregated calendar entries in [start, end].
 
-    ``sources`` is a comma-separated list of ``"type_id:start_field:end_field"``
-    specs — one per UDM type to include (``end_field`` may be empty, in which
-    case entries are point-in-time, `end == start`). UDM entities only for
-    now: iCal/CalDAV sources land once sync_ical/sync_caldav are ported onto
-    sync_core (Step 6, deferred) — synced items don't exist there yet.
-    Read access is policy-filtered per entity exactly like the entity list.
+    ``sources`` is a comma-separated list of entries, each either
+    ``"type_id:start_field:end_field"`` (a UDM type; ``end_field`` may be
+    empty, in which case entries are point-in-time, `end == start`) or
+    ``"source:<key>"`` (a sync_core CalendarSource — reads its already-fetched
+    RemoteCalendarEntry rows, never a live remote fetch in the request path).
+    Read access for UDM entries is policy-filtered exactly like the entity
+    list; CalendarSource entries have no per-entity policy (the source itself
+    is the access boundary).
+
+    All datetimes are normalized to timezone-aware UTC before comparison —
+    naive query params are treated as UTC, and DateField/date values are
+    combined at midnight UTC — since RemoteCalendarEntry.start/end are always
+    aware and a naive/aware comparison raises at request time otherwise.
     """
     import datetime as _dt
+
+    from django.utils.timezone import is_naive, make_aware
 
     from userdefinedmodel.engine import evaluate_policy
     from userdefinedmodel.models import UserDefinedModelEntity
     from userdefinedmodel.summaries import compute_node_summary_parts, join_parts
 
+    def _to_aware_utc(value: _dt.datetime) -> _dt.datetime:
+        if is_naive(value):
+            return make_aware(value, _dt.timezone.utc)
+        return value.astimezone(_dt.timezone.utc)
+
     try:
-        range_start = _dt.datetime.fromisoformat(start)
-        range_end = _dt.datetime.fromisoformat(end)
+        range_start = _to_aware_utc(_dt.datetime.fromisoformat(start))
+        range_end = _to_aware_utc(_dt.datetime.fromisoformat(end))
     except ValueError:
         return JsonResponse({"detail": "start/end must be ISO-8601"}, status=400)
 
@@ -185,9 +199,9 @@ def get_calendar(request, start: str, end: str, sources: str = ""):
         if value is None:
             return None
         if isinstance(value, _dt.datetime):
-            return value
+            return _to_aware_utc(value)
         if isinstance(value, _dt.date):
-            return _dt.datetime.combine(value, _dt.time.min)
+            return _dt.datetime.combine(value, _dt.time.min, tzinfo=_dt.timezone.utc)
         return None
 
     entries = []
@@ -196,6 +210,35 @@ def get_calendar(request, start: str, end: str, sources: str = ""):
         if not spec:
             continue
         parts = spec.split(":")
+
+        if parts[0] == "source" and len(parts) == 2:
+            source_key = parts[1]
+            try:
+                from sync_core.models import CalendarSource
+            except ImportError:
+                continue
+            remote_entries = (
+                CalendarSource.objects.filter(key=source_key, enabled=True)
+                .values_list("entries__uid", "entries__title", "entries__start", "entries__end")
+            )
+            for uid, title, r_start, r_end in remote_entries:
+                if uid is None:
+                    continue
+                r_start = _to_aware_utc(r_start)
+                r_end = _to_aware_utc(r_end)
+                if r_end < range_start or r_start > range_end:
+                    continue
+                entries.append({
+                    "source": source_key,
+                    "uid": uid,
+                    "title": title,
+                    "start": r_start.isoformat(),
+                    "end": r_end.isoformat(),
+                    "url": None,
+                    "entity_id": None,
+                })
+            continue
+
         if len(parts) != 3:
             continue
         type_id, start_field, end_field = parts
