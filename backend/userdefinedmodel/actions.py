@@ -212,12 +212,32 @@ class CreateSubmodelItemOutput(BaseModel):
     )
 
 
+class CreateLinkedEntityOutput(BaseModel):
+    """Create a new entity of ``target_type``, linked back to the triggering
+    entity via an ``entity_select`` field (events-and-sync.md §1.2).
+
+    ``allow_multiple`` (default true) is the standard case — repeated firings
+    each create a new linked entity (e.g. a proposal producing several
+    session events). Set false for links that must be unique: the action is
+    a no-op if an entity of ``target_type`` already references the trigger
+    via ``reference_field``.
+    """
+
+    type: Literal["create_linked_entity"]
+    phase: Literal["pre", "post"]
+    target_type: str = Field(description="UserDefinedModelType id (UUID string) to create")
+    reference_field: str = Field(description="entity_select(_multi) slug on target_type set to the trigger's id")
+    initial_fields: dict[str, Any] = Field(default_factory=dict, description="Initial field values (supports $$ markers)")
+    allow_multiple: bool = True
+
+
 PolicyActionOutput = Annotated[
     Union[
         SetFieldValueOutput,
         TriggerTransitionOutput,
         SendNotificationOutput,
         CreateSubmodelItemOutput,
+        CreateLinkedEntityOutput,
     ],
     Field(discriminator="type"),
 ]
@@ -722,3 +742,55 @@ def _handle_create_submodel_item(action: CreateSubmodelItemOutput, ctx: ActionCo
     seeded = _interpolate_fields(action.fields, ctx.user)
     if seeded:
         apply_patch(child, seeded, ctx.user, edit_group=ctx.edit_group)
+
+
+@policy_action("create_linked_entity", schema=CreateLinkedEntityOutput)
+def _handle_create_linked_entity(action: CreateLinkedEntityOutput, ctx: ActionContext) -> None:
+    from userdefinedmodel.backlinks import find_backlinks
+    from userdefinedmodel.models import ConfigVersion, FieldDefinition, UserDefinedModelEntity, UserDefinedModelType
+    from userdefinedmodel.writer import apply_patch
+
+    from django.core.exceptions import ValidationError as DjangoValidationError
+    try:
+        udm_type = UserDefinedModelType.objects.select_related("field_config").get(id=action.target_type)
+    except (UserDefinedModelType.DoesNotExist, ValueError, DjangoValidationError):
+        raise ValueError(f"create_linked_entity: target_type {action.target_type!r} not found")
+    if not udm_type.field_config:
+        raise ValueError(f"create_linked_entity: target_type {action.target_type!r} has no field config")
+    try:
+        version = ConfigVersion.objects.get(config=udm_type.field_config, status=ConfigVersion.Status.PUBLISHED)
+    except ConfigVersion.DoesNotExist:
+        raise ValueError(f"create_linked_entity: target_type {action.target_type!r} has no published config version")
+
+    field_def = version.field_definitions.filter(
+        slug=action.reference_field,
+        data_type__in=(FieldDefinition.DataType.ENTITY_SELECT, FieldDefinition.DataType.ENTITY_SELECT_MULTI),
+    ).first()
+    if field_def is None:
+        raise ValueError(
+            f"create_linked_entity: reference_field {action.reference_field!r} is not an "
+            f"entity_select field on target_type {action.target_type!r}"
+        )
+
+    trigger_root = ctx.node.get_root()
+
+    if not action.allow_multiple:
+        already_linked = any(
+            bl.type_id == str(udm_type.id) and bl.field_slug == action.reference_field
+            for bl in find_backlinks(trigger_root.id)
+        )
+        if already_linked:
+            return
+
+    entity = UserDefinedModelEntity.objects.create(config_version=version, user_defined_model_type=udm_type)
+    entity.materialize_defaults()
+    entity.materialize_user_defaults(ctx.user)
+
+    seeded = _interpolate_fields(action.initial_fields, ctx.user)
+    if field_def.data_type == FieldDefinition.DataType.ENTITY_SELECT_MULTI:
+        seeded[action.reference_field] = [str(trigger_root.id)]
+    else:
+        seeded[action.reference_field] = str(trigger_root.id)
+    # skip_policy: the triggering policy already authorized this creation;
+    # the new entity's own create/save policy is not re-evaluated here.
+    apply_patch(entity, seeded, ctx.user, edit_group=ctx.edit_group, skip_policy=True)

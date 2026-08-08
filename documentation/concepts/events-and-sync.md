@@ -609,18 +609,26 @@ new apps' suites; never the apiv1 suite).
 
 ### Step 3 — `create_linked_entity` action (1.2)
 
-- [ ] Register action via `policy_action` with pydantic schema:
+- [x] Register action via `policy_action` with pydantic schema:
       `target_type`, `reference_field`, `initial_fields`, `allow_multiple`
-      (default true), `phase`.
-- [ ] Handler: create entity of `target_type`, set the `entity_select`
+      (default true), `phase`. — `CreateLinkedEntityOutput` in `actions.py`.
+- [x] Handler: create entity of `target_type`, set the `entity_select`
       `reference_field` to the triggering entity, apply `initial_fields`,
       run in the triggering EditGroup; respect the target type's workflow
-      initial state.
-- [ ] `allow_multiple: false` no-op when a referencing entity already exists.
-- [ ] Failure handling: unknown type/field or field-validation failure logged
-      to history like other failed actions.
-- [ ] Tests: creation on transition, multiple events per proposal, unique
-      mode no-op, initial fields applied, failure logging.
+      initial state. — `_handle_create_linked_entity`; new entity gets
+      `materialize_defaults`/`materialize_user_defaults` (workflow initial
+      state included) before `apply_patch(..., skip_policy=True)` seeds
+      `initial_fields` + the reference; `target_type` is the UDMType id
+      (UUID string, consistent with `limit_to_type_ids`).
+- [x] `allow_multiple: false` no-op when a referencing entity already exists.
+      — checked via `backlinks.find_backlinks` before creating.
+- [x] Failure handling: unknown type/field or field-validation failure logged
+      to history like other failed actions. — raises `ValueError`, caught by
+      `dispatch_actions`' existing `on_error="log"` path.
+- [x] Tests: creation on transition, multiple events per proposal, unique
+      mode no-op, initial fields applied, failure logging. —
+      `userdefinedmodel/tests/test_create_linked_entity.py` (6 tests); full
+      suite green (`uv run manage.py test userdefinedmodel`, 305 tests).
 
 ### Step 4 — effective values + markdown display + `entity_url` (1.3, 1.4, 1.6)
 
