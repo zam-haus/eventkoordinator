@@ -594,7 +594,18 @@ class PretixSyncItem(SyncBaseItem):
 
             # Create or update the quota so price overrides take effect.
             max_participants = getattr(proposal, "max_participants", None)
-            all_item_ids = self._resolve_all_item_ids(association, items)
+            resolved_items_and_variations = self._resolve_all_items_and_variations(
+                association, items
+            )
+            all_item_ids: list[int] = []
+            for item_id, _variation_id in resolved_items_and_variations:
+                if item_id not in all_item_ids:
+                    all_item_ids.append(item_id)
+            all_variation_ids = [
+                variation_id
+                for _item_id, variation_id in resolved_items_and_variations
+                if variation_id is not None
+            ]
             if not all_item_ids:
                 logger.warning(
                     "PretixSyncItem %s: no Pretix item IDs resolved for event %r "
@@ -621,6 +632,7 @@ class PretixSyncItem(SyncBaseItem):
             self._create_or_update_quota(
                 client, target, association, self.subevent_slug,
                 event.name, all_item_ids, max_participants,
+                variation_ids=all_variation_ids,
             )
             logger.info(
                 "PretixSyncItem %s: push completed successfully (subevent %s).",
@@ -757,8 +769,8 @@ class PretixSyncItem(SyncBaseItem):
             )
             return []
 
-        actual_overrides: dict[int, str] = {
-            override["item"]: override.get("price", "")
+        actual_overrides: dict[tuple[int, int | None], str] = {
+            (override["item"], override.get("variation")): override.get("price", "")
             for override in stored_subevent.get("item_price_overrides") or []
         }
         price_mapping = [
@@ -780,10 +792,11 @@ class PretixSyncItem(SyncBaseItem):
         for name_or_id, expected_price, property_name in price_mapping:
             if expected_price is None:
                 continue
-            item_id = PretixSyncItem._resolve_item_id(stored_items, name_or_id)
-            if item_id is None:
+            resolved = PretixSyncItem._resolve_item_and_variation(stored_items, name_or_id)
+            if resolved is None:
                 continue
-            actual_price_str = actual_overrides.get(item_id)
+            item_id, variation_id = resolved
+            actual_price_str = actual_overrides.get((item_id, variation_id))
             expected_price_str = str(expected_price)
             try:
                 prices_equal = (
@@ -816,12 +829,20 @@ class PretixSyncItem(SyncBaseItem):
         quota_name: str,
         item_ids: list[int],
         max_participants: int | None,
+        variation_ids: list[int] | None = None,
     ) -> None:
-        """Create or update the subevent quota covering all five ticket products."""
+        """Create or update the subevent quota covering all five ticket products.
+
+        ``item_ids`` covers items sold directly; ``variation_ids`` additionally
+        restricts coverage to specific variations for items that have them
+        (Pretix requires the parent item ID in ``items`` *and* the variation ID
+        in ``variations`` for variation-based quota coverage).
+        """
         quota_payload = {
             "name": quota_name,
             "size": max_participants,
             "items": item_ids,
+            "variations": variation_ids or [],
             "subevent": int(subevent_id),
         }
         existing = client.list_quotas(
@@ -856,7 +877,25 @@ class PretixSyncItem(SyncBaseItem):
         association: "PretixSyncTargetAreaAssociation",
         items: list[dict],
     ) -> list[int]:
-        """Return resolved Pretix item IDs for all five ticket products in the association."""
+        """Return resolved Pretix item IDs for all five ticket products in the association.
+
+        For products resolved to a variation, the *parent* item ID is returned
+        (deduplicated); use ``_resolve_all_items_and_variations`` to also get
+        the variation IDs needed to scope a quota to specific variations.
+        """
+        resolved = PretixSyncItem._resolve_all_items_and_variations(association, items)
+        seen: list[int] = []
+        for item_id, _variation_id in resolved:
+            if item_id not in seen:
+                seen.append(item_id)
+        return seen
+
+    @staticmethod
+    def _resolve_all_items_and_variations(
+        association: "PretixSyncTargetAreaAssociation",
+        items: list[dict],
+    ) -> list[tuple[int, int | None]]:
+        """Return resolved (item_id, variation_id) pairs for all ticket products."""
         product_names_or_ids = [
             association.ticket_product_member_regular_id,
             association.ticket_product_member_discounted_id,
@@ -865,29 +904,50 @@ class PretixSyncItem(SyncBaseItem):
             association.ticket_product_business_id,
             association.ticket_product_internal_training_id,
         ]
-        return [
-            item_id
-            for name_or_id in product_names_or_ids
-            if (item_id := PretixSyncItem._resolve_item_id(items, name_or_id)) is not None
-        ]
+        resolved = []
+        for name_or_id in product_names_or_ids:
+            pair = PretixSyncItem._resolve_item_and_variation(items, name_or_id)
+            if pair is not None:
+                resolved.append(pair)
+        return resolved
 
     @staticmethod
-    def _resolve_item_id(items: list[dict], name_or_id: str | None) -> int | None:
-        """Resolve a Pretix item ID from a numeric ID string or a localized display name.
+    def _resolve_item_and_variation(
+        items: list[dict], name_or_id: str | None
+    ) -> tuple[int, int | None] | None:
+        """Resolve a Pretix (item ID, variation ID) pair for a configured product.
 
-        Name matching is case-insensitive and whitespace-stripped to tolerate
-        minor differences between what the management command stored and what
-        Pretix returns.
+        ``name_or_id`` may be:
+        - a plain numeric item ID (``"123"``) — resolves to that item, no variation;
+        - an explicit ``"<item_id>/<variation_id>"`` pair;
+        - a localized display name of an item (matched case-insensitively,
+          whitespace-stripped) — resolves to that item, no variation;
+        - a localized display value of one of an item's *variations* (e.g. the
+          product is set up as a variation rather than a top-level item) —
+          resolves to the parent item's ID plus that variation's ID.
+
+        Items are expected to carry their variations nested under a
+        ``"variations"`` key, as returned by the Pretix item list/detail API.
         """
         if not name_or_id:
             return None
+        name_or_id = name_or_id.strip()
+        if "/" in name_or_id:
+            item_part, _, variation_part = name_or_id.partition("/")
+            if item_part.isdigit() and variation_part.isdigit():
+                return int(item_part), int(variation_part)
         if name_or_id.isdigit():
-            return int(name_or_id)
-        needle = name_or_id.strip().lower()
+            return int(name_or_id), None
+        needle = name_or_id.lower()
         for item in items:
             names = item.get("name") or {}
             if any(v.strip().lower() == needle for v in names.values()):
-                return int(item["id"])
+                return int(item["id"]), None
+        for item in items:
+            for variation in item.get("variations") or []:
+                values = variation.get("value") or {}
+                if any((v or "").strip().lower() == needle for v in values.values()):
+                    return int(item["id"]), int(variation["id"])
         return None
 
     @staticmethod
@@ -907,9 +967,13 @@ class PretixSyncItem(SyncBaseItem):
         ]
         overrides = []
         for name_or_id, price in price_mapping:
-            item_id = PretixSyncItem._resolve_item_id(items, name_or_id)
-            if item_id is not None and price is not None:
-                overrides.append({"item": item_id, "price": str(price)})
+            resolved = PretixSyncItem._resolve_item_and_variation(items, name_or_id)
+            if resolved is not None and price is not None:
+                item_id, variation_id = resolved
+                override = {"item": item_id, "price": str(price)}
+                if variation_id is not None:
+                    override["variation"] = variation_id
+                overrides.append(override)
         return overrides
 
 

@@ -141,6 +141,17 @@ class PretixApiClient:
         )
 
     # ------------------------------------------------------------------ #
+    # Item variations                                                      #
+    # ------------------------------------------------------------------ #
+
+    def list_item_variations(
+        self, *, organizer_slug: str, event_slug: str, item_id: int
+    ) -> list[dict]:
+        return self._request_paginated(
+            f"/organizers/{organizer_slug}/events/{event_slug}/items/{item_id}/variations/"
+        )
+
+    # ------------------------------------------------------------------ #
     # Subevents                                                            #
     # ------------------------------------------------------------------ #
 
