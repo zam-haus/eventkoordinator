@@ -10,8 +10,8 @@ from sync_ical import models
 
 @admin.register(models.IcalCalendarSyncTarget)
 class IcalCalendarSyncTargetAdmin(PolymorphicChildModelAdmin, SimpleHistoryAdmin):
-    list_display = ("name", "url", "created_at", "updated_at")
-    search_fields = ("name", "url")
+    list_display = ("name", "key", "enabled", "created_at", "updated_at")
+    search_fields = ("name", "key")
     ordering = ("-updated_at",)
     readonly_fields = ("sync_button",)
 
@@ -47,10 +47,10 @@ class IcalCalendarSyncTargetAdmin(PolymorphicChildModelAdmin, SimpleHistoryAdmin
     sync_button.short_description = "Trigger sync"
 
 
-@admin.register(models.IcalCalenderSyncItem)
-class IcalCalenderSyncItemAdmin(SimpleHistoryAdmin):
-    list_display = ("uid", "sync_target", "related_event", "flag_push", "updated_at")
-    list_filter = ("sync_target", "flag_push")
-    search_fields = ("uid", "sync_target__name", "related_event__name")
+@admin.register(models.IcalCalendarSyncItem)
+class IcalCalendarSyncItemAdmin(SimpleHistoryAdmin):
+    list_display = ("related_entity", "sync_target", "status", "remote_uid", "updated_at")
+    list_filter = ("sync_target", "status")
+    search_fields = ("remote_uid", "sync_target__name")
     ordering = ("-updated_at",)
-    raw_id_fields = ("related_event",)
+    raw_id_fields = ("related_entity",)

@@ -1,247 +1,166 @@
-from datetime import datetime, timezone
-from unittest.mock import Mock, patch
+"""Tests for sync_ical (events-and-sync.md §3, Step 11): the .ics feed is
+built/updated from synced_payload (the effective-values snapshot), and
+status transitions run through the shared sync_core worker."""
+import tempfile
 
-from django.test import TestCase
+import icalendar
+from django.test import TestCase, override_settings
 
-from apiv1.models import Event, Series
-from sync_ical.models import IcalCalendarSyncTarget, IcalCalenderSyncItem
-from sync_ical.tasks import sync_ical_target
+from sync_core.models import DERIVED_STATE_ERROR, DERIVED_STATE_PENDING, DERIVED_STATE_SYNCED
+from sync_core.tasks import push_pending_sync_items
+from sync_ical.models import IcalCalendarSyncItem, IcalCalendarSyncTarget
+from sync_ical.tasks import push_ical_target
+from userdefinedmodel.tests.factories import make_entity_with_type
 
 
-class SyncIcalTargetIntegrationTests(TestCase):
+class SyncIcalTestCase(TestCase):
+    databases = ["default"]
 
-    def _make_target(self, url="https://cal.example.com/feed.ics", name="Test Calendar"):
-        return IcalCalendarSyncTarget.objects.create(url=url, name=name)
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self._settings_override = override_settings(SYNC_ICAL_FEED_DIR=self._tmpdir.name)
+        self._settings_override.enable()
+        self.addCleanup(self._settings_override.disable)
 
-    def _patch_fetch(self, ics_content):
-        mock_response = Mock()
-        mock_response.text = ics_content
-        mock_response.raise_for_status = Mock()
-        return patch("sync_ical.tasks.requests.get", return_value=mock_response)
+        self.entity, *_ = make_entity_with_type()
+        self.target = IcalCalendarSyncTarget.objects.create(key="ical:main", name="Main calendar")
+        self.effective = {
+            "title": "Some event",
+            "start": "2026-03-01T10:00:00+00:00",
+            "end": "2026-03-01T11:00:00+00:00",
+            "location": "Room 1",
+            "description": "A description",
+        }
 
-    def _patch_now(self, fixed_now):
-        return patch("sync_ical.tasks.django_timezone.now", return_value=fixed_now)
+    def _item(self, **kwargs):
+        kwargs.setdefault("status", DERIVED_STATE_PENDING)
+        kwargs.setdefault("synced_payload", self.effective)
+        return IcalCalendarSyncItem.objects.create(
+            related_entity=self.entity, sync_target=self.target, **kwargs,
+        )
 
-    def test_creates_events_without_series(self):
-        calendar_content = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Test//EN
-BEGIN:VEVENT
-UID:workshop-1@example.com
-SUMMARY:Workshop Alpha
-DTSTART;VALUE=DATE:20260301
-DTEND;VALUE=DATE:20260302
-DESCRIPTION:First workshop description
-CATEGORIES:workshop,beginner
-END:VEVENT
-BEGIN:VEVENT
-UID:workshop-2@example.com
-SUMMARY:Workshop Alpha
-DTSTART;VALUE=DATE:20260308
-DTEND;VALUE=DATE:20260309
-CATEGORIES:workshop,beginner
-END:VEVENT
-BEGIN:VEVENT
-UID:meeting-1@example.com
-SUMMARY:Team Meeting
-DTSTART;VALUE=DATE:20260301
-DTEND;VALUE=DATE:20260302
-CATEGORIES:internal
-END:VEVENT
-END:VCALENDAR
-"""
-        fixed_now = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
-        target = self._make_target()
+    def _read_feed(self):
+        with open(self.target.feed_path(), "rb") as fh:
+            return icalendar.Calendar.from_ical(fh.read())
 
-        with self._patch_now(fixed_now), self._patch_fetch(calendar_content):
-            sync_ical_target(target.pk)
 
-        self.assertEqual(Series.objects.count(), 0)
-        self.assertEqual(Event.objects.count(), 3)
-        self.assertTrue(Event.objects.filter(series__isnull=True).count() == 3)
+class IcalCalendarSyncTargetTests(SyncIcalTestCase):
+    def test_no_secret_fields(self):
+        self.assertEqual(self.target.secret_field_names, [])
 
-        workshop_events = list(Event.objects.filter(name="Workshop Alpha").order_by("start_time"))
-        self.assertEqual(len(workshop_events), 2)
-        self.assertEqual(workshop_events[0].start_time.date(), datetime(2026, 3, 1).date())
-        self.assertEqual(workshop_events[1].start_time.date(), datetime(2026, 3, 8).date())
-        self.assertEqual(workshop_events[0].tag, "workshop")
 
-        meeting_event = Event.objects.get(name="Team Meeting")
-        self.assertEqual(meeting_event.tag, "internal")
-        self.assertIsNone(meeting_event.series)
+class IcalCalendarSyncItemPushTests(SyncIcalTestCase):
+    def test_push_writes_vevent_from_synced_payload(self):
+        item = self._item()
 
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), 3)
-        for item in IcalCalenderSyncItem.objects.all():
-            self.assertEqual(item.sync_target, target)
-            self.assertIsNotNone(item.related_event)
-            self.assertIn(b"BEGIN:VEVENT", item.ical_definition.encode())
+        item.push()
 
-    def test_no_duplicates_on_rerun(self):
-        calendar_content = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Test//EN
-BEGIN:VEVENT
-UID:recurring-workshop@example.com
-SUMMARY:Recurring Workshop
-DTSTART;VALUE=DATE:20260101
-DTEND;VALUE=DATE:20260102
-RRULE:FREQ=WEEKLY;COUNT=4
-CATEGORIES:workshop
-END:VEVENT
-END:VCALENDAR
-"""
-        fixed_now = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
-        target = self._make_target()
+        item.refresh_from_db()
+        self.assertTrue(item.remote_uid)
 
-        with self._patch_now(fixed_now), self._patch_fetch(calendar_content):
-            sync_ical_target(target.pk)
+        calendar = self._read_feed()
+        vevents = [c for c in calendar.subcomponents if c.name == "VEVENT"]
+        self.assertEqual(len(vevents), 1)
+        vevent = vevents[0]
+        self.assertEqual(str(vevent.get("SUMMARY")), "Some event")
+        self.assertEqual(str(vevent.get("LOCATION")), "Room 1")
+        self.assertEqual(str(vevent.get("DESCRIPTION")), "A description")
+        self.assertEqual(str(vevent.get("UID")), item.remote_uid)
 
-        initial_count = IcalCalenderSyncItem.objects.count()
-        self.assertEqual(initial_count, 4)
+    def test_push_missing_fields_defaults_sanely(self):
+        item = self._item(synced_payload={"title": "Bare event"})
 
-        with self._patch_now(fixed_now), self._patch_fetch(calendar_content):
-            sync_ical_target(target.pk)
+        item.push()
 
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), initial_count)
-        self.assertEqual(Series.objects.count(), 0)
+        calendar = self._read_feed()
+        vevent = next(c for c in calendar.subcomponents if c.name == "VEVENT")
+        self.assertEqual(str(vevent.get("SUMMARY")), "Bare event")
+        self.assertIsNone(vevent.get("LOCATION"))
+        self.assertIsNone(vevent.get("DTSTART"))
 
-    def test_updates_ical_definition_on_reimport(self):
-        calendar_content = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Test//EN
-BEGIN:VEVENT
-UID:reimport-event@example.com
-SUMMARY:Reimport Event
-DTSTART;VALUE=DATE:20260301
-DTEND;VALUE=DATE:20260302
-CATEGORIES:tag1
-END:VEVENT
-END:VCALENDAR
-"""
-        fixed_now = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
-        target = self._make_target()
+    def test_push_twice_updates_single_vevent_not_duplicate(self):
+        item = self._item()
+        item.push()
 
-        with self._patch_now(fixed_now), self._patch_fetch(calendar_content):
-            sync_ical_target(target.pk)
+        item.synced_payload = {**self.effective, "title": "Updated title"}
+        item.save(update_fields=["synced_payload"])
+        item.push()
 
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), 1)
+        calendar = self._read_feed()
+        vevents = [c for c in calendar.subcomponents if c.name == "VEVENT"]
+        self.assertEqual(len(vevents), 1)
+        self.assertEqual(str(vevents[0].get("SUMMARY")), "Updated title")
 
-        with self._patch_now(fixed_now), self._patch_fetch(calendar_content):
-            sync_ical_target(target.pk)
+    def test_push_second_item_appends_second_vevent(self):
+        entity2, *_ = make_entity_with_type()
+        item1 = self._item()
+        item2 = IcalCalendarSyncItem.objects.create(
+            related_entity=entity2, sync_target=self.target,
+            status=DERIVED_STATE_PENDING, synced_payload={"title": "Second event"},
+        )
 
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), 1)
+        item1.push()
+        item2.push()
 
-    def test_handles_fetch_error(self):
-        from requests import RequestException
+        calendar = self._read_feed()
+        vevents = [c for c in calendar.subcomponents if c.name == "VEVENT"]
+        self.assertEqual(len(vevents), 2)
+        summaries = {str(v.get("SUMMARY")) for v in vevents}
+        self.assertEqual(summaries, {"Some event", "Second event"})
 
-        target = self._make_target()
 
-        with patch("sync_ical.tasks.requests.get", side_effect=RequestException("Network error")):
-            with self.assertLogs("sync_ical.tasks", level="ERROR"):
-                sync_ical_target(target.pk)
+class IcalCalendarWorkerTests(SyncIcalTestCase):
+    """End-to-end through push_pending_sync_items (sync_core/tasks.py),
+    which owns status/synced_at/last_error transitions polymorphically."""
 
-        self.assertEqual(Event.objects.count(), 0)
+    def test_success_marks_synced(self):
+        item = self._item()
 
-    def test_preserves_existing_data_on_fetch_error(self):
-        initial_calendar = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Test//EN
-BEGIN:VEVENT
-UID:preserve-event@example.com
-SUMMARY:Preserve Event
-DTSTART;VALUE=DATE:20260301
-DTEND;VALUE=DATE:20260302
-CATEGORIES:test
-END:VEVENT
-END:VCALENDAR
-"""
-        fixed_now = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
-        target = self._make_target()
+        result = push_pending_sync_items()
 
-        with self._patch_now(fixed_now), self._patch_fetch(initial_calendar):
-            sync_ical_target(target.pk)
+        item.refresh_from_db()
+        self.assertEqual(result, {"pushed": 1, "failed": 0})
+        self.assertEqual(item.status, DERIVED_STATE_SYNCED)
+        self.assertIsNotNone(item.synced_at)
+        self.assertEqual(item.last_error, "")
 
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), 1)
+    def test_failure_marks_error(self):
+        import os
 
-        from requests import RequestException
-        with patch("sync_ical.tasks.requests.get", side_effect=RequestException("Network error")):
-            sync_ical_target(target.pk)
+        item = self._item()
+        # A plain file where the feed directory should be: os.makedirs()
+        # raises FileExistsError even with exist_ok=True since the last path
+        # component exists but isn't a directory — a deterministic push failure.
+        blocker_path = os.path.join(self._tmpdir.name, "blocker")
+        with open(blocker_path, "w"):
+            pass
 
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), 1)
+        with self.settings(SYNC_ICAL_FEED_DIR=blocker_path):
+            result = push_pending_sync_items()
 
-    def test_nonexistent_target_logs_error(self):
-        with self.assertLogs("sync_ical.tasks", level="ERROR"):
-            sync_ical_target(99999)
+        item.refresh_from_db()
+        self.assertEqual(result, {"pushed": 0, "failed": 1})
+        self.assertEqual(item.status, DERIVED_STATE_ERROR)
+        self.assertTrue(item.last_error)
 
-    def test_deletes_events_removed_from_feed(self):
-        first_calendar = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Test//EN
-BEGIN:VEVENT
-UID:event-keep@example.com
-SUMMARY:Keep Me
-DTSTART;VALUE=DATE:20260301
-DTEND;VALUE=DATE:20260302
-END:VEVENT
-BEGIN:VEVENT
-UID:event-remove@example.com
-SUMMARY:Remove Me
-DTSTART;VALUE=DATE:20260308
-DTEND;VALUE=DATE:20260309
-END:VEVENT
-END:VCALENDAR
-"""
-        second_calendar = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Test//EN
-BEGIN:VEVENT
-UID:event-keep@example.com
-SUMMARY:Keep Me
-DTSTART;VALUE=DATE:20260301
-DTEND;VALUE=DATE:20260302
-END:VEVENT
-END:VCALENDAR
-"""
-        fixed_now = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
-        target = self._make_target()
+    def test_push_ical_target_scopes_to_single_target(self):
+        other_target = IcalCalendarSyncTarget.objects.create(key="ical:other", name="Other calendar")
+        entity2, *_ = make_entity_with_type()
+        item_main = self._item()
+        item_other = IcalCalendarSyncItem.objects.create(
+            related_entity=entity2, sync_target=other_target,
+            status=DERIVED_STATE_PENDING, synced_payload={"title": "Other"},
+        )
 
-        with self._patch_now(fixed_now), self._patch_fetch(first_calendar):
-            sync_ical_target(target.pk)
+        result = push_ical_target(self.target.pk)
 
-        self.assertEqual(Event.objects.count(), 2)
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), 2)
+        item_main.refresh_from_db()
+        item_other.refresh_from_db()
+        self.assertEqual(result, {"pushed": 1, "failed": 0})
+        self.assertEqual(item_main.status, DERIVED_STATE_SYNCED)
+        self.assertEqual(item_other.status, DERIVED_STATE_PENDING)
 
-        with self._patch_now(fixed_now), self._patch_fetch(second_calendar):
-            sync_ical_target(target.pk)
-
-        self.assertEqual(Event.objects.count(), 1)
-        self.assertEqual(IcalCalenderSyncItem.objects.count(), 1)
-        self.assertEqual(Event.objects.first().name, "Keep Me")
-
-    def test_limits_recurring_events_to_import_window(self):
-        ics_content = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Test//Recurring Import//EN
-BEGIN:VEVENT
-UID:recurring-import@example.com
-SUMMARY:Recurring Import
-DESCRIPTION:Recurring import description
-CATEGORIES:community,calendar
-DTSTART;VALUE=DATE:20250101
-DTEND;VALUE=DATE:20250102
-RRULE:FREQ=DAILY;COUNT=900
-END:VEVENT
-END:VCALENDAR
-"""
-        fixed_now = datetime(2026, 3, 10, 12, 0, tzinfo=timezone.utc)
-        target = self._make_target()
-
-        with self._patch_now(fixed_now), self._patch_fetch(ics_content):
-            sync_ical_target(target.pk)
-
-        imported_events = list(Event.objects.filter(name="Recurring Import").order_by("start_time"))
-
-        self.assertTrue(imported_events)
-        from datetime import date
-        self.assertEqual(imported_events[0].start_time.date(), date(2025, 3, 10))
-        self.assertEqual(imported_events[-1].start_time.date(), date(2027, 3, 10))
+    def test_push_ical_target_unknown_target_is_noop(self):
+        result = push_ical_target(99999)
+        self.assertEqual(result, {"pushed": 0, "failed": 0})
