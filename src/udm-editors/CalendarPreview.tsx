@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { udmGetCalendar, type CalendarEntryOut } from '../apiUdm'
 import { browserTimeZone, parseAppDatetime } from '../timezone'
+import { getEventStatusColor } from '../eventStatus'
 
 const BOUND_EVENT_ID = '__bound__'
 const NAIVE_PATTERN = 'yyyy-MM-ddTHH:mm:ss'
@@ -170,6 +171,10 @@ export function CalendarPreview({ sources, refreshToken, onSelectRange, boundRan
         end: toDayPilotDate(e.end ?? (e.start as string)),
         moveDisabled: true,
         resizeDisabled: true,
+        // events-and-sync.md Step 11: color by workflow state — reuses the
+        // same palette as EventStatusBadge for visual consistency between
+        // the calendar and elsewhere workflow state is shown.
+        backColor: getEventStatusColor(e.workflow_state ?? ''),
       }))
     if (boundRange?.start && boundRange?.end) {
       list.push({

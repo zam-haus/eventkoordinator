@@ -859,6 +859,7 @@ export interface CalendarEntryOut {
   url: string | null
   entity_id: string | null
   spec: string | null
+  workflow_state: string | null
 }
 
 export async function udmGetCalendar(start: string, end: string, sources: string[]): Promise<CalendarEntryOut[]> {
@@ -866,6 +867,46 @@ export async function udmGetCalendar(start: string, end: string, sources: string
   const res = await fetch(`/api/udm/calendar/?${params.toString()}`, { credentials: 'include' })
   if (!res.ok) return []
   return (await res.json()) as CalendarEntryOut[]
+}
+
+// ── Type editor tabs (events-and-sync.md §5/Step 8/Step 11) ────────────────────
+// Hand-typed for the same reason as backlinks/calendar above — schema_udm.d.ts
+// doesn't cover these endpoints yet.
+
+export interface TypeEditorTabOut {
+  id: string
+  label: string
+}
+
+export interface TypeEditorTabConfigOut {
+  tab_id: string
+  config: Record<string, unknown>
+}
+
+export async function udmListTypeEditorTabs(): Promise<TypeEditorTabOut[]> {
+  const res = await fetch('/api/udm/type-editor-tabs/', { credentials: 'include' })
+  if (!res.ok) return []
+  return (await res.json()) as TypeEditorTabOut[]
+}
+
+export async function udmGetTypeEditorTabConfig(versionId: string, tabId: string): Promise<TypeEditorTabConfigOut> {
+  const res = await fetch(`/api/udm/config-versions/${versionId}/tab-configs/${tabId}/`, { credentials: 'include' })
+  if (!res.ok) return throwRawFetchError(res, 'Tab config not found')
+  return (await res.json()) as TypeEditorTabConfigOut
+}
+
+export async function udmPutTypeEditorTabConfig(
+  versionId: string, tabId: string, config: Record<string, unknown>,
+): Promise<TypeEditorTabConfigOut> {
+  const token = await getCsrfToken()
+  const res = await fetch(`/api/udm/config-versions/${versionId}/tab-configs/${tabId}/`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [CSRF_HEADER_NAME]: token ?? '' },
+    body: JSON.stringify({ config }),
+  })
+  if (!res.ok) return throwRawFetchError(res, 'Failed to save tab config')
+  return (await res.json()) as TypeEditorTabConfigOut
 }
 
 export interface CalendarSourceOut {

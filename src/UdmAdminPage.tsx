@@ -56,6 +56,7 @@ import { BulkMigrationTab } from './UdmMigration'
 import { BundleTab } from './UdmBundleTab'
 import TemplatingTab from './UdmTemplatingTab'
 import { WorkflowEditor } from './WorkflowEditor'
+import { TypeEditorTabsPanel } from './type-editor-tabs/TypeEditorTabsPanel'
 import styles from './UdmAdminPage.module.css'
 
 type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle' | 'workflow' | 'templating'
@@ -1815,6 +1816,8 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
           </div>
         </div>
       </div>
+
+      <TypeEditorTabsPanel typeId={udmType.id.toString()} />
 
       {isSuperuser && (
         <div className={styles.section}>
