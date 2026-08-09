@@ -1,18 +1,19 @@
 from django.contrib import admin
 from simple_history.admin import SimpleHistoryAdmin
 
-from project.admin_utils import MaskedSecretFormMixin
+from project.admin_utils import HiddenFromAdminIndexMixin, MaskedSecretFormMixin
 from sync_webhook import models
 
 # SyncWebhookTarget/SyncWebhookItem are concrete subclasses of
 # sync_core.models.SyncBaseTarget/SyncBaseItem (events-and-sync.md §3), so
 # they are registered as plain ModelAdmins here (same convention as
 # sync_caldav/sync_pretix) and listed in sync_core.admin.SyncBaseTargetAdmin's
-# child_models for the polymorphic "add" flow.
+# child_models for the polymorphic "add" flow. SyncWebhookTarget is hidden
+# from the app index since that unified polymorphic list already shows it.
 
 
 @admin.register(models.SyncWebhookTarget)
-class SyncWebhookTargetAdmin(MaskedSecretFormMixin, SimpleHistoryAdmin):
+class SyncWebhookTargetAdmin(HiddenFromAdminIndexMixin, MaskedSecretFormMixin, SimpleHistoryAdmin):
     list_display = ("name", "key", "url", "enabled", "created_at", "updated_at")
     search_fields = ("name", "key", "url")
     ordering = ("-updated_at",)

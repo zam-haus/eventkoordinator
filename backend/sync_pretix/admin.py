@@ -1,7 +1,7 @@
 from django.contrib import admin
 from simple_history.admin import SimpleHistoryAdmin
 
-from project.admin_utils import MaskedSecretFormMixin
+from project.admin_utils import HiddenFromAdminIndexMixin, MaskedSecretFormMixin
 from sync_pretix import models
 
 
@@ -35,11 +35,13 @@ class PretixSyncTargetAreaAssociationInline(admin.StackedInline):
 
 
 @admin.register(models.PretixSyncTarget)
-class PretixSyncTargetAdmin(MaskedSecretFormMixin, SimpleHistoryAdmin):
+class PretixSyncTargetAdmin(HiddenFromAdminIndexMixin, MaskedSecretFormMixin, SimpleHistoryAdmin):
 	# PretixSyncTarget now subclasses sync_core.models.SyncBaseTarget
 	# (events-and-sync.md §3, Step 11), not apiv1's own polymorphic
 	# SyncBaseTarget, so it is a plain ModelAdmin rather than a
 	# PolymorphicChildModelAdmin — same change as sync_caldav's admin.
+	# Hidden from the app index: sync_core.admin.SyncBaseTargetAdmin already
+	# lists every concrete target class in one unified polymorphic view.
 	list_display = ("organizer_slug", "api_url", "created_at", "updated_at")
 	search_fields = ("organizer_slug", "api_url")
 	ordering = ("-updated_at",)

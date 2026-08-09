@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from django.contrib import admin
 from django.db.models import Count
+from django.http import HttpResponseRedirect
+from django.urls import path, reverse
+from django.utils.html import format_html
 from polymorphic.admin import PolymorphicParentModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
 
@@ -78,6 +81,7 @@ class CalendarSourceAdmin(MaskedSecretFormMixin, SimpleHistoryAdmin):
     # the existing value (same convention as sync_caldav/admin.py).
     secret_fields = ("password",)
     actions = ["fetch_now"]
+    readonly_fields = ("fetch_button",)
 
     def status_summary(self, obj):
         if obj.last_error:
@@ -98,3 +102,37 @@ class CalendarSourceAdmin(MaskedSecretFormMixin, SimpleHistoryAdmin):
         self.message_user(request, f"Fetch queued for {count} calendar source(s).")
 
     fetch_now.short_description = "Fetch now"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<path:object_id>/fetch/",
+                self.admin_site.admin_view(self.fetch_view),
+                name="sync_core_calendarsource_fetch",
+            ),
+        ]
+        return custom + urls
+
+    def fetch_view(self, request, object_id):
+        # Runs synchronously (fetch_calendar_source is a plain function, no
+        # broker required — see sync_core/tasks.py) so the admin gets an
+        # immediate pass/fail message instead of a fire-and-forget queue.
+        from sync_core.models import fetch_calendar_source
+
+        try:
+            result = fetch_calendar_source(object_id)
+            self.message_user(request, f"Fetched {result.get('fetched', 0)} entries.")
+        except Exception as exc:
+            self.message_user(request, f"Fetch failed: {exc}", level="ERROR")
+        return HttpResponseRedirect(
+            reverse("admin:sync_core_calendarsource_change", args=[object_id])
+        )
+
+    def fetch_button(self, obj):
+        if obj.pk is None:
+            return "Save the record first."
+        url = reverse("admin:sync_core_calendarsource_fetch", args=[obj.pk])
+        return format_html('<a class="button" href="{}">Fetch now</a>', url)
+
+    fetch_button.short_description = "Trigger fetch"

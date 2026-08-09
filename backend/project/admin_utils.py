@@ -120,4 +120,25 @@ class MaskedSecretFormMixin:
         return form
 
 
-__all__ = ["MaskedSecretFormField", "MaskedSecretFormMixin", "MASKED_PLACEHOLDER"]
+class HiddenFromAdminIndexMixin:
+    """ModelAdmin mixin that keeps add/change/delete views fully functional
+    but removes the model from the admin app index / sidebar.
+
+    Use on a polymorphic child's own ModelAdmin (e.g. SyncWebhookTargetAdmin)
+    when a parent's PolymorphicParentModelAdmin (e.g. SyncBaseTargetAdmin)
+    already lists every concrete subclass in one place — without this,
+    Django admin shows both "Sync base targets" (all subclasses, one row
+    each) and every subclass's own model *again* as a separate top-level
+    entry, which reads as duplication rather than two views of the same
+    data. `has_module_permission` only gates the app-index listing, not
+    individual object permissions, so URLs reached via the parent's list
+    (add/change links) keep working normally.
+    """
+
+    def has_module_permission(self, request):
+        return False
+
+
+__all__ = [
+    "HiddenFromAdminIndexMixin", "MaskedSecretFormField", "MaskedSecretFormMixin", "MASKED_PLACEHOLDER",
+]

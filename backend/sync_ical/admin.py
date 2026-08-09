@@ -5,11 +5,12 @@ from django.utils.html import format_html
 from polymorphic.admin import PolymorphicChildModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
 
+from project.admin_utils import HiddenFromAdminIndexMixin
 from sync_ical import models
 
 
 @admin.register(models.IcalCalendarSyncTarget)
-class IcalCalendarSyncTargetAdmin(PolymorphicChildModelAdmin, SimpleHistoryAdmin):
+class IcalCalendarSyncTargetAdmin(HiddenFromAdminIndexMixin, PolymorphicChildModelAdmin, SimpleHistoryAdmin):
     list_display = ("name", "key", "enabled", "created_at", "updated_at")
     search_fields = ("name", "key")
     ordering = ("-updated_at",)

@@ -4,19 +4,20 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from simple_history.admin import SimpleHistoryAdmin
 
-from project.admin_utils import MaskedSecretFormMixin
+from project.admin_utils import HiddenFromAdminIndexMixin, MaskedSecretFormMixin
 from sync_caldav import models
 
-# Note: CalDAVSyncTarget/CalDAVSyncItem are now concrete subclasses of
+# Note: CalDAVSyncTarget/CalDAVSyncItem are concrete subclasses of
 # sync_core.models.SyncBaseTarget/SyncBaseItem (events-and-sync.md §3, Step 11)
 # rather than the legacy apiv1 polymorphic base, so they are registered here
-# as plain ModelAdmins instead of PolymorphicChildModelAdmin — sync_core's own
-# polymorphic parent admin (sync_core/admin.py) is out of scope for this port
-# and still lists no concrete child_models.
+# as plain ModelAdmins instead of PolymorphicChildModelAdmin. CalDAVSyncTarget
+# is hidden from the app index (HiddenFromAdminIndexMixin) since
+# sync_core.admin.SyncBaseTargetAdmin already lists every concrete target
+# class in one unified polymorphic view.
 
 
 @admin.register(models.CalDAVSyncTarget)
-class CalDAVSyncTargetAdmin(MaskedSecretFormMixin, SimpleHistoryAdmin):
+class CalDAVSyncTargetAdmin(HiddenFromAdminIndexMixin, MaskedSecretFormMixin, SimpleHistoryAdmin):
     list_display = ("name", "key", "url", "calendar_display_name", "username", "enabled", "created_at", "updated_at")
     search_fields = ("name", "key", "url", "calendar_display_name", "username")
     ordering = ("-updated_at",)
