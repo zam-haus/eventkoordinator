@@ -233,6 +233,19 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=30),  # Offset from iCal to spread load
         "options": {"queue": "default"},
     },
+    # events-and-sync.md §3/Step 11: the relocated sync_core push/pull tasks.
+    # Kept alongside the legacy sync-ical/sync-caldav entries above until the
+    # corresponding push-side ports land and those entries retire.
+    "sync-core-push-pending-every-10-minutes": {
+        "task": "sync_core.tasks.push_pending_sync_items_task",
+        "schedule": crontab(minute="*/10"),
+        "options": {"queue": "default"},
+    },
+    "sync-core-fetch-calendar-sources-every-hour": {
+        "task": "sync_core.tasks.fetch_all_calendar_sources",
+        "schedule": crontab(minute=45),  # Offset from iCal/CalDAV to spread load
+        "options": {"queue": "default"},
+    },
 }
 
 CELERY_TASK_ROUTES = {}
