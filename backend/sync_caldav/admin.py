@@ -2,17 +2,23 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import path, reverse
 from django.utils.html import format_html
-from polymorphic.admin import PolymorphicChildModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
 
 from project.admin_utils import MaskedSecretFormMixin
 from sync_caldav import models
 
+# Note: CalDAVSyncTarget/CalDAVSyncItem are now concrete subclasses of
+# sync_core.models.SyncBaseTarget/SyncBaseItem (events-and-sync.md §3, Step 11)
+# rather than the legacy apiv1 polymorphic base, so they are registered here
+# as plain ModelAdmins instead of PolymorphicChildModelAdmin — sync_core's own
+# polymorphic parent admin (sync_core/admin.py) is out of scope for this port
+# and still lists no concrete child_models.
+
 
 @admin.register(models.CalDAVSyncTarget)
-class CalDAVSyncTargetAdmin(MaskedSecretFormMixin, PolymorphicChildModelAdmin, SimpleHistoryAdmin):
-    list_display = ("name", "url", "calendar_display_name", "username", "created_at", "updated_at")
-    search_fields = ("name", "url", "calendar_display_name", "username")
+class CalDAVSyncTargetAdmin(MaskedSecretFormMixin, SimpleHistoryAdmin):
+    list_display = ("name", "key", "url", "calendar_display_name", "username", "enabled", "created_at", "updated_at")
+    search_fields = ("name", "key", "url", "calendar_display_name", "username")
     ordering = ("-updated_at",)
     readonly_fields = ("sync_button",)
     # Mask the CalDAV password on display; blank-on-save keeps the existing value.
@@ -52,8 +58,8 @@ class CalDAVSyncTargetAdmin(MaskedSecretFormMixin, PolymorphicChildModelAdmin, S
 
 @admin.register(models.CalDAVSyncItem)
 class CalDAVSyncItemAdmin(SimpleHistoryAdmin):
-    list_display = ("caldav_uid", "sync_target", "related_event", "flag_push", "updated_at")
-    list_filter = ("sync_target", "flag_push")
-    search_fields = ("caldav_uid", "sync_target__name", "related_event__name")
+    list_display = ("remote_uid", "sync_target", "related_entity", "status", "is_stale", "updated_at")
+    list_filter = ("sync_target", "status", "is_stale")
+    search_fields = ("remote_uid", "sync_target__name")
     ordering = ("-updated_at",)
-    raw_id_fields = ("related_event",)
+    raw_id_fields = ("related_entity",)

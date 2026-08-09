@@ -10,7 +10,6 @@ from polymorphic.admin import PolymorphicInlineSupportMixin, PolymorphicParentMo
 from simple_history.admin import SimpleHistoryAdmin
 from viewflow import fsm
 
-from sync_caldav.models import CalDAVSyncTarget, CalDAVSyncItem
 from . import models
 from .flows import ProposalFlow
 from sync_pretix.models import PretixSyncTargetAreaAssociation, PretixSyncTarget, PretixSyncItem
@@ -89,20 +88,12 @@ class LinkedSyncItemsInline(StackedPolymorphicInline):
         def has_delete_permission(self, request, obj=None):
             return False
 
-    class CalDAVSyncItemInline(StackedPolymorphicInline.Child):
-        model = CalDAVSyncItem
-        readonly_fields = ("caldav_uid", "sync_target", "flag_push")
-
-        def has_add_permission(self, request, obj=None):
-            return False
-
-        def has_change_permission(self, request, obj=None):
-            return False
-
-        def has_delete_permission(self, request, obj=None):
-            return False
-
-    child_inlines = (PretixSyncItemInline, CalDAVSyncItemInline)
+    # CalDAVSyncItemInline was removed here: CalDAVSyncItem now subclasses
+    # sync_core.models.SyncBaseItem (events-and-sync.md §3, Step 11), not this
+    # app's own SyncBaseItem, so it no longer has a `related_event`/`caldav_uid`
+    # FK to inline under an apiv1 Event admin. CalDAV items are managed in
+    # sync_caldav/admin.py instead.
+    child_inlines = (PretixSyncItemInline,)
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -326,9 +317,11 @@ class SyncBaseTargetAdmin(PolymorphicParentModelAdmin, SimpleHistoryAdmin):
         "type",
         "created_at",
     )
+    # CalDAVSyncTarget removed here: it now subclasses sync_core.models.SyncBaseTarget
+    # (events-and-sync.md §3, Step 11), not this app's own SyncBaseTarget, so it is
+    # no longer a valid polymorphic child of this admin's base model.
     child_models = (
         PretixSyncTarget,
-        CalDAVSyncTarget,
     )
     readonly_fields = ("id", "type", "created_at")
     fields = ("id", "type", "created_at")

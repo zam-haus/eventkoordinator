@@ -1,19 +1,38 @@
+"""sync_caldav: pushes UDM entities out to a remote CalDAV calendar as VEVENTs
+(events-and-sync.md §3, Step 11).
+
+This is the *push* side only. The read/pull side that imports external
+iCal/CalDAV calendars for the calendar widget lives in
+`sync_core.calendar_fetch` and is unrelated to this app.
+
+Push reads the "effective values" snapshot from `SyncBaseItem.synced_payload`
+(set by `sync_core.models.mark_sync` — "the worker pushes exactly what was
+current when mark_sync fired", events-and-sync.md §4.2) and treats it as an
+arbitrary dict with (optional) `title`, `start`, `end`, `location` keys —
+there is no dedicated "event" UDM type wired in yet.
+"""
+from __future__ import annotations
+
 import logging
+from datetime import datetime
+from typing import ClassVar
 from uuid import uuid4
 
-import icalendar
 from caldav.davclient import DAVClient
 from django.db import models
+from django.utils import timezone
 
-from apiv1.models.sync.syncbasedata import SyncBaseItem, SyncBaseTarget, SyncDiffData, PropertyDiff
+from sync_core.models import SyncBaseItem, SyncBaseTarget
 
 logger = logging.getLogger(__name__)
 
 
 class CalDAVSyncTarget(SyncBaseTarget):
-    secret_field_names = ["password"]
+    """A remote CalDAV calendar identified by its display name on the server."""
 
-    name = models.CharField(max_length=255)
+    #: Fields whose values must never be exposed through the public API.
+    secret_field_names: ClassVar[list[str]] = ["password"]
+
     url = models.URLField(max_length=2000)
     username = models.CharField(max_length=255)
     password = models.CharField(max_length=255)
@@ -36,226 +55,94 @@ class CalDAVSyncTarget(SyncBaseTarget):
             f"Calendar {self.calendar_display_name!r} not found on CalDAV server at {self.url}"
         )
 
-    def create_new_sync_item(self, event) -> "CalDAVSyncItem":
-        logger.debug(
-            "Creating CalDAV sync item for event %s on target %s",
-            event.pk, self.pk,
-        )
-        item, created = CalDAVSyncItem.objects.get_or_create(
-            sync_target=self,
-            related_event=event,
-            defaults={"caldav_uid": None, "flag_push": True},
-        )
-        if created:
-            logger.debug("Created new CalDAVSyncItem %s (no uid yet)", item.pk)
-        else:
-            logger.debug("CalDAVSyncItem already exists: %s (uid=%s)", item.pk, item.caldav_uid)
-        return item
-
 
 class CalDAVSyncItem(SyncBaseItem):
-    sync_target = models.ForeignKey(
-        CalDAVSyncTarget, on_delete=models.CASCADE, related_name="items"
-    )
-    caldav_uid = models.CharField(max_length=255, null=True, blank=True, default=None)
-    remote_ical_definition = models.TextField(null=True, blank=True, default=None)
+    """One (entity, CalDAV target) sync relationship. `remote_uid` (base field)
+    holds the VEVENT UID currently believed to exist on the remote.
 
-    def _get_calendar(self):
-        return self.sync_target._get_calendar()
+    `sync_target` is inherited as-is from `SyncBaseItem` (a plain FK to the
+    polymorphic `SyncBaseTarget` base) — redeclaring it here as a FK to
+    `CalDAVSyncTarget` would clash with the concrete parent field under
+    Django's multi-table inheritance, so `_resolved_target()` downcasts it
+    instead."""
 
-    def get_status(self):
-        if self.flag_push:
-            return SyncBaseTarget.SyncTargetStatus.CREATION_PENDING
-        return super().get_status()
-
-    def push_update(self):
-        event = self.related_event
+    def _resolved_target(self) -> CalDAVSyncTarget:
         target = self.sync_target
-        logger.debug(
-            "push_update: event=%s uid=%s target=%s (%s)",
-            event.pk, self.caldav_uid, target.pk, target.name,
-        )
-        calendar = self._get_calendar()
+        if not isinstance(target, CalDAVSyncTarget):
+            target = CalDAVSyncTarget.objects.get(pk=target.pk)
+        return target
 
-        # Delete the existing remote event if we have a UID for it, then release
-        # the UID so a fresh one is always assigned — this avoids conflicts with
-        # CalDAV servers that keep deleted events in a trash bin under the same UID.
-        if self.caldav_uid:
+    @staticmethod
+    def _parse_datetime(value) -> datetime | None:
+        """`synced_payload` is a JSON snapshot, so datetimes normally arrive as
+        ISO-8601 strings; tolerate already-parsed datetimes too. Anything
+        unparseable/missing resolves to None so the caller can default it."""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(value)
+        except (TypeError, ValueError):
+            logger.debug("sync_caldav: could not parse datetime from %r", value)
+            return None
+
+    def push(self) -> None:
+        effective = self.synced_payload or {}
+        target = self._resolved_target()
+
+        title = effective.get("title") or "(untitled event)"
+        location = effective.get("location") or ""
+        dtstart = self._parse_datetime(effective.get("start")) or timezone.now()
+        dtend = self._parse_datetime(effective.get("end")) or dtstart
+
+        try:
+            calendar = target._get_calendar()
+        except Exception as exc:
+            raise RuntimeError(
+                f"sync_caldav push: could not reach calendar {target.calendar_display_name!r}: {exc}"
+            ) from exc
+
+        # Delete the existing remote event if we have a UID for it — this avoids
+        # conflicts with CalDAV servers that keep deleted events in a trash bin
+        # under the same UID.
+        if self.remote_uid:
             try:
-                calendar.get_event_by_uid(self.caldav_uid).delete()
-                logger.debug("Deleted existing remote event uid=%s", self.caldav_uid)
+                calendar.get_event_by_uid(self.remote_uid).delete()
+                logger.debug("Deleted existing remote event uid=%s", self.remote_uid)
             except Exception:
-                logger.debug("Remote event uid=%s already absent", self.caldav_uid)
-            self.caldav_uid = None
-            self.save()
+                logger.debug("Remote event uid=%s already absent", self.remote_uid)
 
         # Assign a new UID and persist it as a checkpoint before touching the
-        # remote — if the process dies here the item stays in CREATION_PENDING
-        # (flag_push=True) with a known UID so recovery is possible.
-        self.caldav_uid = str(uuid4())
-        self.flag_push = True
-        self.save()
-        logger.debug("Assigned new uid=%s for event=%s", self.caldav_uid, event.pk)
+        # remote — if the process dies here, the item stays pending with a
+        # known (currently-nonexistent) UID, and the next push will simply
+        # find nothing to delete and create fresh.
+        new_uid = str(uuid4())
+        self.remote_uid = new_uid
+        self.save(update_fields=["remote_uid"])
 
-        blocks = event.get_time_blocks()
+        extra_props = {"x-eventkoordinator-entity": str(self.related_entity_id)}
+        if target.instance_base_url:
+            extra_props["x-eventkoordinator-instance"] = target.instance_base_url
 
-        if event.use_full_days or len(blocks) <= 1:
-            extra_props = {"x-eventkoordinator-event": str(event.pk)}
-            if target.instance_base_url:
-                extra_props["x-eventkoordinator-instance"] = target.instance_base_url
-            dtstart = blocks[0].start if blocks else event.start_time
-            dtend = blocks[0].end if blocks else event.end_time
-            logger.debug(
-                "Creating remote event uid=%s summary=%r start=%s end=%s",
-                self.caldav_uid, event.name, dtstart, dtend,
-            )
+        logger.debug(
+            "Creating remote event uid=%s summary=%r start=%s end=%s",
+            new_uid, title, dtstart, dtend,
+        )
+        try:
             calendar.add_event(
                 dtstart=dtstart,
                 dtend=dtend,
-                uid=self.caldav_uid,
-                summary=event.name,
+                uid=new_uid,
+                summary=title,
+                location=location,
                 description="Created automatically. Do not edit, updates will be overwritten!",
                 **extra_props,
             )
-        else:
-            ical_str = self._build_recurring_ical(event, blocks, target)
-            logger.debug(
-                "Creating remote recurring event uid=%s summary=%r blocks=%d",
-                self.caldav_uid, event.name, len(blocks),
-            )
-            calendar.add_event(ical=ical_str)
-
-        self.flag_push = False
-        self.save()
-        logger.debug("push_update complete for uid=%s", self.caldav_uid)
-
-    def _build_recurring_ical(self, event, blocks, target) -> str:
-        from icalendar import Calendar as ICalCalendar, Event as ICalEvent
-
-        cal = ICalCalendar()
-        cal.add("prodid", "-//EventKoordinator//EN")
-        cal.add("version", "2.0")
-
-        vevent = ICalEvent()
-        vevent.add("uid", self.caldav_uid)
-        vevent.add("summary", event.name)
-        vevent.add("description", "Created automatically. Do not edit, updates will be overwritten!")
-        vevent.add("dtstart", blocks[0].start)
-        vevent.add("dtend", blocks[0].end)
-        vevent.add("rrule", {"FREQ": "DAILY", "COUNT": len(blocks)})
-        vevent["x-eventkoordinator-event"] = str(event.pk)
-        if target.instance_base_url:
-            vevent["x-eventkoordinator-instance"] = target.instance_base_url
-
-        cal.add_component(vevent)
-        return cal.to_ical().decode("utf-8")
-
-    def delete_remote(self):
-        from caldav import error as caldav_error
-        logger.debug("delete_remote: uid=%s", self.caldav_uid)
-        if not self.caldav_uid:
-            logger.debug("delete_remote: no uid assigned, nothing to delete")
-            return
-        try:
-            calendar = self._get_calendar()
-            calendar.get_event_by_uid(self.caldav_uid).delete()
-            logger.debug("Deleted remote event uid=%s", self.caldav_uid)
         except Exception as exc:
-            if isinstance(exc, caldav_error.NotFoundError):
-                logger.debug("Remote event uid=%s already absent, skipping", self.caldav_uid)
-                return
-            logger.error("Failed to delete CalDAV event %s: %s", self.caldav_uid, exc)
-            raise
+            raise RuntimeError(f"sync_caldav push: failed to create remote VEVENT: {exc}") from exc
 
-    def _parse_remote_vevent(self, ical_text: str):
-        """Parse a stored iCal string and return the first VEVENT component, or None."""
-        try:
-            cal = icalendar.Calendar.from_ical(ical_text)
-            return next(
-                (c for c in cal.subcomponents if c.name == "VEVENT"),
-                None,
-            )
-        except Exception:
-            return None
+        logger.debug("push complete for uid=%s", new_uid)
 
-    def sync_diff(self, only_differences: bool = True) -> SyncDiffData | None:
-        event = self.related_event
-
-        # Unclaimed events (no series, no proposal) are always kept in sync by
-        # the pull task — no meaningful diff to show.
-        if event.series_id is None and event.proposal_id is None:
-            return None
-
-        logger.debug("sync_diff: uid=%s only_differences=%s", self.caldav_uid, only_differences)
-
-        # Prefer the cached remote snapshot; fall back to a live network call for
-        # items that predate the pull-sync feature.
-        if self.remote_ical_definition:
-            vevent = self._parse_remote_vevent(self.remote_ical_definition)
-            if vevent is None:
-                logger.debug("sync_diff: could not parse remote_ical_definition for uid=%s", self.caldav_uid)
-                return None
-        elif self.caldav_uid:
-            try:
-                calendar = self._get_calendar()
-                remote_evt = calendar.get_event_by_uid(self.caldav_uid)
-            except Exception as exc:
-                logger.debug("Remote event uid=%s not found (%s), returning None", self.caldav_uid, exc)
-                return None
-            cal_instance = remote_evt.icalendar_instance
-            vevent = next(
-                (c for c in cal_instance.subcomponents if c.name == "VEVENT"),
-                None,
-            )
-            if vevent is None:
-                logger.debug("No VEVENT subcomponent found for uid=%s", self.caldav_uid)
-                return None
-        else:
-            logger.debug("sync_diff: no uid and no cached data, returning None")
-            return None
-
-        properties: list[PropertyDiff] = []
-
-        def _diff(name: str, local: str, remote: str) -> None:
-            if only_differences and local == remote:
-                return
-            logger.debug("diff %s: local=%r remote=%r", name, local, remote)
-            properties.append(
-                PropertyDiff(property_name=name, local_value=local, remote_value=remote, file_type="text")
-            )
-
-        _diff("summary", event.name, str(vevent.get("SUMMARY", "")))
-
-        blocks = event.get_time_blocks()
-        local_start = blocks[0].start if blocks else event.start_time
-        local_end = blocks[0].end if blocks else event.end_time
-
-        remote_dtstart = vevent.get("DTSTART")
-        _diff(
-            "start_time",
-            local_start.isoformat(),
-            remote_dtstart.dt.isoformat() if remote_dtstart else "",
-        )
-
-        remote_dtend = vevent.get("DTEND")
-        _diff(
-            "end_time",
-            local_end.isoformat(),
-            remote_dtend.dt.isoformat() if remote_dtend else "",
-        )
-
-        if not event.use_full_days:
-            remote_rrule = vevent.get("RRULE")
-            remote_count = (
-                remote_rrule.get("COUNT", [None])[0] if remote_rrule else None
-            )
-            local_count = len(blocks)
-            _diff("days", str(local_count), str(remote_count) if remote_count is not None else "1")
-
-        logger.debug("sync_diff complete: %d differing properties for uid=%s", len(properties), self.caldav_uid)
-        return SyncDiffData(
-            series_id=event.series_id,
-            event_id=event.pk,
-            target_id=self.sync_target.pk,
-            properties=properties,
-        )
+    def __str__(self):
+        return f"CalDAVSyncItem(entity={self.related_entity_id}, target={self.sync_target_id}, uid={self.remote_uid})"
