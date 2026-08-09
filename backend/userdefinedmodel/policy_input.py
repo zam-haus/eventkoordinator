@@ -165,6 +165,8 @@ class EntityActionInput(BaseModel):
     # linked values are NodeDocument | None, or list[NodeDocument | None] for
     # a path that traversed an entity_select_multi segment.
     linked: dict[str, Any]
+    # each backlink NodeDocument additionally carries its own `sync` map
+    # (extra="allow" on NodeDocument), same shape as the root's `sync` below.
     backlinks: dict[str, list[Any]]
     # §3.2: per-target sync state for this entity, keyed by target key.
     # {"<target_key>": {"status", "derived_state", "last_error", "synced_at",

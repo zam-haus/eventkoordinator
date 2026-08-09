@@ -104,12 +104,36 @@ class SyncBaseItem(PolymorphicMetaBase):
         return f"SyncBaseItem(entity={self.related_entity_id}, target={self.sync_target_id}, status={self.status})"
 
 
+def _target_bound_to_entity_type(target_key: str, entity_id) -> bool:
+    """Is `target_key` listed in the entity's config-version `sync_targets`
+    tab config? Absence of a tab config row at all is treated as
+    "no restriction configured" (backward compatible with types that never
+    set up the tab) — only a tab config that exists and omits the key counts
+    as "no longer bound" (events-and-sync.md Step 11)."""
+    from userdefinedmodel.models import TypeEditorTabConfig, UserDefinedModelEntity
+
+    try:
+        config_version_id = UserDefinedModelEntity.objects.values_list(
+            "config_version_id", flat=True,
+        ).get(pk=entity_id)
+    except UserDefinedModelEntity.DoesNotExist:
+        return True
+    cfg = TypeEditorTabConfig.objects.filter(
+        config_version_id=config_version_id, tab_id="sync_targets",
+    ).first()
+    if cfg is None:
+        return True
+    return target_key in (cfg.config.get("target_keys") or [])
+
+
 def compute_derived_state(item: SyncBaseItem) -> str:
     """The single shared derived_state computation (§3.2) — every surface
     (rego input.sync, templates, the sync_status element) reads this, never
     re-derives it independently."""
     target = item.sync_target
     if target is None or not target.enabled:
+        return DERIVED_STATE_TARGET_UNAVAILABLE
+    if item.sync_target_id and not _target_bound_to_entity_type(target.key, item.related_entity_id):
         return DERIVED_STATE_TARGET_UNAVAILABLE
     if item.status == DERIVED_STATE_ERROR:
         return DERIVED_STATE_ERROR
@@ -151,6 +175,11 @@ def mark_sync(entity_id, target_key: str, status: str, *, effective: dict | None
         raise ValueError(f"mark_sync: unknown target {target_key!r}")
     if not target.enabled:
         raise ValueError(f"mark_sync: target {target_key!r} is disabled")
+    if not _target_bound_to_entity_type(target_key, entity_id):
+        raise ValueError(
+            f"mark_sync: target {target_key!r} is not bound to this entity's type "
+            "(sync_targets tab config)"
+        )
 
     # No concrete SyncBaseItem subclass exists yet (Step 6 port is deferred),
     # so the base class is always the real instance; once a plugin lands,

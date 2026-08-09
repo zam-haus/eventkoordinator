@@ -139,6 +139,52 @@ effective["title"] := input.entity.fields.title.value
         self.assertEqual(SyncBaseItem.objects.filter(related_entity=event2, sync_target=self.target).count(), 1)
         self.assertEqual(SyncBaseItem.objects.filter(related_entity=proposal, sync_target=self.target).count(), 0)
 
+    def test_target_unbound_from_type_rejected(self):
+        from userdefinedmodel.models import TypeEditorTabConfig
+
+        entity, *_ = make_entity_with_type()
+        TypeEditorTabConfig.objects.create(
+            config_version=entity.config_version, tab_id="sync_targets",
+            config={"target_keys": ["some-other-target"]},
+        )
+        _fire(entity, self.user, {
+            "type": "mark_sync", "phase": "post", "target": "webhook:main", "status": "pending",
+        })
+        from userdefinedmodel.models.history import FieldEdit
+        self.assertTrue(FieldEdit.objects.filter(
+            change_kind=FieldEdit.ChangeKind.POLICY_POST_ACTION, new_value__has_key="_error",
+        ).exists())
+        self.assertFalse(SyncBaseItem.objects.filter(related_entity=entity, sync_target=self.target).exists())
+
+    def test_target_bound_to_type_allowed(self):
+        from userdefinedmodel.models import TypeEditorTabConfig
+
+        entity, *_ = make_entity_with_type()
+        TypeEditorTabConfig.objects.create(
+            config_version=entity.config_version, tab_id="sync_targets",
+            config={"target_keys": ["webhook:main"]},
+        )
+        _fire(entity, self.user, {
+            "type": "mark_sync", "phase": "post", "target": "webhook:main", "status": "pending",
+        })
+        self.assertTrue(SyncBaseItem.objects.filter(related_entity=entity, sync_target=self.target).exists())
+
+    def test_derived_state_target_unavailable_when_unbound_after_sync(self):
+        from userdefinedmodel.models import TypeEditorTabConfig
+        from sync_core.models import DERIVED_STATE_TARGET_UNAVAILABLE
+
+        entity, *_ = make_entity_with_type()
+        item = SyncBaseItem.objects.create(
+            related_entity=entity, sync_target=self.target, status="synced",
+        )
+        self.assertNotEqual(item.derived_state(), DERIVED_STATE_TARGET_UNAVAILABLE)
+
+        TypeEditorTabConfig.objects.create(
+            config_version=entity.config_version, tab_id="sync_targets",
+            config={"target_keys": []},
+        )
+        self.assertEqual(item.derived_state(), DERIVED_STATE_TARGET_UNAVAILABLE)
+
     def test_post_save_restale_on_change(self):
         entity, *_ = make_entity_with_type()
         item = SyncBaseItem.objects.create(

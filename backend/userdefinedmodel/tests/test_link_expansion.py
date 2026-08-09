@@ -87,6 +87,7 @@ backlink_inputs contains {
 }
 
 additional_result["referrer_titles"] := [d.fields.title.value | some d in input.backlinks.referrers]
+additional_result["referrer_sync"] := [d.sync | some d in input.backlinks.referrers]
 """ % source_type_id)
 
 
@@ -187,6 +188,10 @@ class LinkExpansionTests(TestCase):
         output = evaluate_policy(target, self.user, "view")
         self.assertTrue(output.allow)
         self.assertEqual(output.additional_result.get("referrer_titles"), ["Referencing Entity"])
+        # §3.2 loose end: backlink docs carry their own `sync` map, same as
+        # the root entity's `input.sync` — empty here since no sync items
+        # exist for the referencing entity.
+        self.assertEqual(output.additional_result.get("referrer_sync"), [{}])
 
     def test_unstable_requests_raise(self):
         entity, *_ = make_entity_with_type(policy_source=UNSTABLE_POLICY)

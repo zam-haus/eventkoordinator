@@ -486,7 +486,8 @@ def _resolve_forward_path(path: str, context_doc: dict, node_cache: dict[str, Op
 
 def _resolve_backlink(entry: dict, context_entity_id: str) -> list[dict]:
     """Resolve one backlink_inputs entry {"name","source_type","source_field"}
-    to a list of NodeDocuments referencing context_entity_id."""
+    to a list of NodeDocuments referencing context_entity_id, each enriched
+    with its own `sync` map (§3.2) the same way the root entity's is."""
     from userdefinedmodel.backlinks import find_backlinks
 
     source_type = entry.get("source_type")
@@ -495,7 +496,9 @@ def _resolve_backlink(entry: dict, context_entity_id: str) -> list[dict]:
     for bl in find_backlinks(context_entity_id):
         if bl.type_id != source_type or bl.field_slug != source_field:
             continue
-        docs.append(bl.entity.to_policy_document())
+        doc = bl.entity.to_policy_document()
+        doc["sync"] = _sync_map_for_node(bl.entity)
+        docs.append(doc)
     return docs
 
 
