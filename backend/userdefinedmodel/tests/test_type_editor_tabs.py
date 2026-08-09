@@ -60,8 +60,27 @@ class TypeEditorTabApiTests(TestCase):
         self.client.force_login(self.user)
         resp = self.client.get("/api/udm/type-editor-tabs/")
         self.assertEqual(resp.status_code, 200)
-        ids = {t["id"] for t in json.loads(resp.content)}
-        self.assertIn("demo_tab_api", ids)
+        tabs = json.loads(resp.content)
+        by_id = {t["id"]: t for t in tabs}
+        self.assertIn("demo_tab_api", by_id)
+        # Step 11 follow-up: each tab carries its pydantic config model's
+        # JSON schema, so the frontend can render a structured form instead
+        # of a bespoke component or raw JSON.
+        self.assertIn("properties", by_id["demo_tab_api"]["config_schema"])
+        self.assertIn("url", by_id["demo_tab_api"]["config_schema"]["properties"])
+
+    def test_list_sync_targets(self):
+        from sync_core.models import SyncBaseTarget
+
+        SyncBaseTarget.objects.create(key="webhook:main", name="Main Webhook", enabled=True)
+        self.client.force_login(self.user)
+        resp = self.client.get("/api/udm/sync-targets/")
+        self.assertEqual(resp.status_code, 200)
+        targets = json.loads(resp.content)
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(targets[0]["key"], "webhook:main")
+        self.assertEqual(targets[0]["name"], "Main Webhook")
+        self.assertTrue(targets[0]["enabled"])
 
     def test_get_config_defaults_to_empty(self):
         version = PublishedConfigVersionFactory()

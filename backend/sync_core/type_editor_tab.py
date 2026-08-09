@@ -13,7 +13,15 @@ class SyncTargetsTabConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    target_keys: list[str] = Field(default_factory=list)
+    target_keys: list[str] = Field(
+        default_factory=list,
+        title="Sync targets",
+        description=(
+            "SyncBaseTarget keys (e.g. \"webhook:main\", \"caldav:main-calendar\") this "
+            "type's entities may be marked pending against via the mark_sync policy "
+            "action. Targets themselves are created in Django admin."
+        ),
+    )
 
 
 def register() -> None:

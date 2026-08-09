@@ -25,6 +25,7 @@ from userdefinedmodel.schemas import (
     FieldConfigCreateIn,
     FieldConfigOut,
     FieldConfigUpdateIn,
+    SyncTargetOut,
     TypeEditorTabConfigIn,
     TypeEditorTabConfigOut,
     TypeEditorTabOut,
@@ -228,7 +229,30 @@ def list_type_editor_tabs(request):
     """events-and-sync.md §5: every registered plugin tab (id + label). The
     type editor asks this before rendering per-type config CRUD for each."""
     from userdefinedmodel.type_editor_tabs import get_registered_tabs
-    return [{"id": t.id, "label": t.label} for t in get_registered_tabs()]
+    return [
+        {"id": t.id, "label": t.label, "config_schema": t.config_schema.model_json_schema()}
+        for t in get_registered_tabs()
+    ]
+
+
+@router.get("/sync-targets/", response=list[SyncTargetOut], auth=django_auth)
+def list_sync_targets(request):
+    """Read-only listing of SyncBaseTarget rows, so pickers (e.g. the
+    sync_targets type-editor tab) can offer real target identities instead
+    of hand-typed "kind:slug" key strings. sync_core -> userdefinedmodel is
+    the declared dependency direction; this is a lazy import, same pattern
+    as engine.py's _sync_map_for_node."""
+    from sync_core.models import SyncBaseTarget
+
+    return [
+        {
+            "key": t.key,
+            "name": t.name,
+            "type": t.get_real_instance_class().__name__,
+            "enabled": t.enabled,
+        }
+        for t in SyncBaseTarget.objects.all().order_by("name")
+    ]
 
 
 @router.get(

@@ -746,9 +746,25 @@ class EntityOut(Schema):
 
 
 class TypeEditorTabOut(Schema):
-    """events-and-sync.md §5: a registered plugin tab descriptor."""
+    """events-and-sync.md §5: a registered plugin tab descriptor.
+
+    `config_schema` is the plugin's pydantic config model's JSON schema
+    (`model_json_schema()`), so the frontend can render a structured form
+    driven by real field titles/descriptions/types instead of a bespoke
+    per-tab component or a raw JSON textarea (Step 11 follow-up)."""
     id: str
     label: str
+    config_schema: dict[str, Any]
+
+
+class SyncTargetOut(Schema):
+    """A SyncBaseTarget row, for pickers (e.g. the sync_targets type-editor
+    tab) that need real target identities instead of hand-typed key strings.
+    Read-only; targets themselves are managed in Django admin."""
+    key: str
+    name: str
+    type: str
+    enabled: bool
 
 
 class TypeEditorTabConfigOut(Schema):
