@@ -1326,6 +1326,11 @@ export function UdmEntityEditor() {
       const tc = fd.type_config as { sources?: string[]; bind_start?: string; bind_end?: string } | undefined
       const label = getLang(fd.label as Record<string, string>, uiLang) || fd.slug
       const helpText = getLang(fd.help_text as Record<string, string>, uiLang)
+      // Step 10 (§6.1): "submodel:self:..." sources address the rendered
+      // entity itself — substitute before the request, since the server has
+      // no notion of "self".
+      const substitutedSources = (tc?.sources ?? []).map(spec =>
+        entity ? spec.replace('submodel:self:', `submodel:${entity.id}:`) : spec)
       const startSlug = tc?.bind_start
       const endSlug = tc?.bind_end
       // bind_start/bind_end are optional (unlike date_range's mandatory
@@ -1345,7 +1350,7 @@ export function UdmEntityEditor() {
         end: (endSlug! in dirty ? dirty[endSlug!] : getFieldValue(entity!, endSlug!)) as string | null,
       } : undefined
       const body = (
-        <CalendarPreview sources={tc?.sources ?? []} refreshToken={refreshToken}
+        <CalendarPreview sources={substitutedSources} refreshToken={refreshToken}
           onSelectRange={onSelectRange} boundRange={boundRange} />
       )
       return (

@@ -219,11 +219,79 @@ def get_calendar(request, start: str, end: str, sources: str = ""):
             return _dt.datetime.combine(value, _dt.time.min, tzinfo=_dt.timezone.utc)
         return None
 
+    import re as _re
+
+    _SUBMODEL_SPEC_RE = _re.compile(
+        r"^submodel:(?P<entity>[^:]+):(?P<field>[a-z][a-z0-9_-]*)"
+        r"\((?P<start>[a-z][a-z0-9_-]*)(,(?P<end>[a-z][a-z0-9_-]*))?\)$"
+    )
+
+    # Top-level source entries are comma-separated, but a submodel spec's
+    # own "(start,end)" suffix also uses a comma — split only on commas not
+    # enclosed in parens.
+    _SOURCE_SPLIT_RE = _re.compile(r",(?![^(]*\))")
+
     entries = []
-    for spec in sources.split(","):
+    for spec in _SOURCE_SPLIT_RE.split(sources):
         spec = spec.strip()
         if not spec:
             continue
+
+        m = _SUBMODEL_SPEC_RE.match(spec)
+        if m:
+            from userdefinedmodel.models import UserDefinedModelEntityNode
+
+            address = m.group("entity")
+            field_slug = m.group("field")
+            start_field = m.group("start")
+            end_field = m.group("end")
+
+            # `address` is either a single entity's id (a "self" spec,
+            # substituted by the frontend) or a UDM type id (a type-wide
+            # scope: every entity of that type). Entity ids and type ids are
+            # both opaque UUIDs from independent PK spaces, so disambiguate
+            # by existence check.
+            root_entities = list(UserDefinedModelEntity.objects.filter(id=address))
+            if not root_entities:
+                root_entities = list(
+                    UserDefinedModelEntity.objects.filter(user_defined_model_type_id=address)
+                )
+            for root_entity in root_entities:
+                policy = evaluate_policy(root_entity, request.user, "view", locale=_locale(request))
+                if not policy.allow:
+                    continue
+                children = UserDefinedModelEntityNode.objects.filter(
+                    parent_node_id=root_entity.id, parent_field__slug=field_slug,
+                )
+                for child in children:
+                    allowed = policy.viewable_fields.get(str(child.id))
+                    if allowed is not None and start_field not in allowed:
+                        continue
+                    start_fv = child.get_field_value(start_field)
+                    start_val = _as_datetime(start_fv.get_value() if start_fv else None)
+                    if start_val is None:
+                        continue
+                    end_val = start_val
+                    if end_field and (allowed is None or end_field in allowed):
+                        end_fv = child.get_field_value(end_field)
+                        end_val = _as_datetime(end_fv.get_value() if end_fv else None) or start_val
+                    if end_val < range_start or start_val > range_end:
+                        continue
+                    entries.append({
+                        "source": "submodel",
+                        "uid": str(child.id),
+                        "title": str(child.id),
+                        "start": start_val.isoformat(),
+                        "end": end_val.isoformat(),
+                        "url": None,
+                        "entity_id": str(child.id),
+                        "spec": spec,
+                    })
+            continue
+
+        if spec.startswith("submodel:"):
+            continue  # malformed submodel spec — never fall through to the type-id parser
+
         parts = spec.split(":")
 
         if parts[0] == "source" and len(parts) == 2:
@@ -251,6 +319,7 @@ def get_calendar(request, start: str, end: str, sources: str = ""):
                     "end": r_end.isoformat(),
                     "url": None,
                     "entity_id": None,
+                    "spec": spec,
                 })
             continue
 
@@ -287,6 +356,7 @@ def get_calendar(request, start: str, end: str, sources: str = ""):
                 "end": end_val.isoformat(),
                 "url": f"/udm-entity/{entity.id}",
                 "entity_id": str(entity.id),
+                "spec": spec,
             })
     return entries
 

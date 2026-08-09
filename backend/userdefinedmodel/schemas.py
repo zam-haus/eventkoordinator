@@ -3,6 +3,7 @@ Pydantic/Django-Ninja schemas for the userdefinedmodel API (/api/udm/).
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from enum import Enum
@@ -213,11 +214,30 @@ class CalendarTypeConfig(Schema):
     only (not real FormElementBinding FK rows, unlike date_range) since a
     calendar element's config mixes this same-entity reference with the
     unrelated cross-type `sources` list.
+
+    Step 10: a source entry may also be
+    ``"submodel:<entity>:<field>(<start>[,<end>])"`` — child nodes of
+    ``<field>`` (a submodel_list/submodel_select on ``<entity>``) read via
+    their own ``<start>``/``<end>`` fields. ``<entity>`` is either ``self``
+    (substituted by the frontend with the rendering entity/node's own id —
+    a single-entity scope) or a UDM type id (a type-wide scope: every entity
+    of that type's children under ``<field>``).
     """
     sources: list[str] = Field(default_factory=list, max_length=50)
     bind_start: Optional[Slug] = None
     bind_end: Optional[Slug] = None
     model_config = {"extra": "forbid"}
+
+    _SUBMODEL_SPEC_RE = re.compile(
+        r"^submodel:[a-zA-Z0-9_-]+:[a-z][a-z0-9_-]*\([a-z][a-z0-9_-]*(,[a-z][a-z0-9_-]*)?\)$"
+    )
+
+    @model_validator(mode="after")
+    def validate_submodel_specs(self) -> "CalendarTypeConfig":
+        for spec in self.sources:
+            if spec.startswith("submodel:") and not self._SUBMODEL_SPEC_RE.match(spec):
+                raise ValueError(f"malformed submodel calendar spec: {spec!r}")
+        return self
 
 
 _TYPE_CONFIG_CLS: dict[DataType, type[Schema] | None] = {
@@ -750,6 +770,9 @@ class CalendarEntryOut(Schema):
     end: Optional[str] = None
     url: Optional[str] = None
     entity_id: Optional[str] = None
+    #: Step 10: the (substituted) source spec this entry came from — lets the
+    #: frontend match entries against `highlight_sources`.
+    spec: Optional[str] = None
 
 
 class BacklinkOut(Schema):

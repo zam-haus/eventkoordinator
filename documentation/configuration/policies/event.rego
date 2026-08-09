@@ -61,6 +61,24 @@ editable_fields contains {"node": node.id, "field": "origin"} if {
 	node.fields.origin.value == null
 }
 
+# ── timeslots submodel grants (Step 10, §6.1) ───────────────────────────────
+# Staff may add/remove Timeslot children on any Event — start/end fields on
+# the child nodes are already covered by the tree-wide viewable_fields /
+# editable_fields rules above.
+
+creatable_submodels contains {
+	"node": input.entity.id, "field": "timeslots",
+	"viewable": ["start", "end"],
+	"editable": ["start", "end"],
+} if {
+	input.user.is_staff
+}
+
+deletable_nodes contains child.id if {
+	input.user.is_staff
+	some child in object.get(input.entity.children, "timeslots", [])
+}
+
 # ── linked_inputs (§2) ───────────────────────────────────────────────────────
 # Request the linked proposal document so `effective` (below) can read its
 # title. Unconditional here; a real policy might gate this on workflow state.
@@ -75,14 +93,15 @@ linked_inputs contains "origin"
 effective["title"] := v if {
 	v := input.entity.fields.title_override.value
 	v != null
+	v != ""
 }
 
 effective["title"] := input.linked.origin.fields.title.value if {
-	input.entity.fields.title_override.value == null
+	input.entity.fields.title_override.value in {null, ""}
 	input.linked.origin != null
 }
 
 effective["title"] := "(untitled event)" if {
-	input.entity.fields.title_override.value == null
+	input.entity.fields.title_override.value in {null, ""}
 	input.linked.origin == null
 }

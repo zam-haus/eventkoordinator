@@ -1256,6 +1256,78 @@
    }
   },
   {
+   "id": "03d1adae-d7a6-48cc-a962-e34f6cff8a02",
+   "name": "Timeslot",
+   "description": "",
+   "languages": [
+    {
+     "code": "en",
+     "label": "English",
+     "is_default": true,
+     "sort_order": 0
+    }
+   ],
+   "draft": {
+    "notes": "",
+    "fields": [
+     {
+      "slug": "start",
+      "data_type": "datetime",
+      "sort_order": 0,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Start"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "end",
+      "data_type": "datetime",
+      "sort_order": 1,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "End"
+      },
+      "help_texts": {},
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "calendar",
+      "data_type": "calendar",
+      "sort_order": 2,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Calendar"
+      },
+      "help_texts": {
+       "en": "events-and-sync.md §6.1: drag a slot to set this timeslot's own start/end, against the context of every event's timeslots."
+      },
+      "type_config": {
+       "sources": ["submodel:a7f7dcd6-9272-437e-9bd1-07f526b5c7ba:timeslots(start,end)"],
+       "bind_start": "start",
+       "bind_end": "end"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     }
+    ]
+   }
+  },
+  {
    "id": "9bb8f7c8-c0ef-49d7-a90a-bd203b1d9053",
    "name": "Event",
    "description": "Events created from accepted proposals (events-and-sync.md).",
@@ -1317,47 +1389,28 @@
       "parent_slug": null
      },
      {
-      "slug": "start",
-      "data_type": "datetime",
+      "slug": "timeslots",
+      "data_type": "submodel_list",
       "sort_order": 2,
-      "is_localized": false,
-      "is_preview": true,
-      "labels": {
-       "en": "Start",
-       "de": "Beginn"
-      },
-      "help_texts": {
-       "en": "Event start date/time."
-      },
-      "type_config": {},
-      "default": null,
-      "submodel_config_version_id": null,
-      "workflow_version_id": null,
-      "parent_slug": null
-     },
-     {
-      "slug": "end",
-      "data_type": "datetime",
-      "sort_order": 3,
       "is_localized": false,
       "is_preview": false,
       "labels": {
-       "en": "End",
-       "de": "Ende"
+       "en": "Timeslots",
+       "de": "Zeitfenster"
       },
-      "help_texts": {
-       "en": "Event end date/time."
+      "help_texts": {},
+      "type_config": {
+       "renderer": "list"
       },
-      "type_config": {},
       "default": null,
-      "submodel_config_version_id": null,
+      "submodel_config_version_id": "03d1adae-d7a6-48cc-a962-e34f6cff8a02",
       "workflow_version_id": null,
       "parent_slug": null
      },
      {
       "slug": "origin",
       "data_type": "entity_select",
-      "sort_order": 4,
+      "sort_order": 3,
       "is_localized": false,
       "is_preview": true,
       "labels": {
@@ -1376,7 +1429,7 @@
      {
       "slug": "summary",
       "data_type": "markdown_display",
-      "sort_order": 5,
+      "sort_order": 4,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1384,7 +1437,7 @@
        "de": "Zusammenfassung"
       },
       "help_texts": {
-       "en": "Rendered server-side from the policy's effective values (events-and-sync.md \u00a71.4).",
+       "en": "Rendered server-side from the policy\u2019s effective values (events-and-sync.md \u00a71.4).",
        "de": "Serverseitig aus den effektiven Policy-Werten gerendert."
       },
       "type_config": {
@@ -1398,7 +1451,7 @@
      {
       "slug": "sync",
       "data_type": "sync_status",
-      "sort_order": 6,
+      "sort_order": 5,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1415,7 +1468,7 @@
      {
       "slug": "calendar",
       "data_type": "calendar",
-      "sort_order": 7,
+      "sort_order": 6,
       "is_localized": false,
       "is_preview": false,
       "labels": {
@@ -1423,12 +1476,10 @@
        "de": "Kalender"
       },
       "help_texts": {
-       "en": "events-and-sync.md §6: all events on the calendar. Drag a slot to set this event's own start/end."
+       "en": "events-and-sync.md \u00a76.1: every event\u2019s timeslots, read-only (edit a slot\u2019s own time via its Timeslot calendar)."
       },
       "type_config": {
-       "sources": ["a7f7dcd6-9272-437e-9bd1-07f526b5c7ba:start:end"],
-       "bind_start": "start",
-       "bind_end": "end"
+       "sources": ["submodel:a7f7dcd6-9272-437e-9bd1-07f526b5c7ba:timeslots(start,end)"]
       },
       "default": null,
       "submodel_config_version_id": null,

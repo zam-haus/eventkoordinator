@@ -990,40 +990,54 @@ new apps' suites; never the apiv1 suite).
       invalid-date 400, empty sources); full suite green
       (`uv run manage.py test userdefinedmodel sync_core`, 360 tests).
 
-### Step 10 — timeslot submodel + highlight calendar (6.1)
+### Step 10 — timeslot submodel + writeable submodel calendar (6.1)
 
-- [ ] Bundle: new `Timeslot` submodel field-config (two `datetime` fields
+Superseded the original highlight-calendar design during implementation:
+Event no longer carries its own `start`/`end` — all scheduling lives on
+Timeslot children. `submodel:<entity>:<field>(...)` addresses either a
+single entity (`self`, substituted by the frontend) or, generalized during
+implementation, a UDM type id (every entity of that type) — both bundle
+calendars use the type-wide form for a full-schedule view.
+
+- [x] Bundle: new `Timeslot` submodel field-config (two `datetime` fields
       `start`/`end`, both `is_preview: true`, no workflow) in
       `documentation/configuration/UDM_BUNDLE.json`, modeled on
-      `Proposal Review`.
-- [ ] Bundle: `timeslots` field on Event (`submodel_list`,
-      `renderer: list`, `submodel_config_version_id` → Timeslot), sorted
-      after `end`; second read-only `calendar` field below it with
-      `sources: ["submodel:self:timeslots(start,end)", "<event type
-      id>:start:end"]`, `highlight_sources:
-      ["submodel:self:timeslots(start,end)"]`, no `bind_start`/`bind_end`.
-- [ ] Policies: grant view/save on `timeslots` + the Timeslot child fields
-      and the submodel create/delete buttons (`creatable_submodels`) in
-      `event.rego` / the shared grants.
-- [ ] Backend: parse `submodel:<entity>:<field>(<start>[,<end>])` in
-      `get_calendar` (dispatched before the existing colon-split specs);
-      query `UserDefinedModelEntityNode` children by parent id + field slug,
-      read the datetime values, policy-check via the root entity's view
-      policy / `viewable_fields`; `source: "submodel"`, `uid`/`entity_id` =
-      child node id.
-- [ ] Backend: `spec` echo field on `CalendarEntryOut` (all source kinds);
-      `highlight_sources` on `CalendarTypeConfig` + grammar validation of
-      the new spec form in element-config validation.
-- [ ] Frontend (`CalendarField`/`CalendarPreview`): substitute `self` → the
-      rendered entity's id before the request; style entries whose `spec` is
-      in `highlight_sources` highlighted, everything else muted; filter
-      `entity_id == self` out of non-highlight sources (duplicate-bar
-      avoidance).
-- [ ] Tests: submodel spec returns child-node entries (range in/out,
-      point-in-time single-slug form), policy filtering via the root
-      entity, `spec` echo on all source kinds, config validation of the new
-      grammar; bundle import round-trip (`uv run manage.py import_bundle`);
-      full `userdefinedmodel sync_core` suites green.
+      `Proposal Review`; plus its own writeable `calendar` field
+      (`bind_start`/`bind_end` → its own `start`/`end`,
+      `sources: ["submodel:<event type id>:timeslots(start,end)"]` for
+      full-schedule context while dragging).
+- [x] Bundle: Event's `start`/`end` datetime fields removed; `timeslots`
+      field added (`submodel_list`, `renderer: list`,
+      `submodel_config_version_id` → Timeslot); read-only `calendar` field
+      with `sources: ["submodel:<event type id>:timeslots(start,end)"]`
+      (every event's timeslots), no `bind_start`/`bind_end`.
+- [x] Policies: `event.rego` grants `creatable_submodels`/`deletable_nodes`
+      for `timeslots`; view/save on the Timeslot child fields already
+      covered by the tree-wide `viewable_fields`/`editable_fields` rules.
+- [x] Backend: parse `submodel:<entity>:<field>(<start>[,<end>])` in
+      `get_calendar` (dispatched before the existing colon-split specs,
+      with a comma-aware top-level source split since the spec's own
+      `(start,end)` suffix also uses a comma); `<entity>` resolved as a
+      single entity id or, if not found, a UDM type id (iterate all its
+      entities); query `UserDefinedModelEntityNode` children by parent id +
+      field slug, read the datetime values, policy-check per child via
+      `viewable_fields`; `source: "submodel"`, `uid`/`entity_id` = child
+      node id.
+- [x] Backend: `spec` echo field on `CalendarEntryOut` (all source kinds).
+- [x] Frontend (`CalendarField`/`CalendarPreview`): root-entity calendar
+      substitutes `self` → the rendered entity's id before the request
+      (mechanism kept general; the bundle above uses the type-wide form
+      instead). New: a `calendar` field type_config with `bind_start`/
+      `bind_end` inside a submodel child (`SubmodelEditor.tsx`) is now
+      wired — dual-slug staging (`handleFieldChangeMulti`) and a combined
+      one-PATCH commit (`onCommitField` widened to `string | string[]`),
+      reusing `CalendarPreview` as-is.
+- [x] Tests: submodel spec returns child-node entries (range in/out,
+      point-in-time single-slug form, type-wide form across multiple
+      entities), policy filtering via the root entity, `spec` echo,
+      malformed-spec config validation; bundle import round-trip
+      (`uv run manage.py import_bundle --migrate-entities`); full
+      `userdefinedmodel sync_core` suites green (381 tests).
 
 ### Step 11 — deferred tasks from steps 6–9
 

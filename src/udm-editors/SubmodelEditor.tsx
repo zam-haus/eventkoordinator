@@ -15,6 +15,7 @@ import { useUdmGrants, type NewItemGrant } from './grants'
 import { ReadonlyBadge, FieldSlug } from './shared'
 import { FieldPreview } from './FieldPreview'
 import { PreviewTable, type PreviewRow } from './PreviewTable'
+import { CalendarPreview } from './CalendarPreview'
 import styles from '../UdmEntityEditor.module.css'
 
 // ── Compact sub-field severity helpers ────────────────────────────────────────
@@ -188,8 +189,10 @@ interface SubmodelChildCardProps {
   visibleSlugs?: string[] | null
   /** §6: field slugs the user may edit on this item; null = all (legacy). */
   editableSlugs?: string[] | null
-  /** Immediate mode: commit a single sub-field's staged value now. Throws on failure. */
-  onCommitField?: (subSlug: string) => Promise<void>
+  /** Immediate mode: commit one or more staged sub-field values now (a
+   *  `calendar` field's bind_start/bind_end pair commits together, one
+   *  PATCH op). Throws on failure. */
+  onCommitField?: (subSlug: string | string[]) => Promise<void>
   /** Immediate mode: whether the delete button is busy. */
   opBusy?: boolean
 }
@@ -243,6 +246,31 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
     delete d[slug]
     onChange(d)
   }
+
+  // Multi-slug variant: a `calendar` field's bind_start/bind_end pair stages
+  // and commits together as one PATCH op (mirrors the root editor's
+  // commitBoth for the same reason — writing them separately would race).
+  function handleFieldChangeMulti(updates: Record<string, unknown>) {
+    onChange({ ...item.dirty, ...updates })
+  }
+  const [multiSaving, setMultiSaving] = useState<Record<string, boolean>>({})
+  async function commitSubMulti(slugs: string[]) {
+    const key = slugs.join('|')
+    if (!onCommitField || multiSaving[key]) return
+    setMultiSaving(s => ({ ...s, [key]: true }))
+    try {
+      await onCommitField(slugs)
+    } catch {
+      // error surfaced by the parent editor under the submodel field
+    } finally {
+      setMultiSaving(s => ({ ...s, [key]: false }))
+    }
+  }
+  function cancelSubMulti(slugs: string[]) {
+    const d = { ...item.dirty }
+    for (const s of slugs) delete d[s]
+    onChange(d)
+  }
   // Nested submodels/workflows manage their own persistence — no commit wrapper
   const subCommitable = (subFd: FieldDefinitionOut) =>
     commitEnabled && !subFd.data_type.startsWith('submodel') && subFd.data_type !== 'workflow'
@@ -256,6 +284,19 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
         disabled={fieldDisabled}
         onCommit={() => void commitSub(subFd.slug)}
         onCancel={() => cancelSub(subFd.slug)}>
+        {children}
+      </FieldCommitWrapper>
+    ) : children
+  const wrapCommitMulti = (slugs: string[], children: ReactNode, fieldDisabled: boolean) =>
+    commitEnabled ? (
+      <FieldCommitWrapper
+        dirty={slugs.some(s => s in item.dirty)}
+        saving={!!multiSaving[slugs.join('|')]}
+        large={true}
+        blurCommit={false}
+        disabled={fieldDisabled}
+        onCommit={() => void commitSubMulti(slugs)}
+        onCancel={() => cancelSubMulti(slugs)}>
         {children}
       </FieldCommitWrapper>
     ) : children
@@ -343,6 +384,35 @@ function SubmodelChildCard({ item, subFields, subLanguages, uiLang, disabled, on
             const sev = subFieldSeverities?.[subFd.slug]
             const subColor = subFieldColor(sev)
             const subMsgs = subFieldMessages?.[subFd.slug] ?? []
+            if (subFd.data_type === 'calendar') {
+              // events-and-sync.md §6.1: a writeable calendar bound to this
+              // child's OWN start/end sibling fields (unlike the root
+              // editor's calendar, there is no "self" address here — the
+              // child isn't a UDM entity, only its sources spec is global).
+              const tc = subFd.type_config as { sources?: string[]; bind_start?: string; bind_end?: string } | undefined
+              const startSlug = tc?.bind_start
+              const endSlug = tc?.bind_end
+              const bound = !!(startSlug && endSlug)
+              const fieldDisabled = disabled || !fieldEditable(startSlug ?? '') || !fieldEditable(endSlug ?? '')
+              const onSelectRange = bound && !fieldDisabled
+                ? (start: string, end: string) => handleFieldChangeMulti({ [startSlug!]: start, [endSlug!]: end })
+                : undefined
+              const boundRange = bound ? {
+                start: getChildFieldValue(item, startSlug!) as string | null,
+                end: getChildFieldValue(item, endSlug!) as string | null,
+              } : undefined
+              const body = (
+                <CalendarPreview sources={tc?.sources ?? []} onSelectRange={onSelectRange} boundRange={boundRange} />
+              )
+              return (
+                <div key={subFd.slug} style={{ marginBottom: '0.6rem' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#444', marginBottom: '0.2rem' }}>
+                    {subLabel}<FieldSlug slug={subFd.slug} />
+                  </div>
+                  {bound ? wrapCommitMulti([startSlug!, endSlug!], body, fieldDisabled) : body}
+                </div>
+              )
+            }
             if (compact) {
               const tooltipId = `udm-lst-${item.key.replace(/[^a-z0-9]/gi, '-')}-${subFd.slug.replace(/[^a-z0-9]/gi, '-')}`
               return (
@@ -567,17 +637,23 @@ function SubmodelEditorComponent({ fd, existingChildren, existingValue, disabled
     )
   }
 
-  /** Immediate mode: commit one staged sub-field of one item, then un-stage it. */
-  async function commitItemField(key: string, subSlug: string) {
+  /** Immediate mode: commit one or more staged sub-fields of one item (a
+   *  `calendar` field's bind_start/bind_end pair commits in a single PATCH
+   *  op), then un-stage them. */
+  async function commitItemField(key: string, subSlugOrSlugs: string | string[]) {
+    const slugs = Array.isArray(subSlugOrSlugs) ? subSlugOrSlugs : [subSlugOrSlugs]
     const target = items.find(it => it.key === key)
-    if (!onCommitOps || !target?.id || !(subSlug in target.dirty)) return
-    await onCommitOps([{ op: 'update', id: target.id, fields: { [subSlug]: target.dirty[subSlug] } }])
-    // Success: drop the committed sub-slug, keep other staged edits pending
+    if (!onCommitOps || !target?.id) return
+    const fields: Record<string, unknown> = {}
+    for (const s of slugs) if (s in target.dirty) fields[s] = target.dirty[s]
+    if (Object.keys(fields).length === 0) return
+    await onCommitOps([{ op: 'update', id: target.id, fields }])
+    // Success: drop the committed sub-slugs, keep other staged edits pending
     setItems(prev => {
       const next = prev.map(it => {
         if (it.key !== key) return it
         const d = { ...it.dirty }
-        delete d[subSlug]
+        for (const s of slugs) delete d[s]
         return { ...it, dirty: d }
       })
       const ops = buildOps(next)

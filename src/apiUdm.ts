@@ -858,6 +858,7 @@ export interface CalendarEntryOut {
   end: string | null
   url: string | null
   entity_id: string | null
+  spec: string | null
 }
 
 export async function udmGetCalendar(start: string, end: string, sources: string[]): Promise<CalendarEntryOut[]> {
