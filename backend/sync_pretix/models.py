@@ -739,7 +739,7 @@ class PretixSyncItem(SyncBaseItem):
             if speaker.display_name and speaker.display_name.strip()
         ]
         if speaker_names:
-            sections.append("Dozent:innen sind / Speakers are:\n\n" + "\n".join(f"- {name}" for name in speaker_names))
+            sections.append("Dozent:innen sind / Instructors are:\n\n" + "\n".join(f"- {name}" for name in speaker_names))
         return "\n\n---\n\n".join(sections)
 
     def _build_creation_preview_diff(self) -> SyncDiffData:
