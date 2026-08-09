@@ -529,18 +529,23 @@ class PretixSyncItem(SyncBaseItem):
 
             # Build price overrides from CalculatedPrices if available.
             item_overrides: list[dict] = []
+            variation_overrides: list[dict] = []
             try:
                 prices = event.calculated_prices
-                item_overrides = self._build_item_overrides(association, prices, items)
-                logger.debug(
-                    "PretixSyncItem %s: built %d item_override(s): %s",
-                    self.pk, len(item_overrides), item_overrides,
+                item_overrides, variation_overrides = self._build_item_overrides(
+                    association, prices, items
                 )
-                if not item_overrides:
+                logger.debug(
+                    "PretixSyncItem %s: built %d item_override(s), %d variation_override(s): "
+                    "%s / %s",
+                    self.pk, len(item_overrides), len(variation_overrides),
+                    item_overrides, variation_overrides,
+                )
+                if not item_overrides and not variation_overrides:
                     logger.warning(
                         "PretixSyncItem %s: CalculatedPrices exist for event %s but produced "
-                        "no item overrides. Check that prices are non-null and product names "
-                        "match Pretix items.",
+                        "no item/variation overrides. Check that prices are non-null and "
+                        "product names match Pretix items or variations.",
                         self.pk, event.pk,
                     )
             except ObjectDoesNotExist:
@@ -557,6 +562,7 @@ class PretixSyncItem(SyncBaseItem):
                 "active": True,
                 "meta_data": {},
                 "item_price_overrides": item_overrides,
+                "variation_price_overrides": variation_overrides,
             }
 
             # Create the subevent if this is the first push.
@@ -580,9 +586,10 @@ class PretixSyncItem(SyncBaseItem):
             # Pretix may ignore item_overrides on creation, so we patch unconditionally.
             logger.debug(
                 "PretixSyncItem %s: patching subevent %s with payload (date_from=%r, date_to=%r, "
-                "%d overrides).",
+                "%d item override(s), %d variation override(s)).",
                 self.pk, self.subevent_slug,
-                payload["date_from"], payload["date_to"], len(item_overrides),
+                payload["date_from"], payload["date_to"],
+                len(item_overrides), len(variation_overrides),
             )
             client.patch_subevent(
                 organizer_slug=target.organizer_slug,
@@ -769,9 +776,13 @@ class PretixSyncItem(SyncBaseItem):
             )
             return []
 
-        actual_overrides: dict[tuple[int, int | None], str] = {
-            (override["item"], override.get("variation")): override.get("price", "")
+        actual_item_overrides: dict[int, str] = {
+            override["item"]: override.get("price", "")
             for override in stored_subevent.get("item_price_overrides") or []
+        }
+        actual_variation_overrides: dict[int, str] = {
+            override["variation"]: override.get("price", "")
+            for override in stored_subevent.get("variation_price_overrides") or []
         }
         price_mapping = [
             (association.ticket_product_member_regular_id,
@@ -796,7 +807,10 @@ class PretixSyncItem(SyncBaseItem):
             if resolved is None:
                 continue
             item_id, variation_id = resolved
-            actual_price_str = actual_overrides.get((item_id, variation_id))
+            if variation_id is not None:
+                actual_price_str = actual_variation_overrides.get(variation_id)
+            else:
+                actual_price_str = actual_item_overrides.get(item_id)
             expected_price_str = str(expected_price)
             try:
                 prices_equal = (
@@ -955,8 +969,15 @@ class PretixSyncItem(SyncBaseItem):
         association: "PretixSyncTargetAreaAssociation",
         prices: "CalculatedPrices",
         items: list[dict],
-    ) -> list[dict]:
-        """Map each ticket product in the association to a Pretix price override entry."""
+    ) -> tuple[list[dict], list[dict]]:
+        """Map each ticket product in the association to a Pretix price override entry.
+
+        Pretix subevents use two independent override lists: ``item_price_overrides``
+        (keyed by ``"item"``) for products sold as top-level items, and
+        ``variation_price_overrides`` (keyed by ``"variation"``, no ``"item"`` key)
+        for products sold as an item variation. Returns ``(item_overrides,
+        variation_overrides)``.
+        """
         price_mapping = [
             (association.ticket_product_member_regular_id, prices.member_regular_gross_eur),
             (association.ticket_product_member_discounted_id, prices.member_discounted_gross_eur),
@@ -965,16 +986,17 @@ class PretixSyncItem(SyncBaseItem):
             (association.ticket_product_business_id, prices.business_net_eur),
             (association.ticket_product_internal_training_id, prices.internal_training_eur),
         ]
-        overrides = []
+        item_overrides = []
+        variation_overrides = []
         for name_or_id, price in price_mapping:
             resolved = PretixSyncItem._resolve_item_and_variation(items, name_or_id)
             if resolved is not None and price is not None:
                 item_id, variation_id = resolved
-                override = {"item": item_id, "price": str(price)}
                 if variation_id is not None:
-                    override["variation"] = variation_id
-                overrides.append(override)
-        return overrides
+                    variation_overrides.append({"variation": variation_id, "price": str(price)})
+                else:
+                    item_overrides.append({"item": item_id, "price": str(price)})
+        return item_overrides, variation_overrides
 
 
 class PretixPricingConfiguration(HistoricalMetaBase):
