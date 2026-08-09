@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "django_celery_beat",
     "userdefinedmodel",
     "sync_core",
+    "sync_webhook",
     # "ninja", # Does not work, attempts to access nonexistent http://localhost:5173/api/v1/static/ninja/swagger-ui.css
 ]
 
