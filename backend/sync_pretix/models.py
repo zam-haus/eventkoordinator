@@ -727,9 +727,11 @@ class PretixSyncItem(SyncBaseItem):
         sections = []
         abstract = (getattr(proposal, "abstract", "") or "").strip()
         if abstract:
+            abstract = re.sub(r"([\\`*_{}\[\]()#+.!|>~-])", r"\\\1", abstract)
             sections.append(abstract)
         description = (getattr(proposal, "description", "") or "").strip()
         if description:
+            description = re.sub(r'([\\`*_{}\[\]()#+.!|>~-])', r'\\\1', description)
             sections.append(description)
         speaker_names = [
             speaker.display_name.strip()
@@ -737,8 +739,8 @@ class PretixSyncItem(SyncBaseItem):
             if speaker.display_name and speaker.display_name.strip()
         ]
         if speaker_names:
-            sections.append("\n".join(f"- {name}" for name in speaker_names))
-        return "\n---\n".join(sections)
+            sections.append("Dozent:innen sind / Speakers are: \n" + "\n".join(f"- {name}" for name in speaker_names))
+        return "\n\n---\n\n".join(sections)
 
     def _build_creation_preview_diff(self) -> SyncDiffData:
         """Return a diff showing local values vs an empty remote (creation preview).
