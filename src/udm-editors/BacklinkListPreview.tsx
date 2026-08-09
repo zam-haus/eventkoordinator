@@ -88,7 +88,7 @@ export function BacklinkListPreview({ entityId, typeConfig, refreshToken }: Back
           }}
         >
           <span>{bl.preview || bl.id.slice(0, 8)}</span>
-          <WorkflowBadge state={bl.workflow_state} />
+          <WorkflowBadge state={bl.workflow_state ?? null} />
         </button>
       ))}
     </div>

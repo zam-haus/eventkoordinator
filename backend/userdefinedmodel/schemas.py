@@ -789,6 +789,9 @@ class CalendarEntryOut(Schema):
     #: Step 10: the (substituted) source spec this entry came from — lets the
     #: frontend match entries against `highlight_sources`.
     spec: Optional[str] = None
+    #: Step 11 calendar polish: workflow state of the underlying UDM entity,
+    #: for coloring; null for submodel/feed entries with no workflow.
+    workflow_state: Optional[str] = None
 
 
 class BacklinkOut(Schema):

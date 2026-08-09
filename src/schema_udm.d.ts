@@ -72,6 +72,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/udm/calendar-sources/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Calendar Sources
+         * @description {key, name, kind} for every enabled sync_core.CalendarSource — used by
+         *     the standalone calendar dashboard's source picker. Never exposes url/
+         *     username/password (see CalendarSource.secret_field_names).
+         */
+        get: operations["userdefinedmodel_api_entities_list_calendar_sources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/calendar/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Calendar
+         * @description events-and-sync.md §6: aggregated calendar entries in [start, end].
+         *
+         *     ``sources`` is a comma-separated list of entries, each either
+         *     ``"type_id:start_field:end_field"`` (a UDM type; ``end_field`` may be
+         *     empty, in which case entries are point-in-time, `end == start`) or
+         *     ``"source:<key>"`` (a sync_core CalendarSource — reads its already-fetched
+         *     RemoteCalendarEntry rows, never a live remote fetch in the request path).
+         *     Read access for UDM entries is policy-filtered exactly like the entity
+         *     list; CalendarSource entries have no per-entity policy (the source itself
+         *     is the access boundary).
+         *
+         *     All datetimes are normalized to timezone-aware UTC before comparison —
+         *     naive query params are treated as UTC, and DateField/date values are
+         *     combined at midnight UTC — since RemoteCalendarEntry.start/end are always
+         *     aware and a naive/aware comparison raises at request time otherwise.
+         */
+        get: operations["userdefinedmodel_api_entities_get_calendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/udm/config-versions/{version_id}/": {
         parameters: {
             query?: never;
@@ -86,6 +142,24 @@ export interface paths {
          */
         get: operations["userdefinedmodel_api_configs_get_config_version"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/config-versions/{version_id}/tab-configs/{tab_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Type Editor Tab Config */
+        get: operations["userdefinedmodel_api_configs_get_type_editor_tab_config"];
+        /** Put Type Editor Tab Config */
+        put: operations["userdefinedmodel_api_configs_put_type_editor_tab_config"];
         post?: never;
         delete?: never;
         options?: never;
@@ -262,6 +336,32 @@ export interface paths {
         head?: never;
         /** Patch Entity */
         patch: operations["userdefinedmodel_api_entities_patch_entity"];
+        trace?: never;
+    };
+    "/api/udm/entities/{entity_id}/backlinks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entity Backlinks
+         * @description Entities referencing entity_id via an entity_select field
+         *     (events-and-sync.md §1.5), used by the `backlink_list` form element.
+         *
+         *     ``source_type_ids`` is a comma-separated list of UDMType ids (empty =
+         *     every type); ``source_field_slug`` restricts to one entity_select slug
+         *     (empty = every field). Policy-filtered: a backlink the requesting user
+         *     may not view is silently omitted, never surfaced as denied.
+         */
+        get: operations["userdefinedmodel_api_entities_get_entity_backlinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/udm/entities/{entity_id}/history/": {
@@ -612,6 +712,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/udm/sync-targets/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sync Targets
+         * @description Read-only listing of SyncBaseTarget rows, so pickers (e.g. the
+         *     sync_targets type-editor tab) can offer real target identities instead
+         *     of hand-typed "kind:slug" key strings. sync_core -> userdefinedmodel is
+         *     the declared dependency direction; this is a lazy import, same pattern
+         *     as engine.py's _sync_map_for_node.
+         */
+        get: operations["userdefinedmodel_api_configs_list_sync_targets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/udm/type-editor-tabs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Type Editor Tabs
+         * @description events-and-sync.md §5: every registered plugin tab (id + label). The
+         *     type editor asks this before rendering per-type config CRUD for each.
+         */
+        get: operations["userdefinedmodel_api_configs_list_type_editor_tabs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/udm/types/": {
         parameters: {
             query?: never;
@@ -872,6 +1017,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * BacklinkOut
+         * @description One entity referencing the queried one via an entity_select field
+         *     (events-and-sync.md §1.5).
+         */
+        BacklinkOut: {
+            /** Field Slug */
+            field_slug: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Preview
+             * @default
+             */
+            preview: string;
+            /** Type Id */
+            type_id: string | null;
+            /** Workflow State */
+            workflow_state?: string | null;
+        };
         /** BulkMigrationCreateIn */
         BulkMigrationCreateIn: {
             /** Field Mappings */
@@ -946,6 +1114,30 @@ export interface components {
             include_all_templates: boolean;
             /** Scope Type Ids */
             scope_type_ids: string[];
+        };
+        /**
+         * CalendarEntryOut
+         * @description events-and-sync.md §6: one normalized calendar entry.
+         */
+        CalendarEntryOut: {
+            /** End */
+            end?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Source */
+            source: string;
+            /** Spec */
+            spec?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Title */
+            title: string;
+            /** Uid */
+            uid: string;
+            /** Url */
+            url?: string | null;
+            /** Workflow State */
+            workflow_state?: string | null;
         };
         /**
          * ConfigDraftExportOut
@@ -1137,10 +1329,24 @@ export interface components {
              */
             id: string;
             /**
+             * Markdown Displays
+             * @default {}
+             */
+            markdown_displays: {
+                [key: string]: string;
+            };
+            /**
              * Policy Messages
              * @default []
              */
             policy_messages: unknown[];
+            /**
+             * Sync Items
+             * @default {}
+             */
+            sync_items: {
+                [key: string]: unknown;
+            };
             /** Updated At */
             updated_at: string;
             /** User Defined Model Type Id */
@@ -1859,6 +2065,22 @@ export interface components {
              */
             target_submodel_version_id: string;
         };
+        /**
+         * SyncTargetOut
+         * @description A SyncBaseTarget row, for pickers (e.g. the sync_targets type-editor
+         *     tab) that need real target identities instead of hand-typed key strings.
+         *     Read-only; targets themselves are managed in Django admin.
+         */
+        SyncTargetOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+        };
         /** TransitionIn */
         TransitionIn: {
             /** Changed Fields */
@@ -1869,6 +2091,41 @@ export interface components {
             field: string;
             /** Transition */
             transition: string;
+        };
+        /** TypeEditorTabConfigIn */
+        TypeEditorTabConfigIn: {
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+        };
+        /** TypeEditorTabConfigOut */
+        TypeEditorTabConfigOut: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Tab Id */
+            tab_id: string;
+        };
+        /**
+         * TypeEditorTabOut
+         * @description events-and-sync.md §5: a registered plugin tab descriptor.
+         *
+         *     `config_schema` is the plugin's pydantic config model's JSON schema
+         *     (`model_json_schema()`), so the frontend can render a structured form
+         *     driven by real field titles/descriptions/types instead of a bespoke
+         *     per-tab component or a raw JSON textarea (Step 11 follow-up).
+         */
+        TypeEditorTabOut: {
+            /** Config Schema */
+            config_schema: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
         };
         /** TypePublicFieldsOut */
         TypePublicFieldsOut: {
@@ -2235,6 +2492,52 @@ export interface operations {
             };
         };
     };
+    userdefinedmodel_api_entities_list_calendar_sources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_entities_get_calendar: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                sources?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEntryOut"][];
+                };
+            };
+        };
+    };
     userdefinedmodel_api_configs_get_config_version: {
         parameters: {
             query?: never;
@@ -2253,6 +2556,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigVersionOut"];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_configs_get_type_editor_tab_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+                tab_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TypeEditorTabConfigOut"];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_configs_put_type_editor_tab_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+                tab_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TypeEditorTabConfigIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TypeEditorTabConfigOut"];
                 };
             };
         };
@@ -2617,6 +2970,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityOut"];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_entities_get_entity_backlinks: {
+        parameters: {
+            query?: {
+                source_type_ids?: string;
+                source_field_slug?: string;
+            };
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacklinkOut"][];
                 };
             };
         };
@@ -3192,6 +3570,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    userdefinedmodel_api_configs_list_sync_targets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncTargetOut"][];
+                };
+            };
+        };
+    };
+    userdefinedmodel_api_configs_list_type_editor_tabs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TypeEditorTabOut"][];
+                };
             };
         };
     };

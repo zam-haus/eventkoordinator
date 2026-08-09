@@ -37,6 +37,21 @@ from userdefinedmodel.schemas import (
 router = Router(auth=django_auth)
 
 
+def entity_workflow_state(entity) -> Optional[str]:
+    """The name of entity's current workflow state, if it has a workflow
+    field with a value (shared by backlinks and calendar entries)."""
+    from userdefinedmodel.models import FieldDefinition, FieldValue
+
+    fv = (
+        FieldValue.objects.filter(
+            node=entity, field__data_type=FieldDefinition.DataType.WORKFLOW, language="",
+        )
+        .select_related("value_workflow_state")
+        .first()
+    )
+    return fv.value_workflow_state.name if fv and fv.value_workflow_state else None
+
+
 # ─── Entities ─────────────────────────────────────────────────────────────────
 
 def _slug_id_prefixes(config_version) -> dict[str, str]:
@@ -357,6 +372,7 @@ def get_calendar(request, start: str, end: str, sources: str = ""):
                 "url": f"/udm-entity/{entity.id}",
                 "entity_id": str(entity.id),
                 "spec": spec,
+                "workflow_state": entity_workflow_state(entity),
             })
     return entries
 
@@ -386,16 +402,6 @@ def get_entity_backlinks(
 
     type_filter = {t for t in source_type_ids.split(",") if t} or None
 
-    def _workflow_state(entity) -> Optional[str]:
-        fv = (
-            FieldValue.objects.filter(
-                node=entity, field__data_type=FieldDefinition.DataType.WORKFLOW, language="",
-            )
-            .select_related("value_workflow_state")
-            .first()
-        )
-        return fv.value_workflow_state.name if fv and fv.value_workflow_state else None
-
     results = []
     for bl in find_backlinks(entity_id):
         if type_filter is not None and bl.type_id not in type_filter:
@@ -411,7 +417,7 @@ def get_entity_backlinks(
             "id": bl.entity.id,
             "type_id": bl.type_id,
             "field_slug": bl.field_slug,
-            "workflow_state": _workflow_state(bl.entity),
+            "workflow_state": entity_workflow_state(bl.entity),
             "preview": join_parts(parts, allowed_slugs=allowed),
         })
     results.sort(key=lambda r: r["preview"])

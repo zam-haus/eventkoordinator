@@ -818,109 +818,74 @@ export async function udmSearchEntities(q = '', typeIds?: string | string[], ids
 }
 
 // ── Backlinks (events-and-sync.md §1.5) ────────────────────────────────────────
-// Hand-typed rather than routed through the generated openapi client:
-// schema_udm.d.ts is generated from a running backend and does not yet cover
-// this endpoint / EntityOut's markdown_displays & sync_items additions.
 
-export interface BacklinkOut {
-  id: string
-  type_id: string | null
-  field_slug: string
-  workflow_state: string | null
-  preview: string
-}
+export type BacklinkOut = components['schemas']['BacklinkOut']
 
 export async function udmGetEntityBacklinks(
   entityId: string,
   sourceTypeIds?: string[],
   sourceFieldSlug?: string,
 ): Promise<BacklinkOut[]> {
-  const params = new URLSearchParams()
-  if (sourceTypeIds && sourceTypeIds.length) params.set('source_type_ids', sourceTypeIds.join(','))
-  if (sourceFieldSlug) params.set('source_field_slug', sourceFieldSlug)
-  const qs = params.toString()
-  const res = await fetch(`/api/udm/entities/${entityId}/backlinks/${qs ? `?${qs}` : ''}`, {
-    credentials: 'include',
+  const { data, error, response } = await udmClient.GET('/api/udm/entities/{entity_id}/backlinks/', {
+    params: {
+      path: { entity_id: entityId },
+      query: {
+        source_type_ids: sourceTypeIds && sourceTypeIds.length ? sourceTypeIds.join(',') : undefined,
+        source_field_slug: sourceFieldSlug,
+      },
+    },
   })
-  if (!res.ok) return []
-  return (await res.json()) as BacklinkOut[]
+  if (error || !response.ok || !data) return []
+  return data
 }
 
 // ── Calendar (events-and-sync.md §6/Step 9) ─────────────────────────────────────
-// Hand-typed for the same reason as backlinks above (schema_udm.d.ts doesn't
-// cover this endpoint yet).
 
-export interface CalendarEntryOut {
-  source: string
-  uid: string
-  title: string
-  start: string | null
-  end: string | null
-  url: string | null
-  entity_id: string | null
-  spec: string | null
-  workflow_state: string | null
-}
+export type CalendarEntryOut = components['schemas']['CalendarEntryOut']
 
 export async function udmGetCalendar(start: string, end: string, sources: string[]): Promise<CalendarEntryOut[]> {
-  const params = new URLSearchParams({ start, end, sources: sources.join(',') })
-  const res = await fetch(`/api/udm/calendar/?${params.toString()}`, { credentials: 'include' })
-  if (!res.ok) return []
-  return (await res.json()) as CalendarEntryOut[]
+  const { data, error, response } = await udmClient.GET('/api/udm/calendar/', {
+    params: { query: { start, end, sources: sources.join(',') } },
+  })
+  if (error || !response.ok || !data) return []
+  return data
 }
 
 // ── Type editor tabs (events-and-sync.md §5/Step 8/Step 11) ────────────────────
-// Hand-typed for the same reason as backlinks/calendar above — schema_udm.d.ts
-// doesn't cover these endpoints yet.
 
-export interface TypeEditorTabOut {
-  id: string
-  label: string
-  config_schema: Record<string, unknown>
-}
-
-export interface SyncTargetOut {
-  key: string
-  name: string
-  type: string
-  enabled: boolean
-}
+export type TypeEditorTabOut = components['schemas']['TypeEditorTabOut']
+export type SyncTargetOut = components['schemas']['SyncTargetOut']
+export type TypeEditorTabConfigOut = components['schemas']['TypeEditorTabConfigOut']
 
 export async function udmListSyncTargets(): Promise<SyncTargetOut[]> {
-  const res = await fetch('/api/udm/sync-targets/', { credentials: 'include' })
-  if (!res.ok) return []
-  return (await res.json()) as SyncTargetOut[]
-}
-
-export interface TypeEditorTabConfigOut {
-  tab_id: string
-  config: Record<string, unknown>
+  const { data, error, response } = await udmClient.GET('/api/udm/sync-targets/')
+  if (error || !response.ok || !data) return []
+  return data
 }
 
 export async function udmListTypeEditorTabs(): Promise<TypeEditorTabOut[]> {
-  const res = await fetch('/api/udm/type-editor-tabs/', { credentials: 'include' })
-  if (!res.ok) return []
-  return (await res.json()) as TypeEditorTabOut[]
+  const { data, error, response } = await udmClient.GET('/api/udm/type-editor-tabs/')
+  if (error || !response.ok || !data) return []
+  return data
 }
 
 export async function udmGetTypeEditorTabConfig(versionId: string, tabId: string): Promise<TypeEditorTabConfigOut> {
-  const res = await fetch(`/api/udm/config-versions/${versionId}/tab-configs/${tabId}/`, { credentials: 'include' })
-  if (!res.ok) return throwRawFetchError(res, 'Tab config not found')
-  return (await res.json()) as TypeEditorTabConfigOut
+  const { data, error, response } = await udmClient.GET('/api/udm/config-versions/{version_id}/tab-configs/{tab_id}/', {
+    params: { path: { version_id: versionId, tab_id: tabId } },
+  })
+  if (error || !response.ok || !data) return throwRawFetchError(response, 'Tab config not found')
+  return data
 }
 
 export async function udmPutTypeEditorTabConfig(
   versionId: string, tabId: string, config: Record<string, unknown>,
 ): Promise<TypeEditorTabConfigOut> {
-  const token = await getCsrfToken()
-  const res = await fetch(`/api/udm/config-versions/${versionId}/tab-configs/${tabId}/`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', [CSRF_HEADER_NAME]: token ?? '' },
-    body: JSON.stringify({ config }),
+  const { data, error, response } = await udmClient.PUT('/api/udm/config-versions/{version_id}/tab-configs/{tab_id}/', {
+    params: { path: { version_id: versionId, tab_id: tabId } },
+    body: { config },
   })
-  if (!res.ok) return throwRawFetchError(res, 'Failed to save tab config')
-  return (await res.json()) as TypeEditorTabConfigOut
+  if (error || !response.ok || !data) return throwRawFetchError(response, 'Failed to save tab config')
+  return data
 }
 
 export interface CalendarSourceOut {
