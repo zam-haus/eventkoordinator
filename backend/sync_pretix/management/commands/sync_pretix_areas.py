@@ -100,6 +100,8 @@ class Command(BaseCommand):
 
         PretixSyncTarget.objects.all().delete()
         return PretixSyncTarget.objects.create(
+            key=f"pretix:{runtime_settings.organizer_slug}",
+            name=f"Pretix ({runtime_settings.organizer_slug})",
             api_url=runtime_settings.api_base_url,
             api_token=runtime_settings.api_token,
             organizer_slug=runtime_settings.organizer_slug,
@@ -295,7 +297,12 @@ class Command(BaseCommand):
                     reused_events += 1
 
             if dry_run:
-                existing_association_query = area.pretix_sync_associations
+                # area_code is a plain string now (events-and-sync.md §3, Step 11:
+                # PretixSyncTargetAreaAssociation decoupled from apiv1.ProposalArea),
+                # so this is a direct filter rather than a reverse FK accessor.
+                existing_association_query = PretixSyncTargetAreaAssociation.objects.filter(
+                    area_code=area.code,
+                )
                 if sync_target is not None:
                     existing_association_query = existing_association_query.filter(
                         sync_target=sync_target
@@ -316,7 +323,7 @@ class Command(BaseCommand):
                     )
             else:
                 association, association_created = PretixSyncTargetAreaAssociation.objects.get_or_create(
-                    area=area,
+                    area_code=area.code,
                     sync_target=sync_target,
                     defaults={"event_slug": event_slug},
                 )

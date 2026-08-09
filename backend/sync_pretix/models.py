@@ -4,13 +4,13 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from dataclasses import dataclass
 from datetime import datetime, timezone as _tz
 from decimal import Decimal, ROUND_CEILING
+from typing import ClassVar
 import logging
 import re
 
-from apiv1.models import SyncBaseTarget, ProposalArea
 from apiv1.models.basedata import time_string_to_minutes
-from apiv1.models.sync.syncbasedata import SyncBaseItem, SyncDiffData, PropertyDiff
 from project.basemodels import HistoricalMetaBase
+from sync_core.models import PropertyDiff, SyncBaseItem, SyncBaseTarget, SyncDiffData
 from sync_pretix.pretix_client import PretixApiClient, PretixApiError
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def default_min_participants_params():
 
 
 class PretixSyncTarget(SyncBaseTarget):
-    secret_field_names = ["api_token"]
+    secret_field_names: ClassVar[list[str]] = ["api_token"]
 
     api_token = models.CharField(
         max_length=255,
@@ -61,43 +61,15 @@ class PretixSyncTarget(SyncBaseTarget):
         max_length=255, verbose_name="Organizer Slug", help_text="Organizer Slug"
     )
 
-    def create_new_sync_item(self, event) -> "PretixSyncItem":
-        """Create a PretixSyncItem for *event* using the area-to-event-slug mapping.
-
-        Looks up the event's proposal area and finds the matching
-        ``PretixSyncTargetAreaAssociation`` to determine the correct Pretix
-        event slug.  The call is idempotent: if an item already exists for this
-        (target, event) pair the existing item is returned unchanged.
-
-        Raises ``ValueError`` if the event has no proposal, the proposal has no
-        area, or no association is configured for that area on this target.
-        """
-        proposal = getattr(event, "proposal", None)
-        if proposal is None:
-            raise ValueError(
-                f"Event {event.pk} has no proposal; cannot determine Pretix event slug."
-            )
-        area = getattr(proposal, "area", None)
-        if area is None:
-            raise ValueError(
-                f"Proposal {proposal.pk} has no area; cannot determine Pretix event slug."
-            )
-        try:
-            association = self.area_associations.get(area=area)
-        except PretixSyncTargetAreaAssociation.DoesNotExist:
-            raise ValueError(
-                f"No Pretix event-slug configured for area {area.code!r} "
-                f"on sync target {self.pk}."
-            )
-        item, _created = PretixSyncItem.objects.get_or_create(
-            sync_target=self,
-            related_event=event,
-            defaults={"area_association": association, "flag_push": True},
-        )
-        return item
-
 
 class PretixSyncTargetAreaAssociation(HistoricalMetaBase):
+    """Which Pretix event slug (+ ticket product mapping) a PretixSyncItem
+    pushes into. Previously keyed by a FK to apiv1.ProposalArea; decoupled to
+    a plain `area_code` string (events-and-sync.md §3, Step 11) since items
+    are now generic UDM entities, not apiv1 Events with a proposal.area.
+    `area_code` is set manually (e.g. matching the originating type's own
+    area/category field, if it has one) — there is no automatic derivation."""
+
     sync_target = models.ForeignKey(
         PretixSyncTarget,
         on_delete=models.CASCADE,
@@ -105,8 +77,10 @@ class PretixSyncTargetAreaAssociation(HistoricalMetaBase):
         null=True,
         blank=True,
     )
-    area = models.ForeignKey(
-        ProposalArea, on_delete=models.CASCADE, related_name="pretix_sync_associations"
+    area_code = models.CharField(
+        max_length=100,
+        verbose_name="Area code",
+        help_text="Arbitrary key used to pick this association on a PretixSyncItem.",
     )
     event_slug = models.CharField(
         max_length=255, verbose_name="Event Slug", help_text="Event Slug"
@@ -156,13 +130,33 @@ class PretixSyncTargetAreaAssociation(HistoricalMetaBase):
 
 
 class PretixSyncItem(SyncBaseItem):
-    """Links a Pretix subevent to an internal event via a PretixSyncTarget."""
+    """Links a Pretix subevent to a UDM entity via a PretixSyncTarget.
 
-    sync_target = models.ForeignKey(
-        PretixSyncTarget,
-        on_delete=models.CASCADE,
-        related_name="items",
-    )
+    Pushes from `self.synced_payload` (the effective-values snapshot taken by
+    mark_sync, events-and-sync.md §4.2), not from a live model relation.
+    Documented synced_payload shape this reads:
+        {"title": str, "start": iso-string, "end": iso-string,
+         "locale": str (default "de"), "max_participants": int | None,
+         "prices": {"member_regular": "12.00", "member_discounted": ...,
+                     "guest_regular": ..., "guest_discounted": ...,
+                     "business": ..., "internal_training": ...}}
+    All keys are optional; missing ones default sanely (empty title, no
+    price overrides, no quota size cap change).
+    """
+
+    BASE_STATUSES: ClassVar[frozenset[str]] = SyncBaseItem.BASE_STATUSES | {"cancelled"}
+
+    PRICE_PROPERTY_MAP: ClassVar[list[tuple[str, str]]] = [
+        ("member_regular", "ticket_product_member_regular_id"),
+        ("member_discounted", "ticket_product_member_discounted_id"),
+        ("guest_regular", "ticket_product_guest_regular_id"),
+        ("guest_discounted", "ticket_product_guest_discounted_id"),
+        ("business", "ticket_product_business_id"),
+        ("internal_training", "ticket_product_internal_training_id"),
+    ]
+
+    # sync_target is inherited as-is from SyncBaseItem (a plain FK to the
+    # polymorphic SyncBaseTarget base) — same pattern as sync_caldav/sync_webhook.
     area_association = models.ForeignKey(
         "PretixSyncTargetAreaAssociation",
         on_delete=models.DO_NOTHING,
@@ -177,7 +171,7 @@ class PretixSyncItem(SyncBaseItem):
         blank=True,
         null=True,
         verbose_name="Pretix Subevent ID",
-        help_text="ID of the Pretix subevent created for this event. Set on first push.",
+        help_text="ID of the Pretix subevent created for this item. Set on first push.",
     )
     pretix_data = models.JSONField(
         null=True,
@@ -186,12 +180,16 @@ class PretixSyncItem(SyncBaseItem):
         verbose_name="Pretix Subevent Data",
         help_text=(
             "Latest subevent and quota data fetched from Pretix after the most recent push. "
-            "Structure: {\"subevent\": {...}, \"quotas\": [...]}"
+            "Structure: {\"subevent\": {...}, \"quotas\": [...], \"items\": [...]}"
         ),
     )
 
     def __str__(self):
-        return f"PretixSyncItem(target={self.sync_target_id}, event={self.related_event_id})"
+        return f"PretixSyncItem(target={self.sync_target_id}, entity={self.related_entity_id})"
+
+    @classmethod
+    def allowed_statuses(cls) -> frozenset[str]:
+        return cls.BASE_STATUSES
 
     @property
     def item_admin_url(self) -> str | None:
@@ -214,49 +212,6 @@ class PretixSyncItem(SyncBaseItem):
             f"{server_url}/control/event/{target.organizer_slug}"
             f"/{association.event_slug}/subevents/{self.subevent_slug}/"
         )
-
-    def get_status(self) -> "SyncBaseTarget.SyncTargetStatus":
-        """Return the sync status for this Pretix sync item.
-
-        - ``subevent_slug`` is None        → CREATION_PENDING  (sync item exists but
-                                                                   not yet pushed to Pretix)
-        - ``subevent_slug`` set, no data   → STATUS_UNKNOWN    (pushed but pull not done
-                                                                   yet or pull failed)
-        - data present, no differences     → ENTRY_UP_TO_DATE
-        - data present, differences found  → ENTRY_DIFFERS
-        """
-        if not self.subevent_slug:
-            logger.debug(
-                "PretixSyncItem %s: status=CREATION_PENDING (subevent not yet created).", self.pk
-            )
-            return SyncBaseTarget.SyncTargetStatus.CREATION_PENDING
-        if self.pretix_data is None:
-            logger.debug(
-                "PretixSyncItem %s: status=STATUS_UNKNOWN "
-                "(subevent_slug=%s but pretix_data not pulled yet).",
-                self.pk, self.subevent_slug,
-            )
-            return SyncBaseTarget.SyncTargetStatus.STATUS_UNKNOWN
-        diff = self.sync_diff()
-        if diff is None:
-            # sync_diff() only returns None when subevent_slug is absent, which we
-            # already handled above – treat as unknown defensively.
-            logger.warning(
-                "PretixSyncItem %s: sync_diff() returned None unexpectedly "
-                "(subevent_slug=%s, pretix_data present). Reporting STATUS_UNKNOWN.",
-                self.pk, self.subevent_slug,
-            )
-            return SyncBaseTarget.SyncTargetStatus.STATUS_UNKNOWN
-        if diff.properties:
-            logger.debug(
-                "PretixSyncItem %s: status=ENTRY_DIFFERS (%d property diff(s): %s).",
-                self.pk,
-                len(diff.properties),
-                [p.property_name for p in diff.properties],
-            )
-            return SyncBaseTarget.SyncTargetStatus.ENTRY_DIFFERS
-        logger.debug("PretixSyncItem %s: status=ENTRY_UP_TO_DATE.", self.pk)
-        return SyncBaseTarget.SyncTargetStatus.ENTRY_UP_TO_DATE
 
     def delete_remote(self) -> None:
         """Delete the linked Pretix subevent and reset the stored subevent ID."""
@@ -284,15 +239,15 @@ class PretixSyncItem(SyncBaseItem):
             subevent_id=self.subevent_slug,
         )
         logger.info(
-            "PretixSyncItem %s: deleted Pretix subevent %s for event %s.",
-            self.pk, self.subevent_slug, self.related_event_id,
+            "PretixSyncItem %s: deleted Pretix subevent %s for entity %s.",
+            self.pk, self.subevent_slug, self.related_entity_id,
         )
         self.subevent_slug = None
         self.pretix_data = None
         self.save(update_fields=["subevent_slug", "pretix_data", "updated_at"])
 
     def pull_update(self) -> None:
-        """Fetch the current subevent and its quotas from Pretix and store in pretix_data."""
+        """Fetch the current subevent and its quotas/items from Pretix and store in pretix_data."""
         if not self.subevent_slug:
             logger.info(
                 "PretixSyncItem %s: pull_update() skipped (no subevent_slug).", self.pk
@@ -317,29 +272,14 @@ class PretixSyncItem(SyncBaseItem):
             event_slug=association.event_slug,
             subevent_id=self.subevent_slug,
         )
-        logger.debug(
-            "PretixSyncItem %s: subevent fetched (name=%r, date_from=%r, date_to=%r).",
-            self.pk,
-            (subevent.get("name") or {}).get("de", "?"),
-            subevent.get("date_from"),
-            subevent.get("date_to"),
-        )
         quotas = client.list_quotas(
             organizer_slug=target.organizer_slug,
             event_slug=association.event_slug,
             subevent_id=self.subevent_slug,
         )
-        logger.debug(
-            "PretixSyncItem %s: fetched %d quota(s) for subevent %s.",
-            self.pk, len(quotas), self.subevent_slug,
-        )
         items = client.list_items(
             organizer_slug=target.organizer_slug,
             event_slug=association.event_slug,
-        )
-        logger.debug(
-            "PretixSyncItem %s: fetched %d item(s) for event %r.",
-            self.pk, len(items), association.event_slug,
         )
 
         self.pretix_data = {
@@ -353,274 +293,149 @@ class PretixSyncItem(SyncBaseItem):
             self.pk, len(quotas), len(items),
         )
 
-    def sync_diff(self, only_differences: bool = True) -> SyncDiffData | None:
-        """Compare the calculated configuration against the stored pretix_data.
-
-        Args:
-            only_differences: When True (default), only include properties that differ
-                between local and remote values. When False, include all comparable
-                properties regardless of whether they match, so callers can display
-                the full context (e.g. the diff viewer for an up-to-date item).
-
-        Returns:
-            SyncDiffData with ``remote_value=""`` on every property when the item has
-            never been pushed (CREATION_PENDING preview of what would be created).
-            None when the subevent was pushed but pretix_data has not been pulled yet
-            (STATUS_UNKNOWN – caller should not interpret this as "up-to-date").
-            SyncDiffData with empty ``properties`` (only_differences=True) or all
-            properties with equal values (only_differences=False) when remote matches
-            local config.
-            SyncDiffData with non-empty ``properties`` when differences are detected.
-        """
-        if not self.subevent_slug:
-            # CREATION_PENDING: return a preview diff showing what would be created.
-            logger.debug(
-                "PretixSyncItem %s: sync_diff() returning creation preview "
-                "(subevent not yet pushed).",
-                self.pk,
-            )
-            return self._build_creation_preview_diff()
-
-        if self.pretix_data is None:
-            # STATUS_UNKNOWN: pushed but pull hasn't happened / failed.
+    def compute_drift(self) -> SyncDiffData | None:
+        """Compare the remote pretix_data (from the last pull) against the
+        local synced_payload snapshot — remote drift caused by manual edits
+        in the Pretix UI, distinct from staleness (which compares
+        synced_payload against a *fresh* effective evaluation, see
+        sync_core.models.recompute_staleness). None when there is nothing to
+        compare yet (not pushed, or pushed but never pulled)."""
+        if not self.subevent_slug or self.pretix_data is None:
             return None
 
-        event = self.related_event
-        association = self.area_association
-        if association is None:
-            return None
-
-        target = self.sync_target
-
-        # Determine the event locale used for name comparison.
-        event_locale = "de"
-        proposal = getattr(event, "proposal", None)
-        if proposal is not None:
-            lang = getattr(proposal, "language", None)
-            if lang is not None:
-                event_locale = lang.code
-
+        payload = self.synced_payload or {}
         stored_subevent = self.pretix_data.get("subevent") or {}
         stored_quotas = self.pretix_data.get("quotas") or []
+        locale = payload.get("locale", "de")
 
         properties: list[PropertyDiff] = []
 
-        # Compare date_from.
-        expected_date_from = event.start_time.isoformat()
+        expected_date_from = payload.get("start")
         actual_date_from = stored_subevent.get("date_from", "")
-        if not only_differences or not _isoformat_equal(expected_date_from, actual_date_from):
+        if expected_date_from is not None and not _isoformat_equal(expected_date_from, actual_date_from):
             properties.append(PropertyDiff(
-                property_name="date_from",
-                local_value=expected_date_from,
-                remote_value=actual_date_from,
-                file_type="text",
+                property_name="date_from", old_value=expected_date_from, new_value=actual_date_from,
             ))
 
-        # Compare date_to.
-        expected_date_to = event.end_time.isoformat()
+        expected_date_to = payload.get("end")
         actual_date_to = stored_subevent.get("date_to", "")
-        if not only_differences or not _isoformat_equal(expected_date_to, actual_date_to):
+        if expected_date_to is not None and not _isoformat_equal(expected_date_to, actual_date_to):
             properties.append(PropertyDiff(
-                property_name="date_to",
-                local_value=expected_date_to,
-                remote_value=actual_date_to,
-                file_type="text",
+                property_name="date_to", old_value=expected_date_to, new_value=actual_date_to,
             ))
 
-        # Compare the event name for the primary locale.
-        actual_name_dict = stored_subevent.get("name") or {}
-        actual_name = actual_name_dict.get(event_locale, "")
-        if not only_differences or event.name != actual_name:
+        expected_title = payload.get("title", "")
+        actual_name = (stored_subevent.get("name") or {}).get(locale, "")
+        if expected_title != actual_name:
             properties.append(PropertyDiff(
-                property_name="name",
-                local_value=event.name,
-                remote_value=actual_name,
-                file_type="text",
+                property_name="name", old_value=expected_title, new_value=actual_name,
             ))
 
-        # Compare quota size (max_participants) against the first matching quota.
-        if proposal is not None and stored_quotas:
-            expected_size = getattr(proposal, "max_participants", None)
-            if expected_size is not None:
-                actual_size = stored_quotas[0].get("size")
-                if not only_differences or actual_size != int(expected_size):
-                    properties.append(PropertyDiff(
-                        property_name="quota_size",
-                        local_value=str(expected_size),
-                        remote_value=str(actual_size),
-                        file_type="text",
-                    ))
-
-        # Compare calculated prices against stored item_price_overrides.
-        stored_items = self.pretix_data.get("items") or []
-        properties.extend(
-            self._compare_prices(event, association, stored_subevent, stored_items,
-                                 only_differences=only_differences)
-        )
+        expected_size = payload.get("max_participants")
+        if expected_size is not None and stored_quotas:
+            actual_size = stored_quotas[0].get("size")
+            if actual_size != int(expected_size):
+                properties.append(PropertyDiff(
+                    property_name="quota_size", old_value=expected_size, new_value=actual_size,
+                ))
 
         return SyncDiffData(
-            series_id=event.series_id,
-            event_id=event.pk,
-            target_id=target.pk,
+            entity_id=str(self.related_entity_id),
+            target_key=self.sync_target.key if self.sync_target_id else None,
             properties=properties,
         )
 
-    def push_update(self) -> None:
-        """Create or update the linked Pretix subevent, overriding ticket prices.
-
-        A ``pull_update()`` is performed in a ``finally`` block so that
-        ``pretix_data`` (and therefore the sync status) is always refreshed,
-        even when the push itself raises an error.
-        """
+    def push(self) -> None:
+        """Create or update the linked Pretix subevent from synced_payload,
+        applying ticket price overrides. A ``pull_update()`` is performed in
+        a ``finally`` block so ``pretix_data`` (and therefore drift
+        detection) is always refreshed, even when the push itself fails."""
         association = self.area_association
         if association is None:
-            raise ValueError(
+            raise RuntimeError(
                 f"PretixSyncItem {self.pk} has no area association; cannot push."
             )
 
         target = self.sync_target
-        event = self.related_event
+        payload = self.synced_payload or {}
+        title = payload.get("title", "")
+        start = payload.get("start")
+        end = payload.get("end")
+        locale = payload.get("locale") or "de"
+        max_participants = payload.get("max_participants")
+        prices = payload.get("prices") or {}
+
         logger.info(
-            "PretixSyncItem %s: starting push for event %s (subevent_slug=%s, "
+            "PretixSyncItem %s: starting push for entity %s (subevent_slug=%s, "
             "organizer=%s, event_slug=%s).",
-            self.pk, event.pk, self.subevent_slug,
+            self.pk, self.related_entity_id, self.subevent_slug,
             target.organizer_slug, association.event_slug,
         )
         client = PretixApiClient(api_base_url=target.api_url, token=target.api_token)
 
         try:
-            # Determine the event locale from the proposal language; fall back to "de".
-            event_locale = "de"
-            proposal = getattr(event, "proposal", None)
-            if proposal is not None:
-                lang = getattr(proposal, "language", None)
-                if lang is not None:
-                    event_locale = lang.code
-
-            # Fetch the Pretix parent event to get its configured locales.
-            logger.debug(
-                "PretixSyncItem %s: fetching parent event %r from Pretix.",
-                self.pk, association.event_slug,
-            )
             pretix_event = client.get_event(
                 organizer_slug=target.organizer_slug,
                 event_slug=association.event_slug,
             )
-            configured_locales = pretix_event.get("locales") or [event_locale]
-            # Apply the same name to every configured locale; ensure the event's own locale is present.
-            name_dict = {locale: event.name for locale in configured_locales}
-            name_dict[event_locale] = event.name
-            logger.debug(
-                "PretixSyncItem %s: parent event locales=%r, name_dict=%r.",
-                self.pk, configured_locales, name_dict,
-            )
+            configured_locales = pretix_event.get("locales") or [locale]
+            name_dict = {loc: title for loc in configured_locales}
+            name_dict[locale] = title
 
-            # Always fetch items — needed for both price overrides and the quota.
             items = client.list_items(
                 organizer_slug=target.organizer_slug,
                 event_slug=association.event_slug,
             )
-            logger.debug(
-                "PretixSyncItem %s: fetched %d item(s) from Pretix event %r: %s",
-                self.pk, len(items),
-                association.event_slug,
-                [(i.get("id"), i.get("name")) for i in items],
-            )
 
-            # Build price overrides from CalculatedPrices if available.
-            item_overrides: list[dict] = []
-            try:
-                prices = event.calculated_prices
-                item_overrides = self._build_item_overrides(association, prices, items)
-                logger.debug(
-                    "PretixSyncItem %s: built %d item_override(s): %s",
-                    self.pk, len(item_overrides), item_overrides,
-                )
-                if not item_overrides:
-                    logger.warning(
-                        "PretixSyncItem %s: CalculatedPrices exist for event %s but produced "
-                        "no item overrides. Check that prices are non-null and product names "
-                        "match Pretix items.",
-                        self.pk, event.pk,
-                    )
-            except ObjectDoesNotExist:
+            item_overrides = self._build_item_overrides(association, prices, items)
+            if prices and not item_overrides:
                 logger.warning(
-                    "PretixSyncItem %s: no CalculatedPrices found for event %s; "
-                    "subevent will use default item prices.",
-                    self.pk, event.pk,
+                    "PretixSyncItem %s: prices present in synced_payload but produced no "
+                    "item overrides. Check that ticket product names/ids match Pretix items.",
+                    self.pk,
                 )
 
-            payload = {
+            push_payload = {
                 "name": name_dict,
-                "date_from": event.start_time.isoformat(),
-                "date_to": event.end_time.isoformat(),
+                "date_from": start,
+                "date_to": end,
                 "active": True,
                 "meta_data": {},
                 "item_price_overrides": item_overrides,
             }
 
-            # Create the subevent if this is the first push.
             if not self.subevent_slug:
                 logger.info(
-                    "PretixSyncItem %s: creating new subevent for event %s.",
-                    self.pk, event.pk,
+                    "PretixSyncItem %s: creating new subevent for entity %s.",
+                    self.pk, self.related_entity_id,
                 )
                 result = client.create_subevent(
                     organizer_slug=target.organizer_slug,
                     event_slug=association.event_slug,
-                    payload=payload,
+                    payload=push_payload,
                 )
                 self.subevent_slug = str(result["id"])
                 self.save(update_fields=["subevent_slug", "updated_at"])
-                logger.info(
-                    "PretixSyncItem %s: created subevent id=%s.", self.pk, self.subevent_slug,
-                )
 
             # Always patch to ensure item_overrides (prices) are applied.
             # Pretix may ignore item_overrides on creation, so we patch unconditionally.
-            logger.debug(
-                "PretixSyncItem %s: patching subevent %s with payload (date_from=%r, date_to=%r, "
-                "%d overrides).",
-                self.pk, self.subevent_slug,
-                payload["date_from"], payload["date_to"], len(item_overrides),
-            )
             client.patch_subevent(
                 organizer_slug=target.organizer_slug,
                 event_slug=association.event_slug,
                 subevent_id=self.subevent_slug,
-                payload=payload,
+                payload=push_payload,
             )
-            logger.debug("PretixSyncItem %s: patch_subevent succeeded.", self.pk)
 
-            # Create or update the quota so price overrides take effect.
-            max_participants = getattr(proposal, "max_participants", None)
             all_item_ids = self._resolve_all_item_ids(association, items)
             if not all_item_ids:
                 logger.warning(
-                    "PretixSyncItem %s: no Pretix item IDs resolved for event %r "
-                    "(event_slug %r). Expected product names: %s. Fetched items: %s. "
+                    "PretixSyncItem %s: no Pretix item IDs resolved for event_slug %r. "
                     "Quota will be created without products.",
-                    self.pk,
-                    event.name,
-                    association.event_slug,
-                    [
-                        association.ticket_product_member_regular_id,
-                        association.ticket_product_member_discounted_id,
-                        association.ticket_product_guest_regular_id,
-                        association.ticket_product_guest_discounted_id,
-                        association.ticket_product_business_id,
-                        association.ticket_product_internal_training_id,
-                    ],
-                    [(i.get("id"), i.get("name")) for i in items],
-                )
-            else:
-                logger.debug(
-                    "PretixSyncItem %s: resolved %d item ID(s) for quota: %s",
-                    self.pk, len(all_item_ids), all_item_ids,
+                    self.pk, association.event_slug,
                 )
             self._create_or_update_quota(
                 client, target, association, self.subevent_slug,
-                event.name, all_item_ids, max_participants,
+                title, all_item_ids, max_participants,
             )
             logger.info(
                 "PretixSyncItem %s: push completed successfully (subevent %s).",
@@ -629,11 +444,11 @@ class PretixSyncItem(SyncBaseItem):
 
         except Exception as exc:
             logger.error(
-                "PretixSyncItem %s: push failed for event %s (subevent_slug=%s): %s",
-                self.pk, event.pk, self.subevent_slug, exc,
+                "PretixSyncItem %s: push failed for entity %s (subevent_slug=%s): %s",
+                self.pk, self.related_entity_id, self.subevent_slug, exc,
                 exc_info=True,
             )
-            raise
+            raise RuntimeError(f"sync_pretix push failed: {exc}") from exc
 
         finally:
             # Always pull after push (success or failure) to keep pretix_data current.
@@ -648,165 +463,6 @@ class PretixSyncItem(SyncBaseItem):
                     exc_info=True,
                 )
 
-    def _build_creation_preview_diff(self) -> SyncDiffData:
-        """Return a diff showing local values vs an empty remote (creation preview).
-
-        Called by ``sync_diff()`` when the subevent has not been pushed yet
-        (CREATION_PENDING).  Every property uses ``remote_value=""`` to indicate
-        that nothing exists in Pretix yet.
-        """
-        event = self.related_event
-        target = self.sync_target
-        proposal = getattr(event, "proposal", None)
-
-        event_locale = "de"
-        if proposal is not None:
-            lang = getattr(proposal, "language", None)
-            if lang is not None:
-                event_locale = lang.code
-
-        properties: list[PropertyDiff] = [
-            PropertyDiff(
-                property_name="name",
-                local_value=event.name,
-                remote_value="",
-                file_type="text",
-            ),
-            PropertyDiff(
-                property_name="date_from",
-                local_value=event.start_time.isoformat(),
-                remote_value="",
-                file_type="text",
-            ),
-            PropertyDiff(
-                property_name="date_to",
-                local_value=event.end_time.isoformat(),
-                remote_value="",
-                file_type="text",
-            ),
-        ]
-
-        if proposal is not None:
-            max_participants = getattr(proposal, "max_participants", None)
-            if max_participants is not None:
-                properties.append(PropertyDiff(
-                    property_name="quota_size",
-                    local_value=str(max_participants),
-                    remote_value="",
-                    file_type="text",
-                ))
-
-        # Include calculated prices when available (remote is empty – nothing pushed yet).
-        try:
-            prices = event.calculated_prices
-            price_mapping = [
-                (prices.member_regular_gross_eur, "price_member_regular"),
-                (prices.member_discounted_gross_eur, "price_member_discounted"),
-                (prices.guest_regular_gross_eur, "price_guest_regular"),
-                (prices.guest_discounted_gross_eur, "price_guest_discounted"),
-                (prices.business_net_eur, "price_business"),
-                (prices.internal_training_eur, "price_internal_training"),
-            ]
-            for price, property_name in price_mapping:
-                if price is not None:
-                    properties.append(PropertyDiff(
-                        property_name=property_name,
-                        local_value=str(price),
-                        remote_value="",
-                        file_type="text",
-                    ))
-        except ObjectDoesNotExist:
-            pass
-
-        logger.debug(
-            "PretixSyncItem %s: creation preview diff has %d properties.",
-            self.pk, len(properties),
-        )
-        return SyncDiffData(
-            series_id=event.series_id,
-            event_id=event.pk,
-            target_id=target.pk,
-            properties=properties,
-        )
-
-    def _compare_prices(
-        self,
-        event,
-        association: "PretixSyncTargetAreaAssociation",
-        stored_subevent: dict,
-        stored_items: list[dict],
-        only_differences: bool = True,
-    ) -> list[PropertyDiff]:
-        """Compare calculated prices against stored Pretix item_price_overrides.
-
-        Args:
-            only_differences: When True (default), only return properties whose
-                prices differ. When False, also include prices that match so the
-                full context is available for display.
-
-        Returns an empty list when no ``CalculatedPrices`` exist for the event,
-        or when ``stored_items`` is empty (item IDs cannot be resolved).
-        """
-        try:
-            prices = event.calculated_prices
-        except ObjectDoesNotExist:
-            logger.debug(
-                "PretixSyncItem %s: no CalculatedPrices for event %s; "
-                "skipping price comparison.",
-                self.pk, event.pk,
-            )
-            return []
-
-        actual_overrides: dict[int, str] = {
-            override["item"]: override.get("price", "")
-            for override in stored_subevent.get("item_price_overrides") or []
-        }
-        price_mapping = [
-            (association.ticket_product_member_regular_id,
-             prices.member_regular_gross_eur, "price_member_regular"),
-            (association.ticket_product_member_discounted_id,
-             prices.member_discounted_gross_eur, "price_member_discounted"),
-            (association.ticket_product_guest_regular_id,
-             prices.guest_regular_gross_eur, "price_guest_regular"),
-            (association.ticket_product_guest_discounted_id,
-             prices.guest_discounted_gross_eur, "price_guest_discounted"),
-            (association.ticket_product_business_id,
-             prices.business_net_eur, "price_business"),
-            (association.ticket_product_internal_training_id,
-             prices.internal_training_eur, "price_internal_training"),
-        ]
-
-        diffs: list[PropertyDiff] = []
-        for name_or_id, expected_price, property_name in price_mapping:
-            if expected_price is None:
-                continue
-            item_id = PretixSyncItem._resolve_item_id(stored_items, name_or_id)
-            if item_id is None:
-                continue
-            actual_price_str = actual_overrides.get(item_id)
-            expected_price_str = str(expected_price)
-            try:
-                prices_equal = (
-                    actual_price_str is not None
-                    and Decimal(actual_price_str) == Decimal(expected_price_str)
-                )
-            except Exception:
-                prices_equal = actual_price_str == expected_price_str
-            if not only_differences or not prices_equal:
-                logger.debug(
-                    "PretixSyncItem %s: price diff for %s (item %s): "
-                    "local=%s remote=%s.",
-                    self.pk, property_name, item_id,
-                    expected_price_str, actual_price_str,
-                )
-                diffs.append(PropertyDiff(
-                    property_name=property_name,
-                    local_value=expected_price_str,
-                    remote_value=actual_price_str or "",
-                    file_type="text",
-                ))
-        return diffs
-
     def _create_or_update_quota(
         self,
         client: PretixApiClient,
@@ -817,7 +473,7 @@ class PretixSyncItem(SyncBaseItem):
         item_ids: list[int],
         max_participants: int | None,
     ) -> None:
-        """Create or update the subevent quota covering all five ticket products."""
+        """Create or update the subevent quota covering all ticket products."""
         quota_payload = {
             "name": quota_name,
             "size": max_participants,
@@ -856,7 +512,7 @@ class PretixSyncItem(SyncBaseItem):
         association: "PretixSyncTargetAreaAssociation",
         items: list[dict],
     ) -> list[int]:
-        """Return resolved Pretix item IDs for all five ticket products in the association."""
+        """Return resolved Pretix item IDs for all ticket products in the association."""
         product_names_or_ids = [
             association.ticket_product_member_regular_id,
             association.ticket_product_member_discounted_id,
@@ -893,24 +549,22 @@ class PretixSyncItem(SyncBaseItem):
     @staticmethod
     def _build_item_overrides(
         association: "PretixSyncTargetAreaAssociation",
-        prices: "CalculatedPrices",
+        prices: dict,
         items: list[dict],
     ) -> list[dict]:
-        """Map each ticket product in the association to a Pretix price override entry."""
-        price_mapping = [
-            (association.ticket_product_member_regular_id, prices.member_regular_gross_eur),
-            (association.ticket_product_member_discounted_id, prices.member_discounted_gross_eur),
-            (association.ticket_product_guest_regular_id, prices.guest_regular_gross_eur),
-            (association.ticket_product_guest_discounted_id, prices.guest_discounted_gross_eur),
-            (association.ticket_product_business_id, prices.business_net_eur),
-            (association.ticket_product_internal_training_id, prices.internal_training_eur),
-        ]
+        """Map each ticket product in the association to a Pretix price override
+        entry, reading prices from the synced_payload["prices"] dict."""
         overrides = []
-        for name_or_id, price in price_mapping:
+        for price_key, assoc_attr in PretixSyncItem.PRICE_PROPERTY_MAP:
+            name_or_id = getattr(association, assoc_attr)
+            price = prices.get(price_key)
+            if price is None:
+                continue
             item_id = PretixSyncItem._resolve_item_id(items, name_or_id)
-            if item_id is not None and price is not None:
+            if item_id is not None:
                 overrides.append({"item": item_id, "price": str(price)})
         return overrides
+
 
 
 class PretixPricingConfiguration(HistoricalMetaBase):

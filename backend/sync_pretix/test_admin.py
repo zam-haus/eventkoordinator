@@ -5,12 +5,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from apiv1.models.basedata import ProposalArea
 from sync_pretix import models
-from sync_pretix.admin import (
-    CalculatedPricesInline,
-    PretixSyncTargetAreaAssociationInline,
-)
+from sync_pretix.admin import CalculatedPricesInline, PretixSyncTargetAreaAssociationInline
 
 
 class SyncPretixAdminTests(TestCase):
@@ -30,16 +26,7 @@ class SyncPretixAdminTests(TestCase):
         self.assertIn(models.PretixSyncTargetAreaAssociation, admin.site._registry)
         self.assertIn(models.PretixPricingConfiguration, admin.site._registry)
         self.assertIn(models.CalculatedPrices, admin.site._registry)
-
-    def test_proposal_area_admin_has_pretix_association_inline(self):
-        proposal_area_admin = admin.site._registry[ProposalArea]
-        self.assertTrue(
-            any(
-                getattr(inline, "model", None)
-                is models.PretixSyncTargetAreaAssociation
-                for inline in proposal_area_admin.inlines
-            )
-        )
+        self.assertIn(models.PretixSyncItem, admin.site._registry)
 
     def test_pricing_configuration_admin_has_calculated_prices_inline(self):
         pricing_admin = admin.site._registry[models.PretixPricingConfiguration]
@@ -50,15 +37,18 @@ class SyncPretixAdminTests(TestCase):
         self.assertIn(PretixSyncTargetAreaAssociationInline, target_admin.inlines)
 
     def test_admin_pages_are_accessible(self):
-        area = ProposalArea.objects.create(code="laser", label="Laser")
         config = models.PretixPricingConfiguration.objects.create()
+        target = models.PretixSyncTarget.objects.create(
+            key="pretix:main", name="Pretix", organizer_slug="zam",
+            api_url="https://pretix.example.com/api/v1", api_token="secret",
+        )
 
-        area_url = reverse("admin:apiv1_proposalarea_change", args=[area.pk])
         config_url = reverse(
             "admin:sync_pretix_pretixpricingconfiguration_change", args=[config.pk]
         )
+        target_url = reverse(
+            "admin:sync_pretix_pretixsynctarget_change", args=[target.pk]
+        )
 
-        self.assertEqual(self.client.get(area_url).status_code, 200)
         self.assertEqual(self.client.get(config_url).status_code, 200)
-
-
+        self.assertEqual(self.client.get(target_url).status_code, 200)

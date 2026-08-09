@@ -95,11 +95,13 @@ class SyncPretixAreasCommandTests(TestCase):
     def test_replaces_sync_target_and_creates_association_and_default_items(self):
         ProposalArea.objects.create(code="metal", label="Metal")
         PretixSyncTarget.objects.create(
+            key="pretix:old", name="Old Pretix",
             api_token="old-token",
             api_url="http://old.local/api/v1",
             organizer_slug="old-org",
         )
         PretixSyncTarget.objects.create(
+            key="pretix:old-2", name="Old Pretix 2",
             api_token="old-token-2",
             api_url="http://old2.local/api/v1",
             organizer_slug="old-org-2",
@@ -122,7 +124,7 @@ class SyncPretixAreasCommandTests(TestCase):
         self.assertEqual(len(fake_client.created_events), 1)
         self.assertEqual(fake_client.created_events[0]["payload"]["slug"], "area-metal")
         self.assertTrue(fake_client.created_events[0]["payload"]["has_subevents"])
-        association = PretixSyncTargetAreaAssociation.objects.get(area__code="metal")
+        association = PretixSyncTargetAreaAssociation.objects.get(area_code="metal")
         self.assertEqual(association.event_slug, "area-metal")
         self.assertEqual(association.sync_target_id, target.id)
         self.assertEqual(len(fake_client.created_items), 5)
@@ -163,7 +165,7 @@ class SyncPretixAreasCommandTests(TestCase):
         self.assertEqual(fake_client.patched_events[0]["event_slug"], "area-laser")
         self.assertEqual(fake_client.patched_events[0]["payload"]["name"], {"en": "Laser Workshop"})
         self.assertTrue(fake_client.patched_events[0]["payload"]["has_subevents"])
-        association = PretixSyncTargetAreaAssociation.objects.get(area__code="laser")
+        association = PretixSyncTargetAreaAssociation.objects.get(area_code="laser")
         self.assertEqual(association.event_slug, "area-laser")
         self.assertIsNotNone(association.sync_target_id)
         self.assertEqual(len(fake_client.created_items), 4)
@@ -197,6 +199,7 @@ class SyncPretixAreasCommandTests(TestCase):
     def test_dry_run_does_not_mutate_remote(self):
         ProposalArea.objects.create(code="print", label="3D Print")
         PretixSyncTarget.objects.create(
+            key="pretix:old", name="Old Pretix",
             api_token="old-token",
             api_url="http://old.local/api/v1",
             organizer_slug="old-org",

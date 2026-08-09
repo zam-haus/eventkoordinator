@@ -6,14 +6,13 @@ from django.contrib.admin import ModelAdmin
 from django.core.files.base import ContentFile
 from django.http import Http404, HttpResponseRedirect
 from django.urls import path, reverse
-from polymorphic.admin import PolymorphicInlineSupportMixin, PolymorphicParentModelAdmin, StackedPolymorphicInline
+from polymorphic.admin import PolymorphicParentModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
 from viewflow import fsm
 
 from . import models
 from .flows import ProposalFlow
-from sync_pretix.models import PretixSyncTargetAreaAssociation, PretixSyncTarget, PretixSyncItem
-from .models import SyncBaseTarget, SyncBaseItem
+from .models import SyncBaseTarget
 
 
 def _copy_imagefield(field):
@@ -52,19 +51,6 @@ class SpeakerInline(admin.TabularInline):
     fields = ("display_name", "email", "role", "sort_order")
 
 
-class PretixSyncTargetAreaAssociationInline(admin.TabularInline):
-    model = PretixSyncTargetAreaAssociation
-    extra = 0
-    fields = (
-        "event_slug",
-        "ticket_product_member_regular_id",
-        "ticket_product_member_discounted_id",
-        "ticket_product_guest_regular_id",
-        "ticket_product_guest_discounted_id",
-        "ticket_product_business_id",
-    )
-
-
 @admin.register(models.Series)
 class SeriesAdmin(SimpleHistoryAdmin):
     list_display = ("id", "name", "created_at", "updated_at")
@@ -72,46 +58,21 @@ class SeriesAdmin(SimpleHistoryAdmin):
     ordering = ("name",)
 
 
-class LinkedSyncItemsInline(StackedPolymorphicInline):
-    model = SyncBaseItem
-
-    class PretixSyncItemInline(StackedPolymorphicInline.Child):
-        model = PretixSyncItem
-        readonly_fields = ("sync_target", "area_association", "subevent_slug", "flag_push")
-
-        def has_add_permission(self, request, obj=None):
-            return False
-
-        def has_change_permission(self, request, obj=None):
-            return False
-
-        def has_delete_permission(self, request, obj=None):
-            return False
-
-    # CalDAVSyncItemInline was removed here: CalDAVSyncItem now subclasses
-    # sync_core.models.SyncBaseItem (events-and-sync.md §3, Step 11), not this
-    # app's own SyncBaseItem, so it no longer has a `related_event`/`caldav_uid`
-    # FK to inline under an apiv1 Event admin. CalDAV items are managed in
-    # sync_caldav/admin.py instead.
-    child_inlines = (PretixSyncItemInline,)
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
+# LinkedSyncItemsInline (apiv1's own SyncBaseItem polymorphic inline) was
+# removed here: PretixSyncItem, CalDAVSyncItem, and IcalCalenderSyncItem all
+# now subclass sync_core.models.SyncBaseItem (events-and-sync.md §3, Step
+# 11), not this app's own SyncBaseItem, so none of them have a
+# `related_event` FK to inline under an apiv1 Event admin any more — apiv1's
+# own SyncBaseItem has no concrete subclasses left. They are managed in
+# sync_pretix/admin.py, sync_caldav/admin.py, and sync_ical/admin.py instead.
 
 
 @admin.register(models.Event)
-class EventAdmin(PolymorphicInlineSupportMixin, SimpleHistoryAdmin):
+class EventAdmin(SimpleHistoryAdmin):
     list_display = ("id", "name", "series", "start_time", "end_time")
     list_filter = ("series", "tag")
     search_fields = ("name", "tag")
     ordering = ("start_time",)
-    inlines = (LinkedSyncItemsInline,)
 
 
 @admin.register(models.SubmissionType)
@@ -133,7 +94,9 @@ class ProposalAreaAdmin(SimpleHistoryAdmin):
     list_display = ("code", "label", "is_active", "sort_order")
     list_editable = ("label", "is_active", "sort_order")
     search_fields = ("code", "label")
-    inlines = (PretixSyncTargetAreaAssociationInline,)
+    # PretixSyncTargetAreaAssociationInline removed here: that model no longer
+    # FKs to apiv1.ProposalArea (events-and-sync.md §3, Step 11 — decoupled to
+    # a plain area_code string). Managed in sync_pretix/admin.py instead.
 
 
 @admin.register(models.Speaker)
@@ -317,11 +280,11 @@ class SyncBaseTargetAdmin(PolymorphicParentModelAdmin, SimpleHistoryAdmin):
         "type",
         "created_at",
     )
-    # CalDAVSyncTarget removed here: it now subclasses sync_core.models.SyncBaseTarget
-    # (events-and-sync.md §3, Step 11), not this app's own SyncBaseTarget, so it is
-    # no longer a valid polymorphic child of this admin's base model.
-    child_models = (
-        PretixSyncTarget,
-    )
+    # CalDAVSyncTarget and PretixSyncTarget removed here: both now subclass
+    # sync_core.models.SyncBaseTarget (events-and-sync.md §3, Step 11), not
+    # this app's own SyncBaseTarget, so neither is a valid polymorphic child
+    # of this admin's base model any more — apiv1's own SyncBaseTarget has no
+    # concrete subclasses left.
+    child_models = ()
     readonly_fields = ("id", "type", "created_at")
     fields = ("id", "type", "created_at")
