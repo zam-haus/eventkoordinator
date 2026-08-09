@@ -523,6 +523,60 @@ Frontend: **DayPilot Lite** (`npm install
 the availability view, click/drag date picking, and the standalone dashboard
 calendar.
 
+### 6.1 Timeslot submodel + read-only highlight calendar
+
+Events gain a **`timeslots` submodel list** (an event can occupy several
+slots — setup, talk, teardown, repeated sessions), and below it a **second,
+read-only calendar** that shows this event's own timeslots highlighted against
+all other events as muted context.
+
+Data model (bundle):
+
+- New submodel field-config **Timeslot** with two `datetime` fields `start`
+  and `end` (both `is_preview: true`), no workflow — same pattern as the
+  existing `Proposal Review` submodel.
+- On Event: `timeslots` (`submodel_list`, `renderer: list`,
+  `submodel_config_version_id` → Timeslot), plus a second `calendar` field
+  below it with no `bind_start`/`bind_end` (unbound ⇒ read-only by the
+  existing element semantics).
+
+Calendar source spec for submodels: timeslots are child
+`UserDefinedModelEntityNode` rows, not entities, so the existing
+`type_id:start:end` spec cannot reach them. New grammar:
+
+```
+submodel:<entity>:<field_slug>(<start_field>[,<end_field>])
+```
+
+e.g. `submodel:self:timeslots(start,end)`. The parenthesized field list keeps
+datetime slugs out of the colon-split logic (the existing `spec.split(":")`
+paths stay untouched; `submodel:` dispatches first), and a single-slug form
+`(start)` expresses point-in-time entries, mirroring the empty-`end_field`
+type spec. `self` is resolved by the frontend to the entity the element is
+rendered under, before the request; the backend only ever sees a concrete
+node id. Child-node read access is policy-checked via the **root** entity's
+view policy (`viewable_fields` already carries child-node ids).
+
+Highlighting stays a frontend concern; the backend remains a pure aggregator:
+
+- `CalendarEntryOut` gains a `spec` echo field identifying which source spec
+  produced each entry (no backend notion of "highlighted").
+- `CalendarTypeConfig` gains optional `highlight_sources: list[str]` (a
+  subset of `sources`); the frontend styles entries from those specs with a
+  highlight color and everything else muted (DayPilot per-event
+  `backColor`/`cssClass`).
+- The Event-type context source also contains the current event itself; the
+  frontend filters `entity_id == self` out of non-highlight sources to avoid
+  a duplicate bar.
+
+Element config on the Event bundle:
+
+```json
+{"sources": ["submodel:self:timeslots(start,end)",
+             "<event type id>:start:end"],
+ "highlight_sources": ["submodel:self:timeslots(start,end)"]}
+```
+
 ## 7. apiv1 deprecation
 
 Phased, no data migration:
@@ -818,11 +872,10 @@ new apps' suites; never the apiv1 suite).
       (`@shared_task` wrapper). `SyncBaseItem.push()` raises `NotImplementedError`
       in the base class — no concrete item class exists yet (Step 6 port
       deferred), so every push currently fails with a clear, catchable error
-      rather than silently doing nothing. **Not done**: an actual
-      `django_celery_beat` `PeriodicTask` row (no existing convention in
-      this codebase to follow — beat schedules appear to be configured via
-      the admin UI at deploy time, not in code) and an admin "sync now"
-      button (no admin UI work in this pass).
+      rather than silently doing nothing. **Not done**: the beat schedule entry
+      (convention: `CELERY_BEAT_SCHEDULE` in `backend/default_settings.py`,
+      see Step 11) and an admin "sync now" button (no admin UI work in
+      this pass).
 - [x] Tests: mark on transition, post-save re-mark on stale, snapshot
       immutability (later edits don't change what's pushed), error stays
       until re-marked, per-class status rejection, via_referencing fan-out.
@@ -937,7 +990,92 @@ new apps' suites; never the apiv1 suite).
       invalid-date 400, empty sources); full suite green
       (`uv run manage.py test userdefinedmodel sync_core`, 360 tests).
 
-### Step 10 — apiv1 removal (7)
+### Step 10 — timeslot submodel + highlight calendar (6.1)
+
+- [ ] Bundle: new `Timeslot` submodel field-config (two `datetime` fields
+      `start`/`end`, both `is_preview: true`, no workflow) in
+      `documentation/configuration/UDM_BUNDLE.json`, modeled on
+      `Proposal Review`.
+- [ ] Bundle: `timeslots` field on Event (`submodel_list`,
+      `renderer: list`, `submodel_config_version_id` → Timeslot), sorted
+      after `end`; second read-only `calendar` field below it with
+      `sources: ["submodel:self:timeslots(start,end)", "<event type
+      id>:start:end"]`, `highlight_sources:
+      ["submodel:self:timeslots(start,end)"]`, no `bind_start`/`bind_end`.
+- [ ] Policies: grant view/save on `timeslots` + the Timeslot child fields
+      and the submodel create/delete buttons (`creatable_submodels`) in
+      `event.rego` / the shared grants.
+- [ ] Backend: parse `submodel:<entity>:<field>(<start>[,<end>])` in
+      `get_calendar` (dispatched before the existing colon-split specs);
+      query `UserDefinedModelEntityNode` children by parent id + field slug,
+      read the datetime values, policy-check via the root entity's view
+      policy / `viewable_fields`; `source: "submodel"`, `uid`/`entity_id` =
+      child node id.
+- [ ] Backend: `spec` echo field on `CalendarEntryOut` (all source kinds);
+      `highlight_sources` on `CalendarTypeConfig` + grammar validation of
+      the new spec form in element-config validation.
+- [ ] Frontend (`CalendarField`/`CalendarPreview`): substitute `self` → the
+      rendered entity's id before the request; style entries whose `spec` is
+      in `highlight_sources` highlighted, everything else muted; filter
+      `entity_id == self` out of non-highlight sources (duplicate-bar
+      avoidance).
+- [ ] Tests: submodel spec returns child-node entries (range in/out,
+      point-in-time single-slug form), policy filtering via the root
+      entity, `spec` echo on all source kinds, config validation of the new
+      grammar; bundle import round-trip (`uv run manage.py import_bundle`);
+      full `userdefinedmodel sync_core` suites green.
+
+### Step 11 — deferred tasks from steps 6–9
+
+Collected from the "deferred" / "not done" notes in the checklists above; all
+must land before Step 12's preconditions can hold.
+
+Sync-plugin ports (from Step 6):
+
+- [ ] Port `sync_ical` push side: import from `sync_core`, items keyed to UDM
+      entities, effective-values payloads.
+- [ ] Port `sync_caldav` push side: same.
+- [ ] Port `sync_pretix`: same.
+- [ ] New `sync_webhook` app: target with URL, bearer token, constant custom
+      headers (secrets via `secret_field_names`); POST body = effective JSON
+      + entity id, target key, status, sequence number; no signing, no
+      templating. Payload/header tests land here.
+- [ ] `SyncDiffData` / `PropertyDiff` moved to `sync_core`, diffing
+      `synced_payload` vs. current effective values (needs a concrete item
+      class from the ports above).
+
+Loose ends (from Steps 6–9 partials):
+
+- [ ] `input.backlinks.<name>[].sync`: enrich backlink documents with the
+      sync map (only the root entity's `input.sync` is populated so far).
+- [ ] `mark_sync` target validation: "enabled **for the type**" via the
+      Step 8 tab-config bindings (currently only checks the target's global
+      `enabled` flag); ditto `derived_state == target_unavailable` for
+      "no longer bound to the type".
+- [ ] Per-plugin binding config contents: available concrete targets,
+      effective-key → remote-property field binding (webhook: URL/auth
+      selection only).
+- [ ] Frontend type-editor tab registry (`tabId → component`) + tab
+      components for caldav / ical / pretix / webhook; JSON-editor fallback
+      for tabs without a registered component (backend
+      `GET /type-editor-tabs/` is ready).
+- [ ] Django admin (or equivalent UI) for `SyncBaseTarget` /
+      `CalendarSource`: create/edit targets and sources, soft-delete, manual
+      "sync now" / "fetch now" buttons enqueuing the existing tasks
+      (currently shell-only).
+- [ ] Beat schedules for `push_pending_sync_items_task` and
+      `fetch_all_calendar_sources`: add entries to `CELERY_BEAT_SCHEDULE`
+      in `backend/default_settings.py` (existing convention — the
+      hourly `sync_ical`/`sync_caldav` entries live there; retire those
+      when the plugin ports land).
+- [ ] Calendar polish: color UDM entries by workflow state
+      (`CalendarEntryOut.workflow_state`); optional per-source
+      role/permission gate on `CalendarSource` beyond `enabled`.
+- [ ] Regenerate `schema_udm.d.ts` so `apiUdm.ts`'s hand-typed backlinks
+      fetch and `EntityOut.markdown_displays`/`sync_items` move onto the
+      generated client.
+
+### Step 12 — apiv1 removal (7)
 
 - [ ] Preconditions verified: no imports of `apiv1` outside `apiv1/`
       (`grep -rn "from apiv1\|import apiv1" backend/ --include=*.py`), no
