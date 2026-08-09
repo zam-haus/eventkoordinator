@@ -6,9 +6,10 @@ functions) so the apps stay decoupled.
 """
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar, Optional
 
 from django.db import models
+from pydantic import BaseModel
 
 from project.basemodels import PolymorphicMetaBase
 
@@ -211,6 +212,41 @@ def recompute_staleness(entity_id, effective: dict) -> None:
         if stale != item.is_stale:
             item.is_stale = stale
             item.save(update_fields=["is_stale"])
+
+
+class PropertyDiff(BaseModel):
+    """One differing property between what's stored (`synced_payload`) and
+    what's currently effective (§3, moved from apiv1.models.sync.syncbasedata
+    — the apiv1 version diffed against a live Event/Pretix pull; this one
+    diffs the same two dicts that drive push/staleness everywhere else)."""
+
+    property_name: str
+    old_value: Any
+    new_value: Any
+
+
+class SyncDiffData(BaseModel):
+    entity_id: str
+    target_key: Optional[str]
+    properties: list[PropertyDiff]
+
+
+def compute_sync_diff(item: SyncBaseItem, effective: dict) -> SyncDiffData:
+    """Diff item.synced_payload (what was/will be pushed) against a fresh
+    `effective` snapshot — the same comparison recompute_staleness makes,
+    exposed property-by-property for display (§3, Step 11)."""
+    old = item.synced_payload or {}
+    new = effective or {}
+    properties = [
+        PropertyDiff(property_name=key, old_value=old.get(key), new_value=new.get(key))
+        for key in sorted(set(old) | set(new))
+        if old.get(key) != new.get(key)
+    ]
+    return SyncDiffData(
+        entity_id=str(item.related_entity_id),
+        target_key=item.sync_target.key if item.sync_target_id else None,
+        properties=properties,
+    )
 
 
 def sync_map_for_entity(entity_id) -> dict[str, dict]:
