@@ -876,6 +876,20 @@ export async function udmGetCalendar(start: string, end: string, sources: string
 export interface TypeEditorTabOut {
   id: string
   label: string
+  config_schema: Record<string, unknown>
+}
+
+export interface SyncTargetOut {
+  key: string
+  name: string
+  type: string
+  enabled: boolean
+}
+
+export async function udmListSyncTargets(): Promise<SyncTargetOut[]> {
+  const res = await fetch('/api/udm/sync-targets/', { credentials: 'include' })
+  if (!res.ok) return []
+  return (await res.json()) as SyncTargetOut[]
 }
 
 export interface TypeEditorTabConfigOut {

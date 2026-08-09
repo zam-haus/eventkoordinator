@@ -5,14 +5,12 @@ the (non-polymorphic) ``CalendarSource`` pull-side model, plus manual
 "sync now" / "fetch now" actions that enqueue the existing Celery tasks
 (previously only shell/management-command triggerable, see sync_core/tasks.py).
 
-``SyncBaseTarget`` has no concrete subclasses yet in this codebase — the
-sync_ical/sync_caldav/sync_pretix plugins still subclass the legacy
-``apiv1.models.sync.syncbasedata.SyncBaseTarget`` pending their Step 11 port
-onto this relocated framework. Follow the pattern here (mirroring
-apiv1/admin.py's ``SyncBaseTargetAdmin``) and register each concrete
-subclass's own ``PolymorphicChildModelAdmin`` (as sync_ical/admin.py and
-sync_caldav/admin.py do for the legacy base) once those ports land — add it
-to ``SyncBaseTargetAdmin.child_models`` at that point.
+``child_models`` lists every concrete SyncBaseTarget subclass across the
+sync_webhook/sync_ical/sync_caldav/sync_pretix plugins so the polymorphic
+"add" flow here has somewhere to go — each plugin's own admin.py (plain
+ModelAdmin or PolymorphicChildModelAdmin, plugins are inconsistent on this
+but either works for `add`/`change`) is still the actual registration for
+that model. Add a new plugin's target model here when it lands.
 """
 from __future__ import annotations
 
@@ -22,16 +20,24 @@ from polymorphic.admin import PolymorphicParentModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
 
 from project.admin_utils import MaskedSecretFormMixin
+from sync_caldav.models import CalDAVSyncTarget
 from sync_core import models
 from sync_core.models import DERIVED_STATE_ERROR, DERIVED_STATE_PENDING
+from sync_ical.models import IcalCalendarSyncTarget
+from sync_pretix.models import PretixSyncTarget
+from sync_webhook.models import SyncWebhookTarget
+
+# admin.py loads after every app's models are ready (admin autodiscovery
+# runs post-registry), so importing the plugins' target models here — unlike
+# in sync_core/models.py, which must stay plugin-agnostic — is safe and
+# gives the polymorphic "add" flow below somewhere to go. Add a new plugin's
+# target model to child_models when it lands.
 
 
 @admin.register(models.SyncBaseTarget)
 class SyncBaseTargetAdmin(PolymorphicParentModelAdmin, SimpleHistoryAdmin):
     base_model = models.SyncBaseTarget
-    # No concrete subclasses exist yet (see module docstring) — add each
-    # plugin's target model here once it is ported onto sync_core.
-    child_models = ()
+    child_models = (IcalCalendarSyncTarget, CalDAVSyncTarget, PretixSyncTarget, SyncWebhookTarget)
 
     list_display = ("name", "key", "enabled", "status_summary", "created_at", "updated_at")
     list_filter = ("enabled",)
