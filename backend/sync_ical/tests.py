@@ -110,6 +110,77 @@ class IcalCalendarSyncItemPushTests(SyncIcalTestCase):
         self.assertEqual(summaries, {"Some event", "Second event"})
 
 
+class IcalCalendarSyncItemFanOutPushTests(SyncIcalTestCase):
+    """events-and-sync.md §13.3: one VEVENT per `payload["submodel"]` slot."""
+
+    def _item_with_slots(self, slots):
+        payload = {**self.effective, "submodel": slots}
+        return self._item(synced_payload=payload)
+
+    def test_push_creates_one_vevent_per_slot(self):
+        slots = [
+            {"child_id": "slot-1", "start": "2026-03-01T09:00:00+00:00", "end": "2026-03-01T10:00:00+00:00"},
+            {"child_id": "slot-2", "start": "2026-03-02T09:00:00+00:00", "end": "2026-03-02T10:00:00+00:00"},
+        ]
+        item = self._item_with_slots(slots)
+
+        item.push()
+
+        calendar = self._read_feed()
+        vevents = {str(v.get("UID")): v for v in calendar.subcomponents if v.name == "VEVENT"}
+        self.assertEqual(set(vevents), {f"{item.related_entity_id}-slot-1", f"{item.related_entity_id}-slot-2"})
+        for vevent in vevents.values():
+            self.assertEqual(str(vevent.get("SUMMARY")), "Some event")
+
+    def test_removed_slot_deletes_its_vevent(self):
+        slots = [
+            {"child_id": "slot-1", "start": "2026-03-01T09:00:00+00:00", "end": "2026-03-01T10:00:00+00:00"},
+            {"child_id": "slot-2", "start": "2026-03-02T09:00:00+00:00", "end": "2026-03-02T10:00:00+00:00"},
+        ]
+        item = self._item_with_slots(slots)
+        item.push()
+
+        item.synced_payload = {**self.effective, "submodel": slots[:1]}
+        item.save(update_fields=["synced_payload"])
+        item.push()
+
+        calendar = self._read_feed()
+        uids = {str(v.get("UID")) for v in calendar.subcomponents if v.name == "VEVENT"}
+        self.assertEqual(uids, {f"{item.related_entity_id}-slot-1"})
+
+    def test_moved_slot_updates_same_vevent_not_duplicate(self):
+        slots = [{"child_id": "slot-1", "start": "2026-03-01T09:00:00+00:00", "end": "2026-03-01T10:00:00+00:00"}]
+        item = self._item_with_slots(slots)
+        item.push()
+
+        moved = [{"child_id": "slot-1", "start": "2026-03-05T09:00:00+00:00", "end": "2026-03-05T10:00:00+00:00"}]
+        item.synced_payload = {**self.effective, "submodel": moved}
+        item.save(update_fields=["synced_payload"])
+        item.push()
+
+        calendar = self._read_feed()
+        vevents = [v for v in calendar.subcomponents if v.name == "VEVENT"]
+        self.assertEqual(len(vevents), 1)
+        self.assertEqual(str(vevents[0].get("UID")), f"{item.related_entity_id}-slot-1")
+        self.assertEqual(vevents[0].get("DTSTART").dt.isoformat(), "2026-03-05T09:00:00+00:00")
+
+    def test_fan_out_does_not_touch_other_items_vevents(self):
+        entity2, *_ = make_entity_with_type()
+        item1 = self._item_with_slots(
+            [{"child_id": "slot-1", "start": "2026-03-01T09:00:00+00:00", "end": "2026-03-01T10:00:00+00:00"}],
+        )
+        item2 = IcalCalendarSyncItem.objects.create(
+            related_entity=entity2, sync_target=self.target,
+            status=DERIVED_STATE_PENDING, synced_payload={"title": "Second event"},
+        )
+        item1.push()
+        item2.push()
+
+        calendar = self._read_feed()
+        vevents = [v for v in calendar.subcomponents if v.name == "VEVENT"]
+        self.assertEqual(len(vevents), 2)
+
+
 class IcalCalendarWorkerTests(SyncIcalTestCase):
     """End-to-end through push_pending_sync_items (sync_core/tasks.py),
     which owns status/synced_at/last_error transitions polymorphically."""

@@ -3,7 +3,7 @@ Step 7)."""
 from django.db import transaction
 from django.test import TestCase, override_settings
 
-from sync_core.models import SyncBaseItem, SyncBaseTarget
+from sync_core.models import SyncBaseItem, SyncBaseTarget, _target_bound_to_entity_type
 from sync_core.tasks import push_pending_sync_items
 from userdefinedmodel.actions import _action_registry
 from userdefinedmodel.tests.factories import (
@@ -224,3 +224,42 @@ class WorkerTests(TestCase):
 
     def test_push_pending_empty_is_noop(self):
         self.assertEqual(push_pending_sync_items(), {"pushed": 0, "failed": 0})
+
+
+class TargetBoundToEntityTypeTests(TestCase):
+    """events-and-sync.md Step 13.1: binding must be read off the type's
+    bound **published** version, not the entity's own (possibly lagging)
+    config_version_id."""
+    databases = ["default"]
+
+    def test_reads_type_bound_published_version_not_entitys_own(self):
+        from userdefinedmodel.models import ConfigVersion, TypeEditorTabConfig
+
+        entity, udm_type, old_version, config = make_entity_with_type()
+        target = SyncBaseTarget.objects.create(key="webhook:main", name="Webhook")
+
+        # Entity still sits on old_version (never migrated), but the type's
+        # config gets republished to a new version with a binding that
+        # excludes the target.
+        old_version.status = "archived"
+        old_version.save()
+        new_version = ConfigVersion.objects.create(config=config, status="published")
+        TypeEditorTabConfig.objects.create(
+            config_version=new_version, tab_id="sync_targets", config={"target_keys": []},
+        )
+
+        # entity.config_version_id still points at old_version, which has no
+        # tab config row (would be treated as "no restriction") — the fix
+        # must resolve via udm_type.field_config's published version instead.
+        self.assertNotEqual(entity.config_version_id, new_version.id)
+        self.assertFalse(_target_bound_to_entity_type(target.key, entity.id))
+
+    def test_bound_when_key_listed_on_type_published_version(self):
+        from userdefinedmodel.models import TypeEditorTabConfig
+
+        entity, udm_type, version, config = make_entity_with_type()
+        target = SyncBaseTarget.objects.create(key="webhook:main", name="Webhook")
+        TypeEditorTabConfig.objects.create(
+            config_version=version, tab_id="sync_targets", config={"target_keys": ["webhook:main"]},
+        )
+        self.assertTrue(_target_bound_to_entity_type(target.key, entity.id))

@@ -61,6 +61,5 @@ if [[ "$DELETE_VOLUMES" == "true" ]]; then
   echo "Recreating database and creating admin user..."
   ./manage.py create_openid_user --username admin --email mail@example.com --is-staff --is-superuser --password admin
   ./manage.py import_ical
-DJANGO_PRETIX_API_BASE_URL="http://localhost:8282/api/v1" ./manage.py sync_pretix_areas
 fi
 popd

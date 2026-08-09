@@ -41,7 +41,7 @@ interactively; no open questions remain.
 | Ticketing targets | Pretix (adapted) + a new generic webhook target |
 | Per-target sync state | One `SyncItem` row per (entity, target); base statuses `pending/synced/error`, extensible per item class; not workflow lanes, not injected fields |
 | Sync-state visibility | Single computed `derived_state` (pending/error/synced/stale/target_unavailable) exposed as `input.sync` (rego), `sync` (jinja), and a `sync_status` form element; staleness stored post-save; targets soft-deleted |
-| Target configuration UI | Per-plugin **type-editor tab**, extensible: backend registry + frontend component registry keyed by tab id |
+| Target configuration UI | Per-plugin tab in the **Field Config editor** (revised 2026-08-09, see §5/Step 13), extensible: backend registry + frontend component registry keyed by tab id |
 | Staleness after sync | Rego **post-save action** re-marks affected targets pending when relevant values change |
 
 ## 1. Event as a UDM type
@@ -456,6 +456,17 @@ events.
 
 Each sync plugin contributes its own tab to the UDM type editor, alongside the
 existing form-fields and data-fields tabs.
+
+> **Revision 2026-08-09:** the "existing form-fields and data-fields tabs"
+> live in the **Field Config editor** (`ConfigDraftEditor`'s Data Fields /
+> Form Config / Preview sub-tabs), not on the Type detail page. The first
+> implementation put the plugin tabs on the Type page as a separate
+> button-switched "Plugin Tabs" section, editing the type's *bound published*
+> `ConfigVersion` blob directly — bypassing the draft→publish flow the
+> `TypeEditorTabConfig`-per-`ConfigVersion` model was built for. The plugin
+> tabs move into the Field Config editor's sub-tab row and edit the **draft**
+> version, rolling out via publish. See Step 13. Step 13 also models the
+> field-binding config that §5.1 sketches but the first pass deferred.
 
 ### 5.1 Backend registry
 
@@ -905,7 +916,9 @@ new apps' suites; never the apiv1 suite).
       (Step 6); the demo `sync_targets` schema only covers "which target
       keys" as a stand-in, no field-binding shape yet since there's no
       concrete remote property list to bind to.
-- [ ] Frontend tab registry (`tabId → component`) in the type editor; tab
+- [ ] *(placement/versioning superseded by Step 13 — panel moves to the
+      Field Config editor and edits the draft version)*
+      Frontend tab registry (`tabId → component`) in the type editor; tab
       components for caldav / ical / pretix / webhook; JSON-editor fallback
       for tabs without a registered component. — **not built this pass**,
       consistent with every other frontend gap logged in this checklist
@@ -1064,6 +1077,12 @@ Sync-plugin ports (from Step 6):
       just not diffed property-by-property). `PretixPricingConfiguration`/
       `CalculatedPrices` are untouched — they don't subclass the sync base
       classes and stay `apiv1.Event`-linked, out of scope for this port.
+      **Audit 2026-08-09: port is incomplete on the import level** —
+      `sync_pretix/models.py:11` still imports
+      `apiv1.models.basedata.time_string_to_minutes`, and
+      `sync_pretix/tests.py` + `management/commands/sync_pretix_areas.py` +
+      `test_sync_pretix_command.py` still import apiv1 models. These block
+      the Step 12 precondition; see the new items there.
 - [x] New `sync_webhook` app: target with URL, bearer token, constant custom
       headers (secrets via `secret_field_names`); POST body = effective JSON
       + entity id, target key, status, sequence number; no signing, no
@@ -1083,7 +1102,9 @@ Loose ends (from Steps 6–9 partials):
 - [ ] Per-plugin binding config contents beyond `target_keys`:
       effective-key → remote-property field binding (webhook: URL/auth
       selection only) is still not modeled — not needed yet since no plugin
-      binding config beyond "which targets" exists.
+      binding config beyond "which targets" exists. **Superseded by Step 13**
+      (binding sources decided: effective key / data-field fallback / jinja
+      template / timeslot submodel spec).
 - [x] Frontend type-editor tab registry (`tabId → component`) +
       JSON-editor fallback for tabs without a registered component; a
       dedicated `sync_targets` tab component (target picker backed by a new
@@ -1092,7 +1113,9 @@ Loose ends (from Steps 6–9 partials):
       (`GET /type-editor-tabs/` now includes each tab's pydantic config
       model as a JSON schema) land here too. Dedicated components for
       caldav/ical/pretix/webhook themselves are not built — the JSON
-      fallback covers them, as originally scoped.
+      fallback covers them, as originally scoped. **Placement/versioning
+      superseded by Step 13** (panel moves off the Type page into the Field
+      Config editor, editing the draft version).
 - [x] Django admin for `SyncBaseTarget` / `CalendarSource`: create/edit
       targets and sources, soft-delete via `enabled`, "sync now"/"fetch now"
       actions enqueuing the existing tasks. `SyncBaseTargetAdmin.child_models`
@@ -1113,11 +1136,674 @@ Loose ends (from Steps 6–9 partials):
       type-editor-tabs/sync-targets fetches now go through the generated
       `udmClient` instead of hand-typed raw `fetch()` calls.
 
+### Step 13 — plugin-tab placement, versioning, and field binding (review 2026-08-09)
+
+Fixes from reviewing the Step 8/11 implementation against §5. Decisions made
+interactively: tabs move to the Field Config editor; binding sources are
+effective keys with data-field fallback **plus** an optional Jinja-template
+source; timeslots sync as **one VEVENT per timeslot**. Should land before
+Step 12 (the sync plugins' payload paths change here).
+
+**Intended end state, in one paragraph:** an admin configures everything
+sync-related about a type in one place — the Field Config editor — as
+ordinary sub-tabs next to Data Fields / Form Config / Preview, edits land in
+the draft and go live on publish like every other config change; each sync
+plugin's tab lets the admin say not only *which* targets a type syncs to but
+*what* each remote property is filled from (a policy effective key, a raw
+data field, a rendered template, or the timeslot submodel); and a synced
+Event appears in the remote calendar as one VEVENT per timeslot, kept in
+step as slots are added, moved, or removed.
+
+#### 13.1 Placement + versioning
+
+*Why:* §5.2 was implemented on the wrong editor. The concept's "alongside
+the existing form-fields and data-fields tabs" refers to the Field Config
+editor's sub-tab row, but the panel landed on the Type detail page as a
+button-switched side section. Worse, it edits the type's **bound published**
+`ConfigVersion` blob in place — so the `TypeEditorTabConfig`-per-version
+model (draft copies, publish roll-forward) exists but is never exercised,
+and "published versions are immutable" silently stops being true for tab
+configs. *Intended outcome:* tab configs behave exactly like data fields
+and form elements — drafted, reviewed, published atomically with the rest
+of the config version, with an audit trail of what was bound when.
+
+- [x] Move the plugin tabs out of `TypeDetail` (`UdmAdminPage.tsx:1820`) into
+      the **Field Config editor**: render the registered plugin tabs as
+      additional sub-tabs in `ConfigDraftEditor`'s existing tab row (after
+      📋 Data Fields / 🎨 Form Config / 👁 Preview), one sub-tab per
+      registered plugin tab, styled identically — real tabs, not a
+      button-switched side section. Outcome: one editor owns the whole
+      config surface of a type; no second place to look. —
+      `TypeEditorTabsPanel.tsx` deleted; `ConfigDraftEditor` now fetches
+      `udmListTypeEditorTabs()` and renders one sub-tab button per registered
+      tab after Preview, mounting `typeEditorTabRegistry[id] ??
+      JsonTabFallback`.
+- [x] Edit the **draft** version's `TypeEditorTabConfig` blob (the panel
+      currently loads the type's bound version via `udmGetTypeConfig` and
+      writes it in place). Changes then roll out through the existing
+      publish flow; `_create_draft_copy` already copies blobs forward.
+      Outcome: a half-finished target binding can sit in a draft without
+      affecting live sync behavior until published. — plugin tabs are now
+      mounted with `configVersionId={draft.version_id}` (the draft, not
+      `udmGetTypeConfig`'s bound-published version); `_create_draft_copy`
+      already copied blobs forward, confirmed unchanged.
+- [x] Restrict `PUT /config-versions/{id}/tab-configs/{tab_id}/` to draft
+      versions (published versions are immutable everywhere else); keep GET
+      working for any version. Outcome: the immutability invariant of
+      published versions holds again for every part of a config version. —
+      `api_configs.py::put_type_editor_tab_config` now 400s unless
+      `version.status == DRAFT`; GET unchanged.
+      `test_type_editor_tabs.py::test_put_rejects_non_draft_version`.
+- [x] Runtime consumers (`mark_sync` target validation, `derived_state`
+      `target_unavailable`) must read the tab config of the entity's type's
+      **bound published** version — verify and test this explicitly now that
+      draft and published blobs can differ. (Audit note:
+      `_target_bound_to_entity_type` in `sync_core/models.py` currently reads
+      the **entity's own** `config_version_id`, i.e. the version the entity
+      was migrated to — entities lagging behind the type's bound version see
+      stale target bindings.) Outcome: publishing a binding change takes
+      effect for **all** entities of the type at once, not per-entity as
+      they happen to be migrated; draft edits never leak into runtime. —
+      `_target_bound_to_entity_type` now resolves
+      `entity.user_defined_model_type.field_config` →
+      `ConfigVersion.objects.filter(config=..., status=PUBLISHED)`, both
+      `compute_derived_state` and `mark_sync` go through it unchanged.
+      `test_mark_sync.py::TargetBoundToEntityTypeTests` (entity lagging on an
+      archived version still reads the newly-published binding).
+
+#### 13.2 Field binding
+
+*Why:* the only tab config today is `target_keys` — there is no way to say
+what a remote property is filled from. `sync_caldav`/`sync_ical` `push()`
+hardcode `effective.get("title"/"location"/"start"/"end")`, which (a) forces
+every type that syncs to shape its effective object to those exact key
+names, and (b) broke conceptually when Step 10 removed Event's `start`/`end`
+data fields. The binding config was always planned (§5.1) but deferred;
+these items model it. The three source kinds cover the three real cases:
+policy-computed values (coalesced overrides), plain stored values that need
+no policy involvement, and derived text that is neither (e.g. a DESCRIPTION
+assembled from an HTML/markdown field plus links).
+*Intended outcome:* a type's admin can wire `SUMMARY ← effective.title`,
+`LOCATION ← room` (data field), `DESCRIPTION ← {{ template }}` per target
+plugin, and the pushed payload follows that wiring — no rego or Python
+changes needed to sync a new type.
+
+- [x] Binding config schema per plugin: an ordered map
+      `remote_property → source`, where a source is one of
+      `{"effective": "<key>"}` (key into the policy's `effective` object),
+      `{"field": "<data_field_slug>"}` (raw entity field value), or
+      `{"template": "<jinja>"}` (mailtemplate-engine string rendered with
+      the `effective` / `entity` / `linked` / `backlinks` / `sync` context —
+      e.g. building a DESCRIPTION from an HTML/markdown field). Default
+      resolution when both are plausible: effective key first, data-field
+      fallback — so types without an effective-producing policy still sync,
+      and a policy can override any bound field simply by publishing the
+      key. — `sync_core/binding.py::BindingSource` (pydantic, `extra=forbid`,
+      exactly-one-of validator); template source reuses
+      `mailtemplates.render_string`/`jsonify_context` (sandboxed Jinja, no
+      new env). Only `effective`/`field`/`template` context is wired for
+      templates so far — `linked`/`backlinks`/`sync` context deferred (no
+      caller need yet; `resolve_binding_value` is the single place to extend
+      when one shows up).
+      **Decision:** target selection stays on the existing `sync_targets`
+      tab (unchanged, already tested); each plugin registers its own tab
+      (`sync_caldav`, `sync_ical`, `sync_pretix` — tab id == Django app
+      label) holding only `{"bindings": {...}}`. Simpler and lower-risk than
+      merging target selection into per-plugin schemas; `sync_webhook`
+      registers no tab per §5.1 (payload is always effective JSON).
+      `sync_core/tests/test_binding.py::ResolveBindingsTests`.
+- [x] Resolve bindings at **snapshot time** (`mark_sync`), not push time:
+      `synced_payload` stores the already-resolved remote-property map.
+      Reasoning: this preserves 4.2's deliberate snapshot semantics — the
+      worker stays dumb, retries are safe, and `synced_payload` remains
+      literally what was sent (auditable). Resolving at push time would
+      re-introduce policy evaluation into the worker and make retried
+      pushes diverge from what was approved at marking time. —
+      `sync_core/models.py::resolve_synced_payload(target, entity_id,
+      effective)`: looks up the target's plugin tab config on the entity
+      type's bound published version (reusing the §13.1 published-version
+      resolution), resolves `bindings` if present, else returns raw
+      `effective` verbatim (types without a bindings tab configured yet, and
+      `sync_webhook`, keep working unchanged). Called from `mark_sync` in
+      place of the old `effective if effective is not None else {}` line.
+      `test_binding.py::MarkSyncBindingIntegrationTests
+      ::test_mark_sync_stores_resolved_bindings_not_raw_effective`.
+- [x] Replace the hardcoded `effective.get("title"/"location"/"start"/"end")`
+      reads in `sync_caldav`/`sync_ical` `push()` (and the pretix
+      name/date mapping) with the resolved bound values; each plugin's tab
+      schema declares its remote property list (DTSTART, DTEND, SUMMARY,
+      LOCATION, DESCRIPTION, …; webhook keeps payload = effective JSON,
+      binding only selects URL/auth, per §5.1 — receivers adapt, so webhook
+      needs no property mapping). Outcome: plugins consume
+      `synced_payload[<remote property>]` and know nothing about field
+      slugs or effective-object conventions. — `sync_caldav/models.py::push`
+      and `sync_ical/models.py::_build_vevent` now read
+      `payload.get("SUMMARY", payload.get("title"))` etc. (canonical key
+      first, legacy key fallback, so unbound types keep working);
+      `sync_pretix` needed no change — its remote-property names
+      (title/start/end/locale/max_participants) already matched the legacy
+      keys 1:1. Caveat: pretix `prices` is not a bindable remote property
+      (per this item's own note) — noted inline in
+      `sync_pretix/models.py::push`, only reachable via the legacy
+      raw-effective path today.
+- [x] `recompute_staleness` compares against the same resolved binding
+      output, so a change in any bound source (including template inputs
+      and timeslot children) marks the item stale. Reasoning: staleness
+      must answer "would a re-push change the remote?" — that is only
+      answerable on the resolved payload, not on the raw effective object,
+      once bindings/templates transform it. — `recompute_staleness` now
+      calls `resolve_synced_payload(item.sync_target, entity_id, effective)`
+      per item (bindings can differ by target) before comparing, instead of
+      diffing raw `effective` against `synced_payload` directly — this was
+      the asymmetry trap flagged during planning (mark_sync resolving but
+      staleness not would have marked every bound item permanently stale).
+      `test_binding.py::MarkSyncBindingIntegrationTests
+      ::test_recompute_staleness_compares_resolved_payloads` covers the
+      not-stale / stale-on-bound-change / not-stale-on-unbound-key cases.
+- [x] Frontend: extend `SyncTargetsTab` (or per-plugin components) with a
+      binding table editor (remote property, source kind, key/slug/template);
+      JSON fallback continues to cover plugins without a dedicated component.
+      Outcome: bindings are editable without knowing the JSON blob shape;
+      a backend-only plugin is still fully configurable via the fallback. —
+      `type-editor-tabs/BindingsTab.tsx`: a table editor (remote property /
+      source kind select / key-slug-template input) shared by
+      `sync_caldav`/`sync_ical`/`sync_pretix` (identical `{"bindings":
+      {...}}` config shape, only the suggested remote-property list — a
+      `<datalist>` — differs per tab id); registered in
+      `type-editor-tabs/registry.ts`. `sync_webhook` still has no tab
+      (registers none, per §5.1) and falls through to `JsonTabFallback` if
+      one is ever added without a dedicated component.
+
+#### 13.3 Timeslots → calendar entries
+
+*Why:* Step 10 moved all scheduling onto Timeslot submodel children — an
+Event has a *list* of (start, end) pairs, but the sync data model still
+assumes one remote VEVENT per (entity, target) with a single `remote_uid`.
+Collapsing the list into one effective start/end (min/max or first slot)
+would misrepresent multi-slot events (setup + talk + teardown would appear
+as one long block). Decision: fan out.
+*Intended outcome:* a remote CalDAV/iCal calendar shows exactly the
+timeslots an Event has — one VEVENT per slot, appearing/moving/disappearing
+as slots are created, edited, or deleted — while sync state, staleness, and
+the audit snapshot keep working per (entity, target) as before.
+
+- [x] Binding sources may target a **submodel field spec**
+      (e.g. `{"submodel": "timeslots", "start": "start", "end": "end"}`);
+      when bound, push fans out to **one remote VEVENT per timeslot child**,
+      with a per-slot remote uid (entity uid + child node id — stable across
+      edits of a slot, so moving a slot updates its VEVENT instead of
+      recreating it). — `sync_core/binding.py::SubmodelSpec` +
+      `resolve_submodel_slots` (enumerates `UserDefinedModelEntityNode`
+      children the same way `api_entities.py`'s calendar endpoint does,
+      isoformats datetime field values); `resolve_deep` recognizes a
+      `SubmodelSpec`-shaped dict the same structural way it recognizes
+      `BindingSource`, so a plugin's tab schema just declares a `submodel:
+      SubmodelSpec | None` field (`sync_caldav`/`sync_ical`'s
+      `type_editor_tab.py`) and gets it resolved into
+      `payload["submodel"]` — a list of `{child_id, start, end}` — for
+      free, no sync_core awareness of the plugin's schema needed. Per-slot
+      uid is `f"{entity_id}-{child_id}"`, formed by the plugin at push
+      time, not stored anywhere.
+- [x] Slot lifecycle: **not** a diff-against-previous-snapshot — each push
+      re-derives the full fresh slot list from `payload["submodel"]` and
+      reconciles directly against *live remote state* (iCal: the parsed
+      .ics file's existing VEVENTs; CalDAV: `calendar.events()`), dropping
+      anything under the entity-id-prefixed uid that isn't in the fresh set
+      before (re)adding every fresh slot. This sidesteps needing the
+      previous synced_payload (already overwritten by mark_sync by push
+      time, per §4.2) — the remote itself is the source of truth for
+      "what to remove". `remote_uid` (the single-VEVENT-per-item column) is
+      simply unused in fan-out mode; the item row stays one-per-(entity,
+      target), only the remote/payload representation becomes a list.
+      Outcome: a removed timeslot deletes its remote entry — the remote
+      never accumulates orphaned VEVENTs from deleted slots; a moved slot
+      updates its existing VEVENT in place (same uid) rather than
+      duplicating.
+- [x] Tests: `sync_core/tests/test_binding.py::ResolveSubmodelSlotsTests`
+      (child enumeration, ordering, optional `end`, `resolve_deep`
+      dispatch), `sync_ical/tests.py::IcalCalendarSyncItemFanOutPushTests`
+      (one VEVENT per slot, removed-slot deletion, moved-slot update
+      in-place, doesn't touch other items' VEVENTs),
+      `sync_caldav/tests.py::CalDAVSyncItemFanOutPushTests` (same, plus
+      tolerating an `events()` listing failure without aborting the push).
+      Draft-only PUT enforcement / publish-rolls-forward / runtime-reads-
+      published-blob / binding resolution / snapshot immutability were
+      already covered by §13.1/§13.2's tests and are unaffected by this
+      addition (the new `submodel` key rides the same
+      `resolve_synced_payload` path).
+- [x] Frontend hint: `BindingsTab.tsx` (shared by sync_caldav/sync_ical) —
+      a "Multiple VEVENTs per entity" section explaining that a single
+      effective/field/template source only ever produces one value, so
+      fanning out requires the submodel spec below instead of trying to
+      bind DTSTART/DTEND directly; a checkbox + three plain-text inputs
+      (submodel field slug, start field slug, optional end field slug) edit
+      `submodel`, and the DTSTART/DTEND rows visibly disable/explain
+      themselves while fan-out is on. `PretixBindingsTab.tsx` gets the
+      converse hint — sync_pretix intentionally does **not** get this
+      fan-out (a subevent is one span, not a list of remote objects); it
+      points at Step 15's decision to compute `start`/`end` as
+      timeslot min/max in rego instead.
+
+### Step 14 — sync_pretix: dynamic parent event + item/variation bindings (2026-08-09)
+
+*Why:* §13.2 only bound sync_pretix's flat subevent fields
+(title/start/end/locale/max_participants); which Pretix **event** a type's
+entities create subevents under, and which ticket products/variations get
+price overrides, were still the static, per-target-admin-configured
+`PretixSyncTargetAreaAssociation` (event slug + 6 fixed
+`ticket_product_*_id` fields) from Step 6/11 — the "configure everything in
+one place, no admin-managed assignments" story §13.1 established for tab
+placement never reached sync_pretix's actual sync targets. This step closes
+that gap and retires the association model entirely (not deprecates — the
+`sync_pretix_areas` management command and its apiv1-`ProposalArea`-driven
+backfill are gone too, since nothing populates the removed model).
+
+**Decisions made interactively, in order:**
+- Picture upload is out of scope (skipped from the original plan sketch).
+- `title`/`start`/`end`/etc. stay bound the same way as §13.2 — the
+  subevent's title/name comes from the existing `title` field binding, not
+  a separate concept.
+- Items/variations are matched by **either** a Pretix numeric ID or a
+  display name (case-insensitive, matched against the live Pretix item
+  list at push time) — reusing the existing `_resolve_item_id` convention.
+- `parent_event` is **mandatory for syncing** (a type with none configured
+  just doesn't sync yet — `push()` is a silent no-op, not an error) but
+  **never blocks saving** the tab config — the schema always requires the
+  key be present (a `BindingSource` dict), but its string *value* can be
+  empty; an empty/unresolved value is ignored at sync time, not rejected at
+  save time. Same rule for item bindings' `item` field.
+- Item bindings dropped the "override price" / "include in quota" opt-in
+  checkboxes the first draft had: every item binding is *always* a price
+  override (its resolved value can still come back empty/None, in which
+  case no override is sent — but the row itself is unconditional) and
+  *always* part of the subevent's shared quota — the item bindings list
+  *is* the quota membership, full stop.
+- Field bindings (the closed, per-plugin-known remote-property set) get no
+  add/remove UI in any binding tab (sync_caldav/sync_ical/sync_pretix
+  alike) — every known property is always shown as a fixed row; leaving a
+  row blank is normal, not an error, and is ignored at sync time.
+- `PretixSyncTargetAreaAssociation` (model, admin inlines, the 6
+  `ticket_product_*_id` fields, `PRICE_PROPERTY_MAP`) removed outright,
+  along with the `sync_pretix_areas` management command that populated it
+  from apiv1 `ProposalArea`/Pretix item names. A data migration backfills
+  `remote_identity` for any pre-existing `PretixSyncItem` rows that already
+  had a `subevent_slug`, so already-synced items keep working without a
+  re-push.
+
+- [x] `sync_core/binding.py::resolve_deep` — recursively resolves any
+      `BindingSource`-shaped dict nested inside a plugin's tab config
+      (detected structurally: validates as `BindingSource` iff it does),
+      leaving sibling literals untouched. Lets sync_pretix nest a binding
+      inside `items: [{"item": ..., "price": {"effective": ...}, ...}]`
+      without `sync_core` knowing sync_pretix's schema.
+      `sync_core/tests/test_binding.py::ResolveDeepTests`.
+- [x] `sync_core/models.py::resolve_synced_payload` generalized: resolves
+      the whole tab config dict (not just its `bindings` sub-key) via
+      `resolve_bindings` (flat map) + `resolve_deep` (everything else) —
+      caldav/ical are unaffected (they only have `bindings`), sync_pretix's
+      `parent_event`/`items` ride the same mechanism for free.
+- [x] `PretixSyncItem.remote_identity` (new JSONField):
+      `{organizer_slug, event_slug, subevent_id}` pinned at first
+      successful push. `_resolved_organizer_slug`/`_resolved_event_slug`
+      read it uniformly — `pull_update`/`delete_remote`/`item_admin_url`
+      all go through these, never re-resolving `parent_event`. Migration
+      `0003_backfill_remote_identity` populates it for pre-existing pushed
+      items before `0004` drops the association model/field.
+      `compute_drift` surfaces a `parent_event` `PropertyDiff` when the
+      freshly-resolved value disagrees with the pinned one — the intended
+      "tell the admin, don't move the subevent" outcome.
+      `sync_pretix/tests.py::PretixSyncItemComputeDriftTest
+      ::test_surfaces_parent_event_mismatch`,
+      `PretixSyncItemBindingsPushTest
+      ::test_identity_pinned_does_not_move_on_later_parent_event_change`.
+- [x] `push()` split into the single bindings-only path (the old
+      area-association `_push_legacy` path is deleted, not just
+      superseded): skips silently (`return`, no exception, no status
+      change) when `parent_event` is empty/unresolved and no subevent
+      exists yet; otherwise creates/patches the subevent from resolved
+      `bindings`, resolves `item_price_overrides`/`variation_price_overrides`
+      and quota `items`/`variations` from `payload["items"]` via
+      `_resolve_item_and_variation` (item-list lookup, then variation
+      lookup within the resolved item's inline `variations` — confirmed via
+      pretix API docs: `value` is the variation display-name field, not
+      `name`). `_create_or_update_quota` now takes `organizer_slug`/
+      `event_slug` directly (no `association`/`target` objects) and both
+      an item-id list and a variation-id list (confirmed via pretix docs:
+      quotas have separate `items`/`variations` arrays).
+      `sync_pretix/tests.py::PretixSyncItemPushTest`,
+      `PretixSyncItemBindingsPushTest`.
+- [x] `PretixSyncTargetAreaAssociation` and its admin inline deleted;
+      `sync_pretix_areas` management command + its test deleted;
+      `debug-quick-setup.sh`/`delete-everything-and-restart.sh` no longer
+      call it. `PretixSyncItemAdmin` list/search fields drop
+      `area_association`.
+- [x] Frontend: `PretixBindingsTab.tsx` (dedicated, not shared with
+      `BindingsTab.tsx` — schema diverges). Field bindings (title/start/
+      end/locale/max_participants) are fixed rows, no add/remove. Parent
+      event is a single always-shown required-for-syncing (not
+      required-for-saving) source editor. Item/variation bindings are the
+      one genuinely open-ended list in this tab (arbitrary Pretix
+      products), so it keeps add/remove — each row is item/variation
+      (free text, ID-or-name) + an always-shown price source, no opt-in
+      checkboxes. Every edit auto-saves on blur/change; local state applies
+      immediately regardless of whether the network PUT proceeds, so
+      "empty required field" never makes a button look unresponsive (this
+      was an actual bug caught mid-implementation — a blocking validator
+      skipped the local state update too, not just the network call).
+      Native `styles.btn` buttons throughout, not PrimeReact `Button` (see
+      Step 13's own postscript on why).
+- [ ] Rego reimplementation of `PretixPricingConfiguration`'s price
+      calculation + a UDM bundle wiring a real type to `sync_pretix`
+      bindings against concrete Pretix products (`Kursbuchung`/`Kursbuchung
+      Unternehmen` and their variations) — requested but not started this
+      pass; substantial enough (policy authoring + bundle config) to scope
+      separately.
+
+### Step 15 — sync_pretix pricing: rego reimplementation + real-product bundle
+
+*Why:* Step 14 wired sync_pretix's `items` bindings to arbitrary
+`{"effective": "<key>"}` price sources, but nothing produces those keys
+outside Python: `PretixPricingConfiguration.get_calculated_prices()`
+(`backend/sync_pretix/models.py:850-893`) computes the six course prices,
+and `CalculatedPrices.clean()` (`models.py:1017-1049`) only auto-populates
+them from an `apiv1.Proposal` via `CalculatedPrices.event`
+(`models.py:975-1008` — `duration_hours`/`max_participants`/
+`material_cost`/`is_basic_course` are all read off `self.proposal`). That
+ties pricing to the app Step 12 removes, and it's Python, not policy — a
+UDM type has no way to get these six numbers into its `effective` object
+today. This was flagged but explicitly deferred at the end of Step 14
+("requested but not started this pass"). *Intended outcome:* a UDM type can
+compute all six course prices from its own data fields via a rego policy,
+and a ready-to-import bundle demonstrates that policy wired to
+`sync_pretix` bindings against the two real Pretix products in production
+use today — no apiv1 involvement anywhere in the path.
+
+- [x] Rego port of the six formulas in
+      `PretixPricingConfiguration` (`models.py:721-848`), each producing one
+      `effective` key: `effective.price_member_regular` ((duration ×
+      (workshop_rate + lecturer_rate) + lecturer_rate × prep_hours) ×
+      (1 + vat_rate) / min_participants + material_cost, ceil'd to whole
+      euros), `effective.price_member_discounted` (same with workshop_rate ×
+      (1 − discount_rate)), `effective.price_guest_regular` (same with
+      + guest_surcharge, and per `get_guest_discounted_price`'s comment at
+      `models.py:803` this value is also what "guest discounted" uses —
+      i.e. `effective.price_guest_discounted` should equal
+      `effective.price_member_regular`, not a separate guest+discount
+      formula; preserve that quirk, it matches the documented pricing
+      sheet, don't "fix" it), `effective.price_business` (guest-regular's
+      pre-surcharge base, ceil'd, then × (1 + business_surcharge), ceil'd
+      again per `get_business_net_price`'s double-round at
+      `models.py:828-841`), `effective.price_internal_training` (just
+      `material_cost`, per `get_internal_training_price` at
+      `models.py:843-848`). `workshop_rate` selects
+      `workshop_rate_basis`/`workshop_rate_regular` on `is_basic_course`
+      (`models.py:721-726`); `min_participants` applies the threshold-deduction
+      table (`get_min_participants`, `models.py:710-719`: highest
+      `threshold <= max_participants` wins, `max_participants − deduction`,
+      floored at 1; default table `{0: 1, 7: 2}` —
+      `default_min_participants_params`, `models.py:39-45`).
+      Implemented in `documentation/configuration/policies/event.rego`
+      (appended after the existing `effective["title"]` rules), reproducing
+      the exact `_business_base`/double-ceil quirk and the
+      `price_guest_discounted == price_member_regular` quirk verbatim.
+      Numerically verified against `opa eval` and the Django test suite (see
+      tests item below) with `duration_hours=1.5, material_cost=3.0,
+      max_participants=8, is_basic_course=True` → 17/16/20/17/32/3.00.
+- [x] `duration_hours`, `material_cost`, `max_participants`,
+      `is_basic_course` become plain data fields on a UDM type (not
+      `apiv1.Proposal` properties as in `CalculatedPrices.duration_hours`/
+      `.material_cost`/`.max_participants`/`.is_basic_course`,
+      `models.py:981-1008`) — the rego rules read
+      `input.entity.fields.<slug>.value` the same way `event.rego`'s
+      existing rules read `title_override`/`origin`, not a Python-side join.
+      Added to the **Event** type's field config in
+      `documentation/configuration/UDM_BUNDLE.json` (`float`/`float`/
+      `integer`/`boolean`, sort_order 7-10) — the same type that already
+      carries the `timeslots` submodel_list (Step 10, §6.1) these rules
+      also read for `effective.start`/`effective.end` (see below).
+- [x] Open decision, resolved for this example bundle as option (a):
+      the seven pricing constants (`prep_hours`, `lecturer_rate`,
+      `workshop_rate_basis`, `workshop_rate_regular`, `guest_surcharge`,
+      `discount_rate`, `business_surcharge`, `vat_rate`) plus
+      `min_participants_params` are hardcoded as rego constants
+      (`_prep_hours` etc.) directly in `event.rego`, matching the current
+      model defaults (`models.py:39-45`, `599-674`). Trade-off accepted
+      as-is: a rate change now needs a policy edit + republish, and admins
+      lose the `PretixPricingConfiguration` Django-admin editing UX for
+      this bundle's type specifically (the Django model/admin itself is
+      untouched — see the last open decision below). Option (b) — a
+      `data.*`-readable settings surface — remains open for whoever wires
+      this against a live pricing admin; not attempted here since the
+      rego contract docs don't yet define a `data.*` import convention for
+      policies.
+- [x] A new example bundle: rather than a separate JSON file, the pricing
+      fields and policy were folded into the existing **Event** type
+      (`documentation/configuration/UDM_BUNDLE.json`, `documentation/
+      configuration/policies/event.rego`) since it already carries the
+      `timeslots` submodel_list these rules also consume — see the
+      `duration_hours`/`material_cost`/`max_participants`/
+      `is_basic_course` fields and the pricing rules appended to
+      `event.rego` after `effective["title"]`. Verified importing cleanly
+      via `import_bundle_bytes` against the real
+      `documentation/configuration/` directory (25 policies, 5 configs).
+      Note that `TypeEditorTabConfig` rows are per-`ConfigVersion` runtime
+      state (created via the UDM Admin PUT endpoint / admin,
+      `backend/userdefinedmodel/models.py`), not part of the bundle import
+      schema (`backend/userdefinedmodel/api_bundle.py` has no
+      `type_editor_tab_configs` import path) — a bundle file alone cannot
+      express it, and `import_bundle` replaces `TypeEditorTabConfig` rows
+      with blank stubs on every re-import (it creates a fresh
+      `ConfigVersion` each run). The Event type's `sync_pretix` tab was
+      wired to the five Kursbuchung variations + one Kursbuchung
+      Unternehmen entry by hand against the dev DB after import (via
+      `TypeEditorTabConfig.objects` — the same shape
+      `PretixRegoPricingBindingsIntegrationTest`, below, exercises), and
+      that manual step needs repeating after every `import_bundle` run
+      until this gets a proper seed/migration path.
+- [x] Tests: `PretixRegoPricingPolicyTests.test_prices_match_documentation_example`
+      (`backend/sync_pretix/tests.py`) reproduces
+      `PretixPricingConfigurationTests::test_calculated_prices_match_documentation_example`
+      numerically through the real policy engine (`evaluate_policy`) —
+      `duration_hours=1.5, material_cost=3.0, max_participants=8,
+      is_basic_course=True` → `price_member_regular == 17`,
+      `price_member_discounted == 16`, `price_guest_regular == 20`,
+      `price_guest_discounted == 17`, `price_business == 32`,
+      `price_internal_training == 3.0`. `PretixRegoPricingBindingsIntegrationTest`
+      covers the items-list wiring: `resolve_bindings` against those six
+      `effective.price_*` keys produces the five Kursbuchung variation
+      prices + one Kursbuchung Unternehmen price, matching the
+      item/variation identifiers from the pasted Pretix product JSON
+      (164/165), excluding the legacy 158/159 items entirely.
+- [x] `effective.start`/`effective.end` (matching the field names
+      sync_pretix's existing `bindings` map already binds `start`/`end` to
+      per §13.2) computed as MIN/MAX over the entity's `timeslots`
+      submodel children, not per-timeslot: `event.rego` walks
+      `input.entity.children.timeslots` (the same doc shape §13.3's
+      `resolve_submodel_slots` reads server-side, mirrored here for the
+      policy engine's own input document — see `_walk_doc_nodes`/
+      `children` in `backend/userdefinedmodel/engine.py`), parses each
+      child's `start`/`end` via `time.parse_rfc3339_ns`, and reduces to
+      `min()`/`max()` formatted back via `time.format`. This is *why*
+      sync_pretix does not get Step 13.3's per-timeslot fan-out: a Pretix
+      subevent is one span, not a list of remote objects, so instead of
+      fanning out like caldav/ical, sync_pretix collapses every timeslot
+      into one subevent covering the full range from the earliest slot's
+      start to the latest slot's end.
+      `PretixRegoPricingPolicyTests.test_start_end_are_true_min_max_across_timeslots_not_first_last`
+      covers exactly this: three timeslots added out of chronological order
+      (middle-by-creation slot has the earliest start) assert the true
+      min/max, which a naive first/last-slot implementation would get wrong.
+- [ ] Open decision, not resolved here: whether
+      `PretixPricingConfiguration`/`CalculatedPrices` (`models.py:590-1053`,
+      apiv1-`Event`/`Proposal`-linked) get deleted once this rego path
+      lands, or coexist as a legacy admin-editable fallback. Likely needs
+      sequencing against Step 12 (apiv1 removal) — `CalculatedPrices.event`
+      is an FK to `apiv1.Event`, so it cannot survive apiv1's removal
+      unmodified regardless of what this step decides; note the dependency
+      here rather than resolving it.
+- [x] Per-value overrides + an effective-values summary, added after the
+      initial rego port on user request: `max_participants_override`,
+      `min_participants_override`, and one `..._override` field per
+      `price_*` key (all on the Event type, `UDM_BUNDLE.json`) — same
+      coalescing pattern as `title_override` (§1.3): the override field
+      wins when set, otherwise the computed value, via paired
+      `effective["x"] := v if { v := ...; ... != null }` /
+      `effective["x"] := <formula> if { ... == null }` rules in
+      `event.rego`. `effective.max_participants` (override-or-raw-field)
+      feeds the min-participants threshold table so overriding max also
+      re-derives min (unless min itself is overridden), and every price
+      formula reads `_min_participants`/effective max/min rather than the
+      raw fields directly, so a max/min override reflows every calculated
+      price too — `price_guest_discounted`'s override still wins over its
+      member-regular reuse. A new `pricing_summary` markdown_display field
+      (`type_config.template`, same rendering mechanism as the existing
+      `summary` field — §1.4) shows the effective min/max participants and
+      all six effective prices as a table, each row flagged "(Override)"
+      when the corresponding override field is set, so it always reflects
+      calculated-or-override, never just one or the other. Tests:
+      `PretixRegoPricingPolicyTests.test_price_override_wins_over_calculated_value`,
+      `.test_guest_discounted_override_wins_over_member_regular_reuse`,
+      `.test_max_participants_override_reflows_min_participants_and_prices`,
+      `.test_min_participants_override_wins_over_computed_deduction_and_reflows_prices`
+      (`backend/sync_pretix/tests.py`).
+- [x] Real-DB wiring done this pass (events-and-sync.md's own dev
+      instance, not just tests): `import_bundle` run for real (not
+      `--dry-run`), then the Event type's published `ConfigVersion`'s
+      `sync_pretix` `TypeEditorTabConfig` was set by hand to the
+      `bindings`/`parent_event`/`items` shape described above (`parent_event`
+      is a placeholder `{"template": "kurse-2026"}` — no real Pretix
+      organizer/event exists in dev, an operator must replace it with a
+      real slug or a policy-driven template before this can actually push).
+- [x] Sync trigger + status workflow, added after the above on user
+      request ("add a workflow like flows.py for the event, sync when it
+      goes into status published"): a new **Event Lifecycle Workflow**
+      (`UDM_BUNDLE.json`, id `7e1104d4-1d4a-4ade-b9b1-4c49a63d4b92`) ported
+      from `apiv1/flows.py`'s `EventFlow`, bound to a new `status` workflow
+      field on the Event type. States: draft/proposed/planned/published/
+      confirmed/completed/canceled/archived (no separate "rejected" —
+      `reject` folds `proposed` straight into `canceled`, a simplification
+      made while editing the workflow live in UDM Admin's workflow editor
+      after the initial import, then captured back into the bundle
+      verbatim per a follow-up "take the current workflow from the running
+      dev DB and put it into the bundle" request). Transitions: submit,
+      approve, reject, publish, confirm, complete, plus per-source-state
+      `cancel_planned`/`cancel_published`/`cancel_confirmed` and
+      `archive_canceled`/`archive_completed` — enumerated per source state
+      rather than one wildcard `cancel`/`archive`, because
+      `WorkflowTransition.name` must resolve uniquely per workflow version
+      (`execute_transition` does a `.get(version=, name=)`), so apiv1's
+      multiple same-named `cancel`/`archive` sources (viewflow FSM
+      decorators) can't collapse into a single UDM transition; naming them
+      per source state is the actual equivalent, not a `from_state: null`
+      wildcard. Also simplified vs. apiv1: every transition is staff-only
+      via one blanket `event.rego` rule instead of apiv1's per-transition
+      permission classes, and no auto-publish-on-approve or date-window
+      conditions (`CONFIRM_WINDOW_DAYS`, `_event_has_passed`).
+
+      The sync trigger, and a manual re-sync added on a follow-up request
+      ("we need a transition from any state to retrigger sync, which
+      should only do something in published, confirmed and completed
+      states" — implemented as three self-loop transitions,
+      `resync_published`/`resync_confirmed`/`resync_completed`, since a
+      `WorkflowTransition` always targets one fixed `to_state`, so a
+      single "any state, stay put" transition isn't representable — a
+      state without a `resync_<state>` self-loop simply has no such
+      button, which is why sync is scoped to those three and not literally
+      every state): `event.rego` adds `actions contains {"type":
+      "mark_sync", "phase": "post", "target": "pretix-test", "status":
+      "pending"} if input.action == "transition"; input.field == "status";
+      input.transition in {"publish", "resync_published",
+      "resync_confirmed", "resync_completed"}` — gated on the *transition
+      name*, not `input.entity.fields.status.value`, because
+      `execute_transition` (`backend/userdefinedmodel/engine.py`)
+      evaluates the policy (freezing its `actions` set) BEFORE writing the
+      new workflow state, so the entity's own field would still read the
+      OLD status at evaluation time; the transition name is available
+      immediately via `input.transition`. `mark_sync`'s own
+      `get_or_create` on `(entity, target)` (`sync_core/models.py`) means
+      every one of these firings updates the same `SyncBaseItem` in place
+      — a fresh `synced_payload` snapshot and `status` reset to `pending`
+      — never creates a second row, whether triggered by `publish` or any
+      `resync_<state>`. Verified against the real dev DB (not just a
+      test): `submit` → `approve` → `publish` on a fresh Event entity
+      created exactly one `pending` `SyncBaseItem` against `pretix-test`
+      (`submit`/`approve` alone created none), and firing
+      `resync_published` again on an already-published, already-synced
+      entity kept the same `SyncBaseItem` id and just flipped its status
+      back to `pending`.
+- [x] Three real bugs found and fixed while verifying the above against a
+      real Pretix instance end-to-end (not just against mocks — the
+      existing test suite never caught any of these because every push
+      test constructs its `SyncItem`/`SyncTarget` directly, bypassing
+      `mark_sync()`'s creation path and `push_pending_sync_items()`'s
+      query entirely):
+      - `mark_sync()` (`sync_core/models.py`) always created a bare
+        `SyncBaseItem` through the base manager, never the plugin's
+        concrete subclass (`PretixSyncItem` etc.) — `push()` is only
+        implemented on the subclasses, so every real mark_sync-triggered
+        item was permanently stuck, `push()` raising "does not implement
+        push()" only once a worker actually got around to it. Fixed via a
+        new `SyncBaseTarget.sync_item_model()` classmethod, overridden by
+        every plugin's Target class, that `mark_sync()` now creates
+        through instead of the bare base manager.
+      - `push_pending_sync_items()` (`sync_core/tasks.py`) used
+        `select_related("sync_target")`, which — django-polymorphic only
+        downcasts through its own manager, not a `select_related` JOIN —
+        handed plugin `push()` code a bare `SyncBaseTarget` missing every
+        subclass field (`'SyncBaseTarget' object has no attribute
+        'organizer_slug'`). Fixed by dropping it; lazy FK access downcasts
+        correctly.
+      - `_resolve_binding_quota_members` (`sync_pretix/models.py`) added
+        only a variation's own id to the quota's `variations` list, never
+        its parent item's id to `items` — Pretix rejects that
+        ("Alle Varianten müssen zu einem Produkt gehören, das auch in der
+        Liste der Produkte enthalten ist."). Fixed to always include the
+        (deduplicated) parent item id alongside any bound variation id.
+      Also: the dev DB's `sync_pretix` migrations 0002-0004 (adding
+      `remote_identity`, dropping the old area-association tables) had
+      never actually been applied there — `manage.py migrate` fixed it —
+      and the dev instance's `locale` binding (`"de"`) didn't match the
+      real target Pretix event's actual locale (`"de-informal"`), corrected
+      on the live `TypeEditorTabConfig`.
+- [x] `mark_sync()` now also triggers an actual push, not just a status
+      flip: `sync_core/tasks.py`'s new `enqueue_push_if_idle()` queues
+      `push_pending_sync_items_task` (best-effort, swallows broker errors —
+      `mark_sync()` must never fail because of it) every time `mark_sync()`
+      marks an item `pending`, debounced via a 60s cache lock cleared at
+      the START of the task's own run (so a `mark_sync()` firing while a
+      push is already in flight still queues a follow-up once that flight
+      finishes, rather than being silently dropped by the debounce).
+      Added because `mark_sync()` previously only ever flipped status to
+      `pending` and relied entirely on `CELERY_BEAT_SCHEDULE`'s 10-minute
+      tick to actually push — invisible and confusing with no beat process
+      running at all (only a worker), which was this dev instance's actual
+      state: `publish`/`resync_*` appeared to do nothing because nothing
+      was pushing the resulting `pending` items, ever. Verified live: a
+      `resync_published` transition alone (no manual
+      `push_pending_sync_items()` call) produced a `synced` status with
+      the updated price live on Pretix within ~4 seconds.
+
 ### Step 12 — apiv1 removal (7)
 
 - [ ] Preconditions verified: no imports of `apiv1` outside `apiv1/`
       (`grep -rn "from apiv1\|import apiv1" backend/ --include=*.py`), no
       frontend calls to apiv1 endpoints, sync apps fully on `sync_core`.
+      **Audit 2026-08-09 — known remaining apiv1 importers outside `apiv1/`.**
+      Intended outcome: deleting the `apiv1` package must break nothing but
+      apiv1 itself; each importer below therefore needs its dependency moved,
+      copied, or dropped first (the generic utilities were never
+      event-specific and simply live in the wrong app):
+      - `sync_pretix`: `models.py` (`time_string_to_minutes` — copy/move the
+        helper into `sync_pretix` or `sync_core`), `tests.py`,
+        `test_sync_pretix_command.py`, `management/commands/
+        sync_pretix_areas.py` (apiv1 `ProposalArea`/`Event` fixtures —
+        rewrite against UDM entities or drop with the legacy command).
+      - `openid_user_management`: `schemas.py` imports `apiv1.schemas.
+        ErrorOut`, `api.py` imports `apiv1.api_utils.api_permission_required`
+        — move/copy these two utilities out of apiv1 (they are generic, not
+        event-related).
+      - `ipython_imports.py`: `from apiv1.models import *` — drop the line.
+      - `project/urls.py`: mounts `apiv1.api` — removed together with the app.
 - [ ] Delete the `apiv1` app: code, URLs, admin, Playwright UX tests.
 - [ ] Migrations to drop apiv1 tables (legacy event data disappears —
       accepted).

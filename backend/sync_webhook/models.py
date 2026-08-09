@@ -33,6 +33,10 @@ class SyncWebhookTarget(SyncBaseTarget):
     def __str__(self):
         return self.name
 
+    @classmethod
+    def sync_item_model(cls):
+        return SyncWebhookItem
+
 
 class SyncWebhookItem(SyncBaseItem):
     """One (entity, webhook target) sync relationship. `sequence` increments

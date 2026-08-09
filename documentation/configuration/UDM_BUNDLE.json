@@ -1370,6 +1370,26 @@
       "parent_slug": null
      },
      {
+      "slug": "status",
+      "data_type": "workflow",
+      "sort_order": 0.5,
+      "is_localized": false,
+      "is_preview": true,
+      "labels": {
+       "en": "Status",
+       "de": "Status"
+      },
+      "help_texts": {
+       "en": "Event Lifecycle Workflow (events-and-sync.md §15, ported from apiv1/flows.py EventFlow). Reaching \"published\" fires mark_sync against pretix-test (event.rego)."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "workflow_definition_id": "7e1104d4-1d4a-4ade-b9b1-4c49a63d4b92",
+      "parent_slug": null
+     },
+     {
       "slug": "title_override",
       "data_type": "text_short",
       "sort_order": 1,
@@ -1442,6 +1462,179 @@
       },
       "type_config": {
        "template": "# {{ effective.title }}\n\n{% if entity.fields.origin.value %}[View originating proposal]({{ entity.fields.origin.value | entity_url }}){% else %}*(no proposal linked)*{% endif %}"
+      },
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "max_participants_override",
+      "data_type": "integer",
+      "sort_order": 11,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Max participants (override)",
+       "de": "Max. Teilnehmerzahl (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over \"Max participants\" when set (event.rego effective.max_participants) — e.g. a venue capacity change without touching the raw estimate."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "min_participants_override",
+      "data_type": "integer",
+      "sort_order": 12,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Min participants (override)",
+       "de": "Min. Teilnehmerzahl (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over the computed threshold-deduction result when set (event.rego effective.min_participants)."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "price_member_regular_override",
+      "data_type": "float",
+      "sort_order": 13,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Price: member, regular (override)",
+       "de": "Preis: Mitglied, regulär (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over the calculated price when set."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "price_member_discounted_override",
+      "data_type": "float",
+      "sort_order": 14,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Price: member, discounted (override)",
+       "de": "Preis: Mitglied, ermäßigt (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over the calculated price when set."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "price_guest_regular_override",
+      "data_type": "float",
+      "sort_order": 15,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Price: guest, regular (override)",
+       "de": "Preis: Gast, regulär (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over the calculated price when set."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "price_guest_discounted_override",
+      "data_type": "float",
+      "sort_order": 16,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Price: guest, discounted (override)",
+       "de": "Preis: Gast, ermäßigt (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over the calculated price when set (which otherwise equals member-regular — see event.rego)."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "price_business_override",
+      "data_type": "float",
+      "sort_order": 17,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Price: business (override)",
+       "de": "Preis: Gewerbe (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over the calculated price when set."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "price_internal_training_override",
+      "data_type": "float",
+      "sort_order": 18,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Price: internal training (override)",
+       "de": "Preis: interne Fortbildung (Override)"
+      },
+      "help_texts": {
+       "en": "Wins over the calculated price (material cost passthrough) when set."
+      },
+      "type_config": {},
+      "default": null,
+      "submodel_config_version_id": null,
+      "workflow_version_id": null,
+      "parent_slug": null
+     },
+     {
+      "slug": "pricing_summary",
+      "data_type": "markdown_display",
+      "sort_order": 19,
+      "is_localized": false,
+      "is_preview": false,
+      "labels": {
+       "en": "Pricing (effective)",
+       "de": "Preise (effektiv)"
+      },
+      "help_texts": {
+       "en": "Rendered from event.rego's effective.price_*/min_participants/max_participants — calculated unless an override field above is set (events-and-sync.md §15)."
+      },
+      "type_config": {
+       "template": "**Teilnehmerzahl:** {{ effective.min_participants }}–{{ effective.max_participants }}{% if entity.fields.min_participants_override.value or entity.fields.max_participants_override.value %} _(overridden)_{% endif %}\n\n- Mitglied, regulär: {{ effective.price_member_regular }} €{% if entity.fields.price_member_regular_override.value %} _(Override)_{% endif %}\n- Mitglied, ermäßigt: {{ effective.price_member_discounted }} €{% if entity.fields.price_member_discounted_override.value %} _(Override)_{% endif %}\n- Gast, regulär: {{ effective.price_guest_regular }} €{% if entity.fields.price_guest_regular_override.value %} _(Override)_{% endif %}\n- Gast, ermäßigt: {{ effective.price_guest_discounted }} €{% if entity.fields.price_guest_discounted_override.value %} _(Override)_{% endif %}\n- Gewerbe: {{ effective.price_business }} €{% if entity.fields.price_business_override.value %} _(Override)_{% endif %}\n- Interne Fortbildung: {{ effective.price_internal_training }} €{% if entity.fields.price_internal_training_override.value %} _(Override)_{% endif %}"
       },
       "default": null,
       "submodel_config_version_id": null,
@@ -1764,6 +1957,206 @@
      "from_state": "ready",
      "from_undefined_only": false,
      "to_state": "ready",
+     "source_handle": "",
+     "target_handle": ""
+    }
+   ],
+   "virtual_node_positions": {}
+  },
+  {
+   "id": "7e1104d4-1d4a-4ade-b9b1-4c49a63d4b92",
+   "name": "Event Lifecycle Workflow",
+   "description": "Ported from apiv1/flows.py EventFlow (§15): Draft -> Proposed -> Planned -> Published -> Confirmed -> Completed -> Archived, with a Cancel side branch (edited in UDM Admin's workflow editor after the initial import — captured back into this bundle verbatim). Simplified vs. the apiv1 original: every transition is staff-only via one blanket event.rego rule instead of apiv1's per-transition permission classes; no auto-publish-on-approve or confirm/complete date-window conditions (CONFIRM_WINDOW_DAYS / _event_has_passed); no separate \"rejected\" state — reject folds proposed straight into canceled, since this demo doesn't need a distinct rejected-vs-canceled distinction; cancel/archive are per-source-state named transitions (cancel_planned/cancel_published/cancel_confirmed, archive_canceled/archive_completed) rather than a single wildcard transition — WorkflowTransition.name is unique per workflow version (execute_transition does a .get(version=, name=)), so apiv1's multiple same-named cancel/archive sources can't collapse into one transition the way viewflow's FSM decorators allowed; naming them per-source is the actual UDM equivalent, not a wildcard from_state=null.",
+   "states": [
+    {
+     "name": "draft",
+     "label": {"en": "Draft", "de": "Entwurf"},
+     "is_initial": true,
+     "position_x": 3.0001414274202034,
+     "position_y": -60.093141360124434,
+     "background_color": "#c2c2c2"
+    },
+    {
+     "name": "proposed",
+     "label": {"en": "Proposed", "de": "Vorgeschlagen"},
+     "is_initial": false,
+     "position_x": 2.7281971452271705,
+     "position_y": 191.3263186488076,
+     "background_color": "#81c1e3"
+    },
+    {
+     "name": "planned",
+     "label": {"en": "Planned", "de": "Geplant"},
+     "is_initial": false,
+     "position_x": 310.6408952187182,
+     "position_y": 193.3672431332655,
+     "background_color": "#a3b8ff"
+    },
+    {
+     "name": "published",
+     "label": {"en": "Published", "de": "Veröffentlicht"},
+     "is_initial": false,
+     "position_x": 637.30163456595,
+     "position_y": 193.3672431332655,
+     "background_color": "#6aeb36"
+    },
+    {
+     "name": "confirmed",
+     "label": {"en": "Confirmed", "de": "Bestätigt"},
+     "is_initial": false,
+     "position_x": 967.5546173895274,
+     "position_y": 193.9460040113209,
+     "background_color": "#4dd664"
+    },
+    {
+     "name": "completed",
+     "label": {"en": "Completed", "de": "Abgeschlossen"},
+     "is_initial": false,
+     "position_x": 1243.6600113686532,
+     "position_y": 195.78726354307395,
+     "background_color": "#4dd664"
+    },
+    {
+     "name": "canceled",
+     "label": {"en": "Canceled", "de": "Abgesagt"},
+     "is_initial": false,
+     "position_x": 637.4489270086747,
+     "position_y": 565.433714081418,
+     "background_color": "#f54949"
+    },
+    {
+     "name": "archived",
+     "label": {"en": "Archived", "de": "Archiviert"},
+     "is_initial": false,
+     "position_x": 1249.1294885396842,
+     "position_y": 743.8083483060801,
+     "background_color": "#8a8a8a"
+    }
+   ],
+   "transitions": [
+    {
+     "name": "submit",
+     "label": {"en": "Submit", "de": "Einreichen"},
+     "from_state": "draft",
+     "from_undefined_only": false,
+     "to_state": "proposed",
+     "source_handle": "bottom-left",
+     "target_handle": ""
+    },
+    {
+     "name": "approve",
+     "label": {"en": "Approve", "de": "Genehmigen"},
+     "from_state": "proposed",
+     "from_undefined_only": false,
+     "to_state": "planned",
+     "source_handle": "top-right",
+     "target_handle": "top-left"
+    },
+    {
+     "name": "reject",
+     "label": {"en": "Reject", "de": "Ablehnen"},
+     "from_state": "proposed",
+     "from_undefined_only": false,
+     "to_state": "canceled",
+     "source_handle": "bottom-center",
+     "target_handle": "left-top"
+    },
+    {
+     "name": "publish",
+     "label": {"en": "Publish", "de": "Veröffentlichen"},
+     "from_state": "planned",
+     "from_undefined_only": false,
+     "to_state": "published",
+     "source_handle": "top-right",
+     "target_handle": "top-left"
+    },
+    {
+     "name": "confirm",
+     "label": {"en": "Confirm", "de": "Bestätigen"},
+     "from_state": "published",
+     "from_undefined_only": false,
+     "to_state": "confirmed",
+     "source_handle": "top-right",
+     "target_handle": "top-left"
+    },
+    {
+     "name": "complete",
+     "label": {"en": "Complete", "de": "Abschließen"},
+     "from_state": "confirmed",
+     "from_undefined_only": false,
+     "to_state": "completed",
+     "source_handle": "top-right",
+     "target_handle": "top-left"
+    },
+    {
+     "name": "cancel_planned",
+     "label": {"en": "Cancel", "de": "Absagen"},
+     "from_state": "planned",
+     "from_undefined_only": false,
+     "to_state": "canceled",
+     "source_handle": "bottom-right",
+     "target_handle": ""
+    },
+    {
+     "name": "cancel_published",
+     "label": {"en": "Cancel", "de": "Absagen"},
+     "from_state": "published",
+     "from_undefined_only": false,
+     "to_state": "canceled",
+     "source_handle": "bottom-center",
+     "target_handle": "top-center"
+    },
+    {
+     "name": "cancel_confirmed",
+     "label": {"en": "Cancel", "de": "Absagen"},
+     "from_state": "confirmed",
+     "from_undefined_only": false,
+     "to_state": "canceled",
+     "source_handle": "bottom-left",
+     "target_handle": "top-right"
+    },
+    {
+     "name": "archive_canceled",
+     "label": {"en": "Archive", "de": "Archivieren"},
+     "from_state": "canceled",
+     "from_undefined_only": false,
+     "to_state": "archived",
+     "source_handle": "right-top",
+     "target_handle": ""
+    },
+    {
+     "name": "archive_completed",
+     "label": {"en": "Archive", "de": "Archivieren"},
+     "from_state": "completed",
+     "from_undefined_only": false,
+     "to_state": "archived",
+     "source_handle": "bottom-center",
+     "target_handle": "top-center"
+    },
+    {
+     "name": "resync_published",
+     "label": {"en": "Resync to Pretix", "de": "Mit Pretix neu synchronisieren"},
+     "from_state": "published",
+     "from_undefined_only": false,
+     "to_state": "published",
+     "source_handle": "",
+     "target_handle": ""
+    },
+    {
+     "name": "resync_confirmed",
+     "label": {"en": "Resync to Pretix", "de": "Mit Pretix neu synchronisieren"},
+     "from_state": "confirmed",
+     "from_undefined_only": false,
+     "to_state": "confirmed",
+     "source_handle": "",
+     "target_handle": ""
+    },
+    {
+     "name": "resync_completed",
+     "label": {"en": "Resync to Pretix", "de": "Mit Pretix neu synchronisieren"},
+     "from_state": "completed",
+     "from_undefined_only": false,
+     "to_state": "completed",
      "source_handle": "",
      "target_handle": ""
     }

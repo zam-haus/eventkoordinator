@@ -61,111 +61,29 @@ class PretixSyncTarget(SyncBaseTarget):
         max_length=255, verbose_name="Organizer Slug", help_text="Organizer Slug"
     )
 
-
-class PretixSyncTargetAreaAssociation(HistoricalMetaBase):
-    """Which Pretix event slug (+ ticket product mapping) a PretixSyncItem
-    pushes into. Previously keyed by a FK to apiv1.ProposalArea; decoupled to
-    a plain `area_code` string (events-and-sync.md §3, Step 11) since items
-    are now generic UDM entities, not apiv1 Events with a proposal.area.
-    `area_code` is set manually (e.g. matching the originating type's own
-    area/category field, if it has one) — there is no automatic derivation."""
-
-    sync_target = models.ForeignKey(
-        PretixSyncTarget,
-        on_delete=models.CASCADE,
-        related_name="area_associations",
-        null=True,
-        blank=True,
-    )
-    area_code = models.CharField(
-        max_length=100,
-        verbose_name="Area code",
-        help_text="Arbitrary key used to pick this association on a PretixSyncItem.",
-    )
-    event_slug = models.CharField(
-        max_length=255, verbose_name="Event Slug", help_text="Event Slug"
-    )
-    ticket_product_member_regular_id = models.CharField(
-        max_length=255,
-        default="Regular Member Ticket",
-        null=True,
-        blank=True,
-        verbose_name="ID or Name of Ticket Product for Members (regular)",
-    )
-    ticket_product_member_discounted_id = models.CharField(
-        max_length=255,
-        default="Discounted Member Ticket",
-        null=True,
-        blank=True,
-        verbose_name="ID or Name of Ticket Product for Members (discounted)",
-    )
-    ticket_product_guest_regular_id = models.CharField(
-        max_length=255,
-        default="Regular Guest Ticket",
-        null=True,
-        blank=True,
-        verbose_name="ID or Name of Ticket Product for Guests (regular)",
-    )
-    ticket_product_guest_discounted_id = models.CharField(
-        max_length=255,
-        default="Discounted Guest Ticket",
-        null=True,
-        blank=True,
-        verbose_name="ID or Name of Ticket Product for Guests (discounted)",
-    )
-    ticket_product_business_id = models.CharField(
-        max_length=255,
-        default="Business Ticket",
-        null=True,
-        blank=True,
-        verbose_name="ID of Ticket Product for Businesses",
-    )
-    ticket_product_internal_training_id = models.CharField(
-        max_length=255,
-        default="Interne Fortbildung",
-        null=True,
-        blank=True,
-        verbose_name="ID or Name of Ticket Product for Internal Training",
-    )
+    @classmethod
+    def sync_item_model(cls):
+        return PretixSyncItem
 
 
 class PretixSyncItem(SyncBaseItem):
     """Links a Pretix subevent to a UDM entity via a PretixSyncTarget.
 
     Pushes from `self.synced_payload` (the effective-values snapshot taken by
-    mark_sync, events-and-sync.md §4.2), not from a live model relation.
-    Documented synced_payload shape this reads:
-        {"title": str, "start": iso-string, "end": iso-string,
-         "locale": str (default "de"), "max_participants": int | None,
-         "prices": {"member_regular": "12.00", "member_discounted": ...,
-                     "guest_regular": ..., "guest_discounted": ...,
-                     "business": ..., "internal_training": ...}}
-    All keys are optional; missing ones default sanely (empty title, no
-    price overrides, no quota size cap change).
+    mark_sync, events-and-sync.md §4.2), not from a live model relation, per
+    the `sync_pretix` type-editor tab's binding config (§14): `parent_event`
+    resolves the Pretix event slug (pinned into `remote_identity` at first
+    push), `bindings` fills subevent fields (title/start/end/locale/
+    max_participants), and `items` lists ticket products/variations to push
+    price overrides and quota membership for. There is no other
+    configuration surface — no per-target admin screen assigns entities to
+    events or ticket products.
     """
 
     BASE_STATUSES: ClassVar[frozenset[str]] = SyncBaseItem.BASE_STATUSES | {"cancelled"}
 
-    PRICE_PROPERTY_MAP: ClassVar[list[tuple[str, str]]] = [
-        ("member_regular", "ticket_product_member_regular_id"),
-        ("member_discounted", "ticket_product_member_discounted_id"),
-        ("guest_regular", "ticket_product_guest_regular_id"),
-        ("guest_discounted", "ticket_product_guest_discounted_id"),
-        ("business", "ticket_product_business_id"),
-        ("internal_training", "ticket_product_internal_training_id"),
-    ]
-
     # sync_target is inherited as-is from SyncBaseItem (a plain FK to the
     # polymorphic SyncBaseTarget base) — same pattern as sync_caldav/sync_webhook.
-    area_association = models.ForeignKey(
-        "PretixSyncTargetAreaAssociation",
-        on_delete=models.DO_NOTHING,
-        null=True,
-        blank=True,
-        related_name="sync_items",
-        verbose_name="Area Association",
-        help_text="The area-to-event-slug mapping used when pushing to Pretix.",
-    )
     subevent_slug = models.CharField(
         max_length=255,
         blank=True,
@@ -183,6 +101,20 @@ class PretixSyncItem(SyncBaseItem):
             "Structure: {\"subevent\": {...}, \"quotas\": [...], \"items\": [...]}"
         ),
     )
+    remote_identity = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Remote identity",
+        help_text=(
+            "events-and-sync.md §14: {\"organizer_slug\", \"event_slug\", \"subevent_id\"} "
+            "pinned at first successful push via the parent_event binding. Every later "
+            "push/pull/delete uses this, never re-resolving parent_event — so a later "
+            "change to what parent_event resolves to does not move an already-created "
+            "subevent (see compute_drift for the surfaced mismatch). Null until the "
+            "first successful push."
+        ),
+    )
 
     def __str__(self):
         return f"PretixSyncItem(target={self.sync_target_id}, entity={self.related_entity_id})"
@@ -190,6 +122,17 @@ class PretixSyncItem(SyncBaseItem):
     @classmethod
     def allowed_statuses(cls) -> frozenset[str]:
         return cls.BASE_STATUSES
+
+    @property
+    def _resolved_organizer_slug(self) -> str | None:
+        if self.remote_identity:
+            return self.remote_identity.get("organizer_slug")
+        target = self.sync_target
+        return target.organizer_slug if target else None
+
+    @property
+    def _resolved_event_slug(self) -> str | None:
+        return self.remote_identity.get("event_slug") if self.remote_identity else None
 
     @property
     def item_admin_url(self) -> str | None:
@@ -203,14 +146,15 @@ class PretixSyncItem(SyncBaseItem):
         """
         if not self.subevent_slug:
             return None
-        association = self.area_association
         target = self.sync_target
-        if association is None or target is None:
+        organizer_slug = self._resolved_organizer_slug
+        event_slug = self._resolved_event_slug
+        if target is None or organizer_slug is None or event_slug is None:
             return None
         server_url = re.sub(r"/api/v1/?$", "", target.api_url.rstrip("/"))
         return (
-            f"{server_url}/control/event/{target.organizer_slug}"
-            f"/{association.event_slug}/subevents/{self.subevent_slug}/"
+            f"{server_url}/control/event/{organizer_slug}"
+            f"/{event_slug}/subevents/{self.subevent_slug}/"
         )
 
     def delete_remote(self) -> None:
@@ -221,21 +165,22 @@ class PretixSyncItem(SyncBaseItem):
             )
             return  # Nothing to delete remotely.
 
-        association = self.area_association
-        if association is None:
+        organizer_slug = self._resolved_organizer_slug
+        event_slug = self._resolved_event_slug
+        if organizer_slug is None or event_slug is None:
             raise ValueError(
-                f"PretixSyncItem {self.pk} has no area association; cannot delete remote subevent."
+                f"PretixSyncItem {self.pk} has no resolved event; cannot delete remote subevent."
             )
 
         target = self.sync_target
         client = PretixApiClient(api_base_url=target.api_url, token=target.api_token)
         logger.info(
             "PretixSyncItem %s: deleting remote subevent %s (event %s/%s).",
-            self.pk, self.subevent_slug, association.event_slug, target.organizer_slug,
+            self.pk, self.subevent_slug, event_slug, organizer_slug,
         )
         client.delete_subevent(
-            organizer_slug=target.organizer_slug,
-            event_slug=association.event_slug,
+            organizer_slug=organizer_slug,
+            event_slug=event_slug,
             subevent_id=self.subevent_slug,
         )
         logger.info(
@@ -254,10 +199,11 @@ class PretixSyncItem(SyncBaseItem):
             )
             return
 
-        association = self.area_association
-        if association is None:
+        organizer_slug = self._resolved_organizer_slug
+        event_slug = self._resolved_event_slug
+        if organizer_slug is None or event_slug is None:
             raise ValueError(
-                f"PretixSyncItem {self.pk} has no area association; cannot pull."
+                f"PretixSyncItem {self.pk} has no resolved event; cannot pull."
             )
 
         target = self.sync_target
@@ -265,21 +211,21 @@ class PretixSyncItem(SyncBaseItem):
 
         logger.info(
             "PretixSyncItem %s: pulling subevent %s from %s/%s.",
-            self.pk, self.subevent_slug, target.organizer_slug, association.event_slug,
+            self.pk, self.subevent_slug, organizer_slug, event_slug,
         )
         subevent = client.get_subevent(
-            organizer_slug=target.organizer_slug,
-            event_slug=association.event_slug,
+            organizer_slug=organizer_slug,
+            event_slug=event_slug,
             subevent_id=self.subevent_slug,
         )
         quotas = client.list_quotas(
-            organizer_slug=target.organizer_slug,
-            event_slug=association.event_slug,
+            organizer_slug=organizer_slug,
+            event_slug=event_slug,
             subevent_id=self.subevent_slug,
         )
         items = client.list_items(
-            organizer_slug=target.organizer_slug,
-            event_slug=association.event_slug,
+            organizer_slug=organizer_slug,
+            event_slug=event_slug,
         )
 
         self.pretix_data = {
@@ -339,6 +285,19 @@ class PretixSyncItem(SyncBaseItem):
                     property_name="quota_size", old_value=expected_size, new_value=actual_size,
                 ))
 
+        # events-and-sync.md §14: parent_event is pinned into remote_identity
+        # at first push and never re-resolved by push() itself — surface a
+        # freshly-resolved mismatch here instead, so an admin sees "this type
+        # now resolves to a different event" without the subevent silently
+        # moving underneath them.
+        resolved_parent_event = payload.get("parent_event")
+        if resolved_parent_event and self.remote_identity:
+            pinned_event_slug = self.remote_identity.get("event_slug")
+            if pinned_event_slug is not None and resolved_parent_event != pinned_event_slug:
+                properties.append(PropertyDiff(
+                    property_name="parent_event", old_value=pinned_event_slug, new_value=resolved_parent_event,
+                ))
+
         return SyncDiffData(
             entity_id=str(self.related_entity_id),
             target_key=self.sync_target.key if self.sync_target_id else None,
@@ -347,53 +306,67 @@ class PretixSyncItem(SyncBaseItem):
 
     def push(self) -> None:
         """Create or update the linked Pretix subevent from synced_payload,
-        applying ticket price overrides. A ``pull_update()`` is performed in
-        a ``finally`` block so ``pretix_data`` (and therefore drift
-        detection) is always refreshed, even when the push itself fails."""
-        association = self.area_association
-        if association is None:
-            raise RuntimeError(
-                f"PretixSyncItem {self.pk} has no area association; cannot push."
-            )
+        per the `sync_pretix` type-editor tab's binding config (§14):
+        `parent_event` resolves the event slug (pinned into
+        `remote_identity` at first push — see `_push_via_bindings`), item/
+        variation price overrides and quota membership come from
+        `payload["items"]`.
 
-        target = self.sync_target
+        `parent_event` is required for syncing to actually happen, but
+        never required to *save* the tab config (events-and-sync.md's "save
+        must always be possible" — the frontend has no validation blocking
+        an empty value either). A blank/unresolved `parent_event` — no
+        policy/field/template configured yet, or one that resolves to
+        nothing for this entity — is not an error: push() simply has
+        nothing to do yet and returns without touching Pretix or the item's
+        status."""
         payload = self.synced_payload or {}
+        if not payload.get("parent_event") and self.remote_identity is None:
+            logger.info(
+                "PretixSyncItem %s: push skipped — parent_event binding is empty/unresolved "
+                "and no subevent has been created yet.",
+                self.pk,
+            )
+            return
+        self._push_via_bindings(payload)
+
+    def _push_via_bindings(self, payload: dict) -> None:
+        """events-and-sync.md §14: dynamic parent-event resolution + item/
+        variation bindings. `payload["parent_event"]` is only consulted to
+        create the subevent the first time — once `remote_identity` is
+        pinned, every later push reuses the pinned event_slug regardless of
+        what parent_event now resolves to (see compute_drift)."""
+        target = self.sync_target
         title = payload.get("title", "")
         start = payload.get("start")
         end = payload.get("end")
         locale = payload.get("locale") or "de"
         max_participants = payload.get("max_participants")
-        prices = payload.get("prices") or {}
+        items_config = payload.get("items") or []
+
+        if self.remote_identity:
+            organizer_slug = self.remote_identity["organizer_slug"]
+            event_slug = self.remote_identity["event_slug"]
+        else:
+            organizer_slug = target.organizer_slug
+            event_slug = payload["parent_event"]
 
         logger.info(
-            "PretixSyncItem %s: starting push for entity %s (subevent_slug=%s, "
+            "PretixSyncItem %s: starting bindings push for entity %s (subevent_slug=%s, "
             "organizer=%s, event_slug=%s).",
-            self.pk, self.related_entity_id, self.subevent_slug,
-            target.organizer_slug, association.event_slug,
+            self.pk, self.related_entity_id, self.subevent_slug, organizer_slug, event_slug,
         )
         client = PretixApiClient(api_base_url=target.api_url, token=target.api_token)
 
         try:
-            pretix_event = client.get_event(
-                organizer_slug=target.organizer_slug,
-                event_slug=association.event_slug,
-            )
+            pretix_event = client.get_event(organizer_slug=organizer_slug, event_slug=event_slug)
             configured_locales = pretix_event.get("locales") or [locale]
             name_dict = {loc: title for loc in configured_locales}
             name_dict[locale] = title
 
-            items = client.list_items(
-                organizer_slug=target.organizer_slug,
-                event_slug=association.event_slug,
-            )
+            items = client.list_items(organizer_slug=organizer_slug, event_slug=event_slug)
 
-            item_overrides = self._build_item_overrides(association, prices, items)
-            if prices and not item_overrides:
-                logger.warning(
-                    "PretixSyncItem %s: prices present in synced_payload but produced no "
-                    "item overrides. Check that ticket product names/ids match Pretix items.",
-                    self.pk,
-                )
+            item_overrides, variation_overrides = self._build_binding_price_overrides(items_config, items)
 
             push_payload = {
                 "name": name_dict,
@@ -402,57 +375,57 @@ class PretixSyncItem(SyncBaseItem):
                 "active": True,
                 "meta_data": {},
                 "item_price_overrides": item_overrides,
+                "variation_price_overrides": variation_overrides,
             }
 
             if not self.subevent_slug:
                 logger.info(
-                    "PretixSyncItem %s: creating new subevent for entity %s.",
-                    self.pk, self.related_entity_id,
+                    "PretixSyncItem %s: creating new subevent for entity %s (event %s/%s).",
+                    self.pk, self.related_entity_id, organizer_slug, event_slug,
                 )
                 result = client.create_subevent(
-                    organizer_slug=target.organizer_slug,
-                    event_slug=association.event_slug,
-                    payload=push_payload,
+                    organizer_slug=organizer_slug, event_slug=event_slug, payload=push_payload,
                 )
                 self.subevent_slug = str(result["id"])
-                self.save(update_fields=["subevent_slug", "updated_at"])
+                self.remote_identity = {
+                    "organizer_slug": organizer_slug,
+                    "event_slug": event_slug,
+                    "subevent_id": self.subevent_slug,
+                }
+                self.save(update_fields=["subevent_slug", "remote_identity", "updated_at"])
 
-            # Always patch to ensure item_overrides (prices) are applied.
-            # Pretix may ignore item_overrides on creation, so we patch unconditionally.
+            # Always patch to ensure item/variation overrides (prices) are applied.
+            # Pretix may ignore overrides on creation, so we patch unconditionally.
             client.patch_subevent(
-                organizer_slug=target.organizer_slug,
-                event_slug=association.event_slug,
-                subevent_id=self.subevent_slug,
-                payload=push_payload,
+                organizer_slug=organizer_slug, event_slug=event_slug,
+                subevent_id=self.subevent_slug, payload=push_payload,
             )
 
-            all_item_ids = self._resolve_all_item_ids(association, items)
-            if not all_item_ids:
+            quota_item_ids, quota_variation_ids = self._resolve_binding_quota_members(items_config, items)
+            if items_config and not quota_item_ids and not quota_variation_ids:
                 logger.warning(
-                    "PretixSyncItem %s: no Pretix item IDs resolved for event_slug %r. "
-                    "Quota will be created without products.",
-                    self.pk, association.event_slug,
+                    "PretixSyncItem %s: item bindings configured but produced no quota "
+                    "members. Check that item/variation names/ids match Pretix.",
+                    self.pk,
                 )
             self._create_or_update_quota(
-                client, target, association, self.subevent_slug,
-                title, all_item_ids, max_participants,
+                client, organizer_slug, event_slug, self.subevent_slug,
+                title, quota_item_ids, quota_variation_ids, max_participants,
             )
             logger.info(
-                "PretixSyncItem %s: push completed successfully (subevent %s).",
+                "PretixSyncItem %s: bindings push completed successfully (subevent %s).",
                 self.pk, self.subevent_slug,
             )
 
         except Exception as exc:
             logger.error(
-                "PretixSyncItem %s: push failed for entity %s (subevent_slug=%s): %s",
+                "PretixSyncItem %s: bindings push failed for entity %s (subevent_slug=%s): %s",
                 self.pk, self.related_entity_id, self.subevent_slug, exc,
                 exc_info=True,
             )
             raise RuntimeError(f"sync_pretix push failed: {exc}") from exc
 
         finally:
-            # Always pull after push (success or failure) to keep pretix_data current.
-            # A failed pull is logged but must not mask the original push exception.
             try:
                 self.pull_update()
             except Exception as pull_exc:
@@ -463,69 +436,54 @@ class PretixSyncItem(SyncBaseItem):
                     exc_info=True,
                 )
 
+    @staticmethod
     def _create_or_update_quota(
-        self,
         client: PretixApiClient,
-        target: "PretixSyncTarget",
-        association: "PretixSyncTargetAreaAssociation",
+        organizer_slug: str,
+        event_slug: str,
         subevent_id: str,
         quota_name: str,
         item_ids: list[int],
+        variation_ids: list[int],
         max_participants: int | None,
     ) -> None:
-        """Create or update the subevent quota covering all ticket products."""
+        """Create or update the subevent quota covering all bound ticket
+        products/variations. Shared by both push paths (§14) — the legacy
+        path always passes an empty `variation_ids` since it has no
+        variation concept."""
         quota_payload = {
             "name": quota_name,
             "size": max_participants,
             "items": item_ids,
+            "variations": variation_ids,
             "subevent": int(subevent_id),
         }
         existing = client.list_quotas(
-            organizer_slug=target.organizer_slug,
-            event_slug=association.event_slug,
+            organizer_slug=organizer_slug,
+            event_slug=event_slug,
             subevent_id=subevent_id,
         )
         if existing:
             logger.info(
-                "Updating existing quota %s for subevent %s with %d product(s), size=%s.",
-                existing[0]["id"], subevent_id, len(item_ids), max_participants,
+                "Updating existing quota %s for subevent %s with %d item(s)/%d variation(s), size=%s.",
+                existing[0]["id"], subevent_id, len(item_ids), len(variation_ids), max_participants,
             )
             client.patch_quota(
-                organizer_slug=target.organizer_slug,
-                event_slug=association.event_slug,
+                organizer_slug=organizer_slug,
+                event_slug=event_slug,
                 quota_id=str(existing[0]["id"]),
                 payload=quota_payload,
             )
         else:
             logger.info(
-                "Creating quota for subevent %s with %d product(s), size=%s.",
-                subevent_id, len(item_ids), max_participants,
+                "Creating quota for subevent %s with %d item(s)/%d variation(s), size=%s.",
+                subevent_id, len(item_ids), len(variation_ids), max_participants,
             )
             client.create_quota(
-                organizer_slug=target.organizer_slug,
-                event_slug=association.event_slug,
+                organizer_slug=organizer_slug,
+                event_slug=event_slug,
                 payload=quota_payload,
             )
-
-    @staticmethod
-    def _resolve_all_item_ids(
-        association: "PretixSyncTargetAreaAssociation",
-        items: list[dict],
-    ) -> list[int]:
-        """Return resolved Pretix item IDs for all ticket products in the association."""
-        product_names_or_ids = [
-            association.ticket_product_member_regular_id,
-            association.ticket_product_member_discounted_id,
-            association.ticket_product_guest_regular_id,
-            association.ticket_product_guest_discounted_id,
-            association.ticket_product_business_id,
-            association.ticket_product_internal_training_id,
-        ]
-        return [
-            item_id
-            for name_or_id in product_names_or_ids
-            if (item_id := PretixSyncItem._resolve_item_id(items, name_or_id)) is not None
-        ]
 
     @staticmethod
     def _resolve_item_id(items: list[dict], name_or_id: str | None) -> int | None:
@@ -547,25 +505,100 @@ class PretixSyncItem(SyncBaseItem):
         return None
 
     @staticmethod
-    def _build_item_overrides(
-        association: "PretixSyncTargetAreaAssociation",
-        prices: dict,
-        items: list[dict],
-    ) -> list[dict]:
-        """Map each ticket product in the association to a Pretix price override
-        entry, reading prices from the synced_payload["prices"] dict."""
-        overrides = []
-        for price_key, assoc_attr in PretixSyncItem.PRICE_PROPERTY_MAP:
-            name_or_id = getattr(association, assoc_attr)
-            price = prices.get(price_key)
+    def _resolve_variation_id(variations: list[dict], name_or_id: str | None) -> int | None:
+        """Same matching rule as `_resolve_item_id`, against a variation's
+        `value` (multi-lingual display name) instead of `name`."""
+        if not name_or_id:
+            return None
+        if name_or_id.isdigit():
+            return int(name_or_id)
+        needle = name_or_id.strip().lower()
+        for variation in variations:
+            values = variation.get("value") or {}
+            if any(v.strip().lower() == needle for v in values.values()):
+                return int(variation["id"])
+        return None
+
+    @staticmethod
+    def _resolve_item_and_variation(
+        items: list[dict], item_name_or_id: str | None, variation_name_or_id: str | None,
+    ) -> tuple[int | None, int | None]:
+        """Resolve an §14 item binding's `item`/`variation` (each ID-or-name)
+        against the live Pretix item list. Variations are matched within the
+        resolved item's inline `variations` array."""
+        item_id = PretixSyncItem._resolve_item_id(items, item_name_or_id)
+        if item_id is None or not variation_name_or_id:
+            return item_id, None
+        item = next((i for i in items if int(i["id"]) == item_id), None)
+        variations = (item or {}).get("variations") or []
+        return item_id, PretixSyncItem._resolve_variation_id(variations, variation_name_or_id)
+
+    @staticmethod
+    def _build_binding_price_overrides(
+        items_config: list[dict], items: list[dict],
+    ) -> tuple[list[dict], list[dict]]:
+        """§14: build (item_price_overrides, variation_price_overrides) from
+        the resolved `payload["items"]` entries — each
+        `{"item": ..., "variation": ..., "price": ...}`. `price` is a
+        required binding in the schema, but its *resolved* value can still
+        come back None (e.g. an effective key the policy didn't produce) —
+        guarded defensively rather than assumed present."""
+        item_overrides: list[dict] = []
+        variation_overrides: list[dict] = []
+        for entry in items_config:
+            if not entry.get("item"):
+                continue  # unfilled placeholder row — save always allows this, ignore on sync
+            price = entry.get("price")
             if price is None:
                 continue
-            item_id = PretixSyncItem._resolve_item_id(items, name_or_id)
-            if item_id is not None:
-                overrides.append({"item": item_id, "price": str(price)})
-        return overrides
+            item_id, variation_id = PretixSyncItem._resolve_item_and_variation(
+                items, entry.get("item"), entry.get("variation"),
+            )
+            if variation_id is not None:
+                variation_overrides.append({"variation": variation_id, "price": str(price)})
+            elif item_id is not None:
+                item_overrides.append({"item": item_id, "price": str(price)})
+            else:
+                logger.warning(
+                    "sync_pretix: could not resolve item/variation %r/%r for price override.",
+                    entry.get("item"), entry.get("variation"),
+                )
+        return item_overrides, variation_overrides
 
+    @staticmethod
+    def _resolve_binding_quota_members(
+        items_config: list[dict], items: list[dict],
+    ) -> tuple[list[int], list[int]]:
+        """§14: build (item_ids, variation_ids) for the subevent's shared
+        quota — every entry in `payload["items"]` is a quota member, no
+        opt-out; the item bindings list *is* the quota membership.
 
+        Pretix rejects a quota whose `variations` includes a variation
+        whose parent item isn't also present in `items`
+        ("Alle Varianten müssen zu einem Produkt gehören, das auch in der
+        Liste der Produkte enthalten ist.") — so a variation-scoped entry
+        must add BOTH its parent item id (deduplicated; an item with
+        several bound variations must only appear once) and the variation
+        id, not the item id OR the variation id."""
+        item_ids: list[int] = []
+        variation_ids: list[int] = []
+        for entry in items_config:
+            if not entry.get("item"):
+                continue  # unfilled placeholder row — save always allows this, ignore on sync
+            item_id, variation_id = PretixSyncItem._resolve_item_and_variation(
+                items, entry.get("item"), entry.get("variation"),
+            )
+            if item_id is None:
+                logger.warning(
+                    "sync_pretix: could not resolve item/variation %r/%r for quota membership.",
+                    entry.get("item"), entry.get("variation"),
+                )
+                continue
+            if item_id not in item_ids:
+                item_ids.append(item_id)
+            if variation_id is not None:
+                variation_ids.append(variation_id)
+        return item_ids, variation_ids
 
 class PretixPricingConfiguration(HistoricalMetaBase):
     """

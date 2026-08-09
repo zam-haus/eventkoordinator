@@ -35,6 +35,7 @@ import {
   udmEvalPolicy,
   udmEvalPolicyNodes,
   udmListWorkflows,
+  udmListTypeEditorTabs,
   type FieldConfigOut,
   type ConfigLanguageIn,
   type ConfigVersionOut,
@@ -50,13 +51,15 @@ import {
   type EntityAutocompleteItem,
   type UserAutocompleteItem,
   type WorkflowDefinitionOut,
+  type TypeEditorTabOut,
 } from './apiUdm'
 import { usePermissions } from './usePermissions'
 import { BulkMigrationTab } from './UdmMigration'
 import { BundleTab } from './UdmBundleTab'
 import TemplatingTab from './UdmTemplatingTab'
 import { WorkflowEditor } from './WorkflowEditor'
-import { TypeEditorTabsPanel } from './type-editor-tabs/TypeEditorTabsPanel'
+import { typeEditorTabRegistry } from './type-editor-tabs/registry'
+import { JsonTabFallback } from './type-editor-tabs/JsonTabFallback'
 import styles from './UdmAdminPage.module.css'
 
 type AdminTab = 'configs' | 'policies' | 'types' | 'migrations' | 'bundle' | 'workflow' | 'templating'
@@ -1817,8 +1820,6 @@ function TypeDetail({ udmType, onBack, onDeleted, allConfigs, allPolicies, onUpd
         </div>
       </div>
 
-      <TypeEditorTabsPanel typeId={udmType.id.toString()} />
-
       {isSuperuser && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Policy Evaluator</div>
@@ -2000,7 +2001,14 @@ function ConfigDraftEditor({ configId, languages, allConfigs, onSaved }: ConfigD
   const [publishing, setPublishing] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [success, setSuccess] = useState<string | null>(null)
-  const [subTab, setSubTab] = useState<'data' | 'form' | 'preview'>('data')
+  const [subTab, setSubTab] = useState<string>('data')
+  const [pluginTabs, setPluginTabs] = useState<TypeEditorTabOut[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    udmListTypeEditorTabs().then(tabs => { if (!cancelled) setPluginTabs(tabs) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -2102,7 +2110,7 @@ function ConfigDraftEditor({ configId, languages, allConfigs, onSaved }: ConfigD
       </div>
 
       {/* Sub-tab switch */}
-      <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0 0.8rem', borderBottom: '2px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0 0.8rem', borderBottom: '2px solid #e2e8f0', flexWrap: 'wrap' }}>
         {(['data', 'form', 'preview'] as const).map(st => (
           <button key={st} type="button"
             className={`${styles.btn} ${subTab === st ? styles.btnPrimary : styles.btnSecondary}`}
@@ -2115,13 +2123,27 @@ function ConfigDraftEditor({ configId, languages, allConfigs, onSaved }: ConfigD
             {st === 'data' ? '📋 Data Fields' : st === 'form' ? '🎨 Form Config' : '👁 Preview Config'}
           </button>
         ))}
+        {pluginTabs.map(t => (
+          <button key={t.id} type="button"
+            className={`${styles.btn} ${subTab === t.id ? styles.btnPrimary : styles.btnSecondary}`}
+            style={{
+              fontSize: '0.9rem', fontWeight: 600, padding: '0.45rem 0.9rem',
+              borderBottom: subTab === t.id ? '3px solid #2563eb' : '3px solid transparent',
+              borderRadius: '4px 4px 0 0', marginBottom: '-2px',
+            }}
+            onClick={() => setSubTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
       </div>
       <div style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '-0.4rem 0 0.8rem' }}>
         {subTab === 'data'
           ? 'Define storage: field types, localization, defaults, validation. Not shown in the form until bound (Form Config tab).'
           : subTab === 'form'
           ? 'Build the form tree: drag data fields and widgets from the right sidebar into the tree.'
-          : 'Build the preview tree: elements here (is_preview=true) define how an entity is summarized in lists/cards. Stored like a form, separate from the main form tree.'}
+          : subTab === 'preview'
+          ? 'Build the preview tree: elements here (is_preview=true) define how an entity is summarized in lists/cards. Stored like a form, separate from the main form tree.'
+          : 'Sync plugin configuration for this draft — takes effect for all entities of this type on publish.'}
       </div>
 
       {subTab === 'data' ? (
@@ -2139,7 +2161,7 @@ function ConfigDraftEditor({ configId, languages, allConfigs, onSaved }: ConfigD
           dataFields={dataFields}
           languages={languages}
         />
-      ) : (
+      ) : subTab === 'preview' ? (
         <FormConfigEditor
           formElements={formElements.filter(e => e.is_preview)}
           onChange={els => setFormElements([...formElements.filter(e => !e.is_preview), ...els.map(e => ({ ...e, is_preview: true }))])}
@@ -2147,6 +2169,11 @@ function ConfigDraftEditor({ configId, languages, allConfigs, onSaved }: ConfigD
           languages={languages}
           isPreview
         />
+      ) : (
+        (() => {
+          const PluginTabComponent = typeEditorTabRegistry[subTab] ?? JsonTabFallback
+          return <PluginTabComponent key={subTab} tabId={subTab} configVersionId={draft.version_id} />
+        })()
       )}
 
       {errors.length > 0 && (

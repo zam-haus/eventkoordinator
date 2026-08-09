@@ -5,7 +5,9 @@ import json
 from django.test import Client, TestCase, override_settings
 from pydantic import BaseModel, ConfigDict, Field
 
-from userdefinedmodel.tests.factories import PublishedConfigVersionFactory, StaffUserFactory, UserFactory
+from userdefinedmodel.tests.factories import (
+    ConfigVersionFactory, PublishedConfigVersionFactory, StaffUserFactory, UserFactory,
+)
 from userdefinedmodel.tests.test_api import _TEST_MIDDLEWARE
 from userdefinedmodel.type_editor_tabs import (
     _TAB_REGISTRY, clear_registry, get_registered_tabs, get_tab, register_type_editor_tab,
@@ -90,7 +92,7 @@ class TypeEditorTabApiTests(TestCase):
         self.assertEqual(json.loads(resp.content), {"tab_id": "demo_tab_api", "config": {}})
 
     def test_put_requires_permission(self):
-        version = PublishedConfigVersionFactory()
+        version = ConfigVersionFactory()
         self.client.force_login(self.user)
         resp = self.client.put(
             f"/api/udm/config-versions/{version.id}/tab-configs/demo_tab_api/",
@@ -100,7 +102,7 @@ class TypeEditorTabApiTests(TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_put_validates_and_persists(self):
-        version = PublishedConfigVersionFactory()
+        version = ConfigVersionFactory()
         self.client.force_login(self.staff)
         resp = self.client.put(
             f"/api/udm/config-versions/{version.id}/tab-configs/demo_tab_api/",
@@ -113,7 +115,7 @@ class TypeEditorTabApiTests(TestCase):
         self.assertEqual(json.loads(resp2.content)["config"], {"url": "https://example.org"})
 
     def test_put_rejects_invalid_config(self):
-        version = PublishedConfigVersionFactory()
+        version = ConfigVersionFactory()
         self.client.force_login(self.staff)
         resp = self.client.put(
             f"/api/udm/config-versions/{version.id}/tab-configs/demo_tab_api/",
@@ -123,7 +125,7 @@ class TypeEditorTabApiTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_put_unknown_tab_404s(self):
-        version = PublishedConfigVersionFactory()
+        version = ConfigVersionFactory()
         self.client.force_login(self.staff)
         resp = self.client.put(
             f"/api/udm/config-versions/{version.id}/tab-configs/no-such-tab/",
@@ -131,6 +133,24 @@ class TypeEditorTabApiTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 404)
+
+    def test_put_rejects_non_draft_version(self):
+        """events-and-sync.md Step 13.1: published versions are immutable
+        everywhere else — tab configs must be too."""
+        version = PublishedConfigVersionFactory()
+        self.client.force_login(self.staff)
+        resp = self.client.put(
+            f"/api/udm/config-versions/{version.id}/tab-configs/demo_tab_api/",
+            data=json.dumps({"config": {"url": "https://example.org"}}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_get_works_on_non_draft_version(self):
+        version = PublishedConfigVersionFactory()
+        self.client.force_login(self.user)
+        resp = self.client.get(f"/api/udm/config-versions/{version.id}/tab-configs/demo_tab_api/")
+        self.assertEqual(resp.status_code, 200)
 
     def test_tab_config_copied_to_new_draft_on_publish(self):
         from userdefinedmodel.models import ConfigVersion, TypeEditorTabConfig

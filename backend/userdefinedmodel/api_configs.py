@@ -291,6 +291,8 @@ def put_type_editor_tab_config(request, version_id: uuid.UUID, tab_id: str, payl
         version = ConfigVersion.objects.get(id=version_id)
     except ConfigVersion.DoesNotExist:
         return JsonResponse({"detail": "Config version not found"}, status=404)
+    if version.status != ConfigVersion.Status.DRAFT:
+        return JsonResponse({"detail": "Tab config can only be edited on a draft version"}, status=400)
     cfg, _ = TypeEditorTabConfig.objects.update_or_create(
         config_version=version, tab_id=tab_id, defaults={"config": payload.config},
     )

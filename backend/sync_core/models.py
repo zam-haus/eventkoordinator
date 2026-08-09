@@ -36,6 +36,21 @@ class SyncBaseTarget(PolymorphicMetaBase):
     name = models.CharField(max_length=200)
     enabled = models.BooleanField(default=True)
 
+    @classmethod
+    def sync_item_model(cls):
+        """The concrete `SyncBaseItem` subclass `mark_sync()` should create
+        for this target type. Every plugin's Target subclass overrides this
+        to return its sibling Item class (e.g. `PretixSyncTarget` ->
+        `PretixSyncItem`) — without it, `mark_sync()` would create a bare
+        `SyncBaseItem` row that can never push() (no concrete implementation
+        on the base class), silently stuck at "pending" forever with no
+        error logged anywhere, since the worker's push loop only runs for
+        items whose status is already "pending" and the base class's own
+        `push()` raising is the ONLY place that would have surfaced it — but
+        that only fires once the worker actually processes the item, not at
+        mark_sync() time."""
+        return SyncBaseItem
+
     def __str__(self):
         return self.name
 
@@ -106,25 +121,108 @@ class SyncBaseItem(PolymorphicMetaBase):
 
 
 def _target_bound_to_entity_type(target_key: str, entity_id) -> bool:
-    """Is `target_key` listed in the entity's config-version `sync_targets`
-    tab config? Absence of a tab config row at all is treated as
-    "no restriction configured" (backward compatible with types that never
-    set up the tab) — only a tab config that exists and omits the key counts
-    as "no longer bound" (events-and-sync.md Step 11)."""
-    from userdefinedmodel.models import TypeEditorTabConfig, UserDefinedModelEntity
+    """Is `target_key` listed in the entity type's **bound published**
+    config-version `sync_targets` tab config? Read via the type's
+    `field_config`, not the entity's own (possibly lagging) `config_version`
+    — a published binding change must take effect for all entities of the
+    type at once, regardless of which version each entity was migrated to
+    (events-and-sync.md Step 13.1). Absence of a tab config row at all is
+    treated as "no restriction configured" (backward compatible with types
+    that never set up the tab) — only a tab config that exists and omits the
+    key counts as "no longer bound" (events-and-sync.md Step 11)."""
+    from userdefinedmodel.models import ConfigVersion, TypeEditorTabConfig, UserDefinedModelEntity
 
     try:
-        config_version_id = UserDefinedModelEntity.objects.values_list(
-            "config_version_id", flat=True,
+        field_config_id = UserDefinedModelEntity.objects.values_list(
+            "user_defined_model_type__field_config_id", flat=True,
         ).get(pk=entity_id)
     except UserDefinedModelEntity.DoesNotExist:
         return True
+    if field_config_id is None:
+        return True
+    published_version_id = ConfigVersion.objects.filter(
+        config_id=field_config_id, status=ConfigVersion.Status.PUBLISHED,
+    ).values_list("id", flat=True).first()
+    if published_version_id is None:
+        return True
     cfg = TypeEditorTabConfig.objects.filter(
-        config_version_id=config_version_id, tab_id="sync_targets",
+        config_version_id=published_version_id, tab_id="sync_targets",
     ).first()
     if cfg is None:
         return True
     return target_key in (cfg.config.get("target_keys") or [])
+
+
+def _bound_published_version_id(field_config_id) -> Optional[Any]:
+    from userdefinedmodel.models import ConfigVersion
+
+    if field_config_id is None:
+        return None
+    return ConfigVersion.objects.filter(
+        config_id=field_config_id, status=ConfigVersion.Status.PUBLISHED,
+    ).values_list("id", flat=True).first()
+
+
+def _tab_config_for_target(target: SyncBaseTarget, entity_id) -> dict | None:
+    """The bound published tab config dict (events-and-sync.md Step 13.2) for
+    `target`'s plugin, or None if the plugin has no binding config registered
+    /configured for this entity's type. Tab id convention: a plugin's tab id
+    equals its Django app label (e.g. "sync_caldav"). Returns the whole
+    config dict (not just its "bindings" key) — a plugin's schema may nest
+    binding sources under other keys too (e.g. sync_pretix's "parent_event"/
+    "items", Step 14), which `resolve_synced_payload` resolves generically."""
+    from userdefinedmodel.models import TypeEditorTabConfig, UserDefinedModelEntity
+    from userdefinedmodel.type_editor_tabs import get_tab
+
+    real_target = target.get_real_instance() if hasattr(target, "get_real_instance") else target
+    tab_id = real_target._meta.app_label
+    if get_tab(tab_id) is None:
+        return None
+    try:
+        field_config_id = UserDefinedModelEntity.objects.values_list(
+            "user_defined_model_type__field_config_id", flat=True,
+        ).get(pk=entity_id)
+    except UserDefinedModelEntity.DoesNotExist:
+        return None
+    version_id = _bound_published_version_id(field_config_id)
+    if version_id is None:
+        return None
+    cfg = TypeEditorTabConfig.objects.filter(config_version_id=version_id, tab_id=tab_id).first()
+    if cfg is None:
+        return None
+    return cfg.config or None
+
+
+def resolve_synced_payload(target: SyncBaseTarget, entity_id, effective: dict | None) -> dict:
+    """The value to store as `synced_payload` for a (entity, target) item:
+    the plugin's declared bindings resolved against `effective`/the entity's
+    stored fields if a binding config exists, otherwise the raw `effective`
+    dict verbatim (plugins with no bindings tab configured yet, or webhook
+    which always pushes effective JSON as-is per §13.2).
+
+    The `bindings` key (a flat `remote_property -> source` map) is resolved
+    via `resolve_bindings`; every other key in the tab config is resolved
+    generically via `resolve_deep`, so a plugin can nest binding sources
+    inside richer structures (Step 14's sync_pretix `parent_event`/`items`)
+    without sync_core needing to know that plugin's schema."""
+    effective = effective or {}
+    tab_config = _tab_config_for_target(target, entity_id)
+    if not tab_config:
+        return effective
+    from userdefinedmodel.models import UserDefinedModelEntity
+
+    from sync_core.binding import resolve_bindings, resolve_deep
+
+    entity = UserDefinedModelEntity.objects.get(pk=entity_id)
+    resolved: dict = {}
+    bindings = tab_config.get("bindings")
+    if bindings:
+        resolved.update(resolve_bindings(bindings, entity=entity, effective=effective))
+    for key, value in tab_config.items():
+        if key == "bindings":
+            continue
+        resolved[key] = resolve_deep(value, entity=entity, effective=effective)
+    return resolved
 
 
 def compute_derived_state(item: SyncBaseItem) -> str:
@@ -182,10 +280,11 @@ def mark_sync(entity_id, target_key: str, status: str, *, effective: dict | None
             "(sync_targets tab config)"
         )
 
-    # No concrete SyncBaseItem subclass exists yet (Step 6 port is deferred),
-    # so the base class is always the real instance; once a plugin lands,
-    # existing rows resolve polymorphically via SyncBaseItem.objects here too.
-    item, _ = SyncBaseItem.objects.get_or_create(
+    # Create through the target's own concrete Item subclass (not the bare
+    # SyncBaseItem manager) so the row is actually push()-able — see
+    # sync_item_model()'s docstring for what silently broke before this.
+    item_model = target.sync_item_model()
+    item, _ = item_model.objects.get_or_create(
         related_entity_id=entity_id, sync_target=target, defaults={"status": status},
     )
     real = item.get_real_instance()
@@ -196,19 +295,32 @@ def mark_sync(entity_id, target_key: str, status: str, *, effective: dict | None
         )
     real.status = status
     if status == DERIVED_STATE_PENDING:
-        real.synced_payload = effective if effective is not None else {}
+        real.synced_payload = resolve_synced_payload(target, entity_id, effective)
         real.is_stale = False
     real.save()
+    if status == DERIVED_STATE_PENDING:
+        # Queue an actual push now (best-effort, never raises) instead of
+        # relying solely on the beat schedule — see
+        # sync_core.tasks.enqueue_push_if_idle for why: without this, a
+        # freshly-pending item silently waits up to 10 minutes for the next
+        # beat tick, or forever if no beat process is running at all.
+        from sync_core.tasks import enqueue_push_if_idle
+        enqueue_push_if_idle()
     return real
 
 
 def recompute_staleness(entity_id, effective: dict) -> None:
-    """Post-save staleness check (§3.2/§4.3): compare the fresh `effective`
-    against each SYNCED item's synced_payload, no input.changed_fields
-    involved (deliberate — see events-and-sync.md §4.3)."""
+    """Post-save staleness check (§3.2/§4.3): compare a fresh resolution of
+    `effective` through each item's target's bindings against that item's
+    synced_payload, no input.changed_fields involved (deliberate — see
+    events-and-sync.md §4.3). Must resolve through the same
+    `resolve_synced_payload` mark_sync uses (Step 13.2) — comparing raw
+    `effective` against a bindings-resolved synced_payload would mark every
+    bound item permanently stale."""
     items = SyncBaseItem.objects.filter(related_entity_id=entity_id, status=DERIVED_STATE_SYNCED)
     for item in items:
-        stale = item.synced_payload != effective
+        fresh_payload = resolve_synced_payload(item.sync_target, entity_id, effective)
+        stale = item.synced_payload != fresh_payload
         if stale != item.is_stale:
             item.is_stale = stale
             item.save(update_fields=["is_stale"])

@@ -130,6 +130,83 @@ class CalDAVSyncItemPushTests(TestCase):
             item.push()
 
 
+class CalDAVSyncItemFanOutPushTests(TestCase):
+    """events-and-sync.md §13.3: one VEVENT per `payload["submodel"]` slot,
+    each keyed by a stable `entity_id-child_id` uid."""
+
+    databases = ["default"]
+
+    def setUp(self):
+        self.entity, *_ = make_entity_with_type()
+        self.target = CalDAVSyncTarget.objects.create(
+            key="caldav:main", name="Main calendar", url="https://caldav.example.com",
+            username="bot", password="s3cr3t", calendar_display_name="Main",
+        )
+
+    def _item(self, slots, **overrides):
+        payload = {
+            "title": "Some event", "location": "Room 1",
+            "submodel": slots,
+            **overrides,
+        }
+        return CalDAVSyncItem.objects.create(
+            related_entity=self.entity, sync_target=self.target,
+            status=DERIVED_STATE_PENDING, synced_payload=payload,
+        )
+
+    def _mock_calendar(self, existing_events=None):
+        calendar = Mock()
+        calendar.get_event_by_uid.side_effect = Exception("not found")
+        calendar.events.return_value = existing_events or []
+        return calendar
+
+    def _slots(self):
+        return [
+            {"child_id": "slot-1", "start": "2026-09-01T09:00:00+00:00", "end": "2026-09-01T10:00:00+00:00"},
+            {"child_id": "slot-2", "start": "2026-09-02T09:00:00+00:00", "end": "2026-09-02T10:00:00+00:00"},
+        ]
+
+    @patch.object(CalDAVSyncTarget, "_get_calendar")
+    def test_push_creates_one_vevent_per_slot(self, mock_get_calendar):
+        calendar = self._mock_calendar()
+        mock_get_calendar.return_value = calendar
+        item = self._item(self._slots())
+
+        item.push()
+
+        self.assertEqual(calendar.add_event.call_count, 2)
+        uids = {kwargs["uid"] for _args, kwargs in calendar.add_event.call_args_list}
+        self.assertEqual(uids, {f"{item.related_entity_id}-slot-1", f"{item.related_entity_id}-slot-2"})
+        item.refresh_from_db()
+        self.assertFalse(item.remote_uid)
+
+    @patch.object(CalDAVSyncTarget, "_get_calendar")
+    def test_removed_slot_deletes_stale_remote_event(self, mock_get_calendar):
+        item = self._item(self._slots()[:1])
+        prefix = f"{item.related_entity_id}-"
+        stale_event = Mock(id=f"{prefix}slot-2")
+        kept_event = Mock(id=f"{prefix}slot-1")
+        other_item_event = Mock(id="unrelated-uid")
+        calendar = self._mock_calendar(existing_events=[stale_event, kept_event, other_item_event])
+        mock_get_calendar.return_value = calendar
+
+        item.push()
+
+        stale_event.delete.assert_called_once()
+        other_item_event.delete.assert_not_called()
+
+    @patch.object(CalDAVSyncTarget, "_get_calendar")
+    def test_events_listing_failure_does_not_abort_push(self, mock_get_calendar):
+        calendar = self._mock_calendar()
+        calendar.events.side_effect = Exception("network error")
+        mock_get_calendar.return_value = calendar
+        item = self._item(self._slots())
+
+        item.push()  # must not raise
+
+        self.assertEqual(calendar.add_event.call_count, 2)
+
+
 class CalDAVSyncWorkerTests(TestCase):
     """End-to-end through push_pending_sync_items (sync_core/tasks.py), which
     owns status/synced_at/last_error transitions polymorphically."""

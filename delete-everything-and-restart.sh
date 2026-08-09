@@ -67,7 +67,5 @@ if [[ "$DELETE_VOLUMES" == "true" ]]; then
     echo "Waiting for pretix to be up..."
     sleep 5
   done
-  # playwright is not installed in the container
-  (cd backend && DJANGO_PRETIX_API_BASE_URL="http://localhost:8282/api/v1" ./manage.py sync_pretix_areas)
 fi
 ./debug-docker-compose.sh up

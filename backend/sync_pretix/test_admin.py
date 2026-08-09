@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from sync_pretix import models
-from sync_pretix.admin import CalculatedPricesInline, PretixSyncTargetAreaAssociationInline
+from sync_pretix.admin import CalculatedPricesInline
 
 
 class SyncPretixAdminTests(TestCase):
@@ -23,7 +23,6 @@ class SyncPretixAdminTests(TestCase):
 
     def test_models_are_registered_in_admin(self):
         self.assertIn(models.PretixSyncTarget, admin.site._registry)
-        self.assertIn(models.PretixSyncTargetAreaAssociation, admin.site._registry)
         self.assertIn(models.PretixPricingConfiguration, admin.site._registry)
         self.assertIn(models.CalculatedPrices, admin.site._registry)
         self.assertIn(models.PretixSyncItem, admin.site._registry)
@@ -31,10 +30,6 @@ class SyncPretixAdminTests(TestCase):
     def test_pricing_configuration_admin_has_calculated_prices_inline(self):
         pricing_admin = admin.site._registry[models.PretixPricingConfiguration]
         self.assertIn(CalculatedPricesInline, pricing_admin.inlines)
-
-    def test_pretix_sync_target_admin_has_association_inline(self):
-        target_admin = admin.site._registry[models.PretixSyncTarget]
-        self.assertIn(PretixSyncTargetAreaAssociationInline, target_admin.inlines)
 
     def test_admin_pages_are_accessible(self):
         config = models.PretixPricingConfiguration.objects.create()

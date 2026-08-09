@@ -19,21 +19,6 @@ class CalculatedPricesInline(admin.TabularInline):
 	readonly_fields = ("created_at", "updated_at")
 
 
-class PretixSyncTargetAreaAssociationInline(admin.StackedInline):
-	model = models.PretixSyncTargetAreaAssociation
-	fk_name = "sync_target"
-	extra = 0
-	fields = (
-		"area_code",
-		"event_slug",
-		"ticket_product_member_regular_id",
-		"ticket_product_member_discounted_id",
-		"ticket_product_guest_regular_id",
-		"ticket_product_guest_discounted_id",
-		"ticket_product_business_id",
-	)
-
-
 @admin.register(models.PretixSyncTarget)
 class PretixSyncTargetAdmin(HiddenFromAdminIndexMixin, MaskedSecretFormMixin, SimpleHistoryAdmin):
 	# PretixSyncTarget now subclasses sync_core.models.SyncBaseTarget
@@ -42,20 +27,14 @@ class PretixSyncTargetAdmin(HiddenFromAdminIndexMixin, MaskedSecretFormMixin, Si
 	# PolymorphicChildModelAdmin — same change as sync_caldav's admin.
 	# Hidden from the app index: sync_core.admin.SyncBaseTargetAdmin already
 	# lists every concrete target class in one unified polymorphic view.
+	# events-and-sync.md §14: no more area-association inline — which Pretix
+	# event a type syncs into is configured entirely via the sync_pretix
+	# type-editor tab's `parent_event` binding, not a per-target admin screen.
 	list_display = ("organizer_slug", "api_url", "created_at", "updated_at")
 	search_fields = ("organizer_slug", "api_url")
 	ordering = ("-updated_at",)
-	inlines = (PretixSyncTargetAreaAssociationInline,)
 	# Mask the Pretix API token on display; blank-on-save keeps the existing value.
 	secret_fields = ("api_token",)
-
-
-@admin.register(models.PretixSyncTargetAreaAssociation)
-class PretixSyncTargetAreaAssociationAdmin(SimpleHistoryAdmin):
-	list_display = ("area_code", "event_slug", "created_at", "updated_at")
-	list_filter = ("area_code",)
-	search_fields = ("area_code", "event_slug")
-	ordering = ("area_code",)
 
 
 @admin.register(models.PretixPricingConfiguration)
@@ -90,7 +69,7 @@ class CalculatedPricesAdmin(SimpleHistoryAdmin):
 
 @admin.register(models.PretixSyncItem)
 class PretixSyncItemAdmin(SimpleHistoryAdmin):
-	list_display = ("sync_target", "area_association", "subevent_slug", "status", "updated_at")
+	list_display = ("sync_target", "subevent_slug", "status", "updated_at")
 	list_filter = ("sync_target", "status")
-	search_fields = ("sync_target__organizer_slug", "area_association__event_slug", "subevent_slug")
+	search_fields = ("sync_target__organizer_slug", "subevent_slug")
 	ordering = ("-updated_at",)
