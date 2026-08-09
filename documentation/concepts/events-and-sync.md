@@ -1046,48 +1046,72 @@ must land before Step 12's preconditions can hold.
 
 Sync-plugin ports (from Step 6):
 
-- [ ] Port `sync_ical` push side: import from `sync_core`, items keyed to UDM
-      entities, effective-values payloads.
-- [ ] Port `sync_caldav` push side: same.
-- [ ] Port `sync_pretix`: same.
-- [ ] New `sync_webhook` app: target with URL, bearer token, constant custom
+- [x] Port `sync_ical` push side: import from `sync_core`, items keyed to UDM
+      entities, effective-values payloads. `push()` writes/updates a VEVENT
+      in a per-target on-disk `.ics` feed file from `synced_payload`; the old
+      apiv1.Event-creating fetch/parse logic is gone (superseded by the
+      already-ported `sync_core.calendar_fetch` pull side).
+- [x] Port `sync_caldav` push side: same. `push()` deletes+re-adds the
+      remote VEVENT via the `caldav` library from `synced_payload`.
+- [x] Port `sync_pretix`: same, plus `"cancelled"` added to
+      `allowed_statuses()` per §3.1. `PretixSyncTargetAreaAssociation.area`
+      decoupled from `apiv1.ProposalArea` to a plain `area_code` string
+      (items are generic UDM entities with no `proposal.area` to derive it
+      from). The apiv1-era `get_status()`/`sync_diff()` remote-drift UI is
+      replaced by a slimmed `compute_drift()` (name/dates/quota-size only —
+      per-ticket price diffing against the remote is dropped as a
+      simplification; prices are still pushed from `synced_payload["prices"]`,
+      just not diffed property-by-property). `PretixPricingConfiguration`/
+      `CalculatedPrices` are untouched — they don't subclass the sync base
+      classes and stay `apiv1.Event`-linked, out of scope for this port.
+- [x] New `sync_webhook` app: target with URL, bearer token, constant custom
       headers (secrets via `secret_field_names`); POST body = effective JSON
       + entity id, target key, status, sequence number; no signing, no
       templating. Payload/header tests land here.
-- [ ] `SyncDiffData` / `PropertyDiff` moved to `sync_core`, diffing
-      `synced_payload` vs. current effective values (needs a concrete item
-      class from the ports above).
+- [x] `SyncDiffData` / `PropertyDiff` moved to `sync_core`
+      (`compute_sync_diff`), diffing `synced_payload` vs. current effective
+      values.
 
 Loose ends (from Steps 6–9 partials):
 
-- [ ] `input.backlinks.<name>[].sync`: enrich backlink documents with the
-      sync map (only the root entity's `input.sync` is populated so far).
-- [ ] `mark_sync` target validation: "enabled **for the type**" via the
-      Step 8 tab-config bindings (currently only checks the target's global
-      `enabled` flag); ditto `derived_state == target_unavailable` for
-      "no longer bound to the type".
-- [ ] Per-plugin binding config contents: available concrete targets,
+- [x] `input.backlinks.<name>[].sync`: each backlink document now carries
+      its own `sync` map via `sync_map_for_entity`, not just the root entity.
+- [x] `mark_sync` target validation: checks the `sync_targets` tab-config
+      `target_keys` for the entity's type (absence of any tab config row
+      stays permissive, for backward compatibility); `derived_state` returns
+      `target_unavailable` when a target is unbound from the type.
+- [ ] Per-plugin binding config contents beyond `target_keys`:
       effective-key → remote-property field binding (webhook: URL/auth
-      selection only).
-- [ ] Frontend type-editor tab registry (`tabId → component`) + tab
-      components for caldav / ical / pretix / webhook; JSON-editor fallback
-      for tabs without a registered component (backend
-      `GET /type-editor-tabs/` is ready).
-- [ ] Django admin (or equivalent UI) for `SyncBaseTarget` /
-      `CalendarSource`: create/edit targets and sources, soft-delete, manual
-      "sync now" / "fetch now" buttons enqueuing the existing tasks
-      (currently shell-only).
-- [ ] Beat schedules for `push_pending_sync_items_task` and
-      `fetch_all_calendar_sources`: add entries to `CELERY_BEAT_SCHEDULE`
-      in `backend/default_settings.py` (existing convention — the
-      hourly `sync_ical`/`sync_caldav` entries live there; retire those
-      when the plugin ports land).
-- [ ] Calendar polish: color UDM entries by workflow state
-      (`CalendarEntryOut.workflow_state`); optional per-source
-      role/permission gate on `CalendarSource` beyond `enabled`.
-- [ ] Regenerate `schema_udm.d.ts` so `apiUdm.ts`'s hand-typed backlinks
-      fetch and `EntityOut.markdown_displays`/`sync_items` move onto the
-      generated client.
+      selection only) is still not modeled — not needed yet since no plugin
+      binding config beyond "which targets" exists.
+- [x] Frontend type-editor tab registry (`tabId → component`) +
+      JSON-editor fallback for tabs without a registered component; a
+      dedicated `sync_targets` tab component (target picker backed by a new
+      `GET /sync-targets/` endpoint, replacing an initial freeform-string
+      version per live feedback) and a JSON-schema-driven approach
+      (`GET /type-editor-tabs/` now includes each tab's pydantic config
+      model as a JSON schema) land here too. Dedicated components for
+      caldav/ical/pretix/webhook themselves are not built — the JSON
+      fallback covers them, as originally scoped.
+- [x] Django admin for `SyncBaseTarget` / `CalendarSource`: create/edit
+      targets and sources, soft-delete via `enabled`, "sync now"/"fetch now"
+      actions enqueuing the existing tasks. `SyncBaseTargetAdmin.child_models`
+      lists all four concrete target classes so the polymorphic "add" flow
+      works; each plugin registers its own target/item admin (mixed
+      `PolymorphicChildModelAdmin`/plain `ModelAdmin`, both work).
+- [x] Beat schedules for `push_pending_sync_items_task` and
+      `fetch_all_calendar_sources` in `CELERY_BEAT_SCHEDULE`; the legacy
+      hourly `sync_ical`/`sync_caldav` entries are retired now that both
+      plugins delegate to the shared worker.
+- [x] Calendar polish: `CalendarEntryOut.workflow_state` is now populated
+      for "udm"-sourced entries (via a shared `entity_workflow_state()`
+      helper) and `CalendarPreview.tsx` colors entries by it, reusing the
+      existing `getEventStatusColor` palette. Per-source role/permission
+      gate on `CalendarSource` beyond `enabled` was optional in the original
+      scoping and was not built.
+- [x] Regenerated `schema_udm.d.ts`; `apiUdm.ts`'s backlinks/calendar/
+      type-editor-tabs/sync-targets fetches now go through the generated
+      `udmClient` instead of hand-typed raw `fetch()` calls.
 
 ### Step 12 — apiv1 removal (7)
 
