@@ -438,6 +438,18 @@ class PretixSyncItem(SyncBaseItem):
                 file_type="text",
             ))
 
+        # Compare frontpage_text (abstract + description + speakers) for the primary locale.
+        expected_frontpage_text = self._build_frontpage_text(proposal)
+        actual_frontpage_text_dict = stored_subevent.get("frontpage_text") or {}
+        actual_frontpage_text = actual_frontpage_text_dict.get(event_locale, "")
+        if not only_differences or expected_frontpage_text != actual_frontpage_text:
+            properties.append(PropertyDiff(
+                property_name="frontpage_text",
+                local_value=expected_frontpage_text,
+                remote_value=actual_frontpage_text,
+                file_type="text",
+            ))
+
         # Compare quota size (max_participants) against the first matching quota.
         if proposal is not None and stored_quotas:
             expected_size = getattr(proposal, "max_participants", None)
@@ -515,6 +527,12 @@ class PretixSyncItem(SyncBaseItem):
                 self.pk, configured_locales, name_dict,
             )
 
+            # Apply the same frontpage_text (abstract + description + speakers) to
+            # every configured locale, same pattern as name_dict above.
+            frontpage_text = self._build_frontpage_text(proposal)
+            frontpage_text_dict = {locale: frontpage_text for locale in configured_locales}
+            frontpage_text_dict[event_locale] = frontpage_text
+
             # Always fetch items — needed for both price overrides and the quota.
             items = client.list_items(
                 organizer_slug=target.organizer_slug,
@@ -530,8 +548,10 @@ class PretixSyncItem(SyncBaseItem):
             # Build price overrides from CalculatedPrices if available.
             item_overrides: list[dict] = []
             variation_overrides: list[dict] = []
+            pricing_configuration = None
             try:
                 prices = event.calculated_prices
+                pricing_configuration = prices.pricing_configuration
                 item_overrides, variation_overrides = self._build_item_overrides(
                     association, prices, items
                 )
@@ -555,14 +575,25 @@ class PretixSyncItem(SyncBaseItem):
                     self.pk, event.pk,
                 )
 
+            if pricing_configuration is None:
+                pricing_configuration = CalculatedPrices._get_default_pricing_configuration()
+            max_participants = getattr(proposal, "max_participants", None)
+            min_participants = (
+                pricing_configuration.get_min_participants(max_participants)
+                if max_participants is not None
+                else None
+            )
+            meta_data = self._build_meta_data(proposal, min_participants)
+
             payload = {
                 "name": name_dict,
                 "date_from": event.start_time.isoformat(),
                 "date_to": event.end_time.isoformat(),
                 "active": True,
-                "meta_data": {},
+                "meta_data": meta_data,
                 "item_price_overrides": item_overrides,
                 "variation_price_overrides": variation_overrides,
+                "frontpage_text": frontpage_text_dict,
             }
 
             # Create the subevent if this is the first push.
@@ -600,7 +631,6 @@ class PretixSyncItem(SyncBaseItem):
             logger.debug("PretixSyncItem %s: patch_subevent succeeded.", self.pk)
 
             # Create or update the quota so price overrides take effect.
-            max_participants = getattr(proposal, "max_participants", None)
             resolved_items_and_variations = self._resolve_all_items_and_variations(
                 association, items
             )
@@ -667,6 +697,49 @@ class PretixSyncItem(SyncBaseItem):
                     exc_info=True,
                 )
 
+    @staticmethod
+    def _build_meta_data(proposal, min_participants: int | None) -> dict[str, str]:
+        """Build the Pretix subevent ``meta_data`` dict for the speaker/quota properties.
+
+        ``Dozent_Name``/``Dozent_Email`` are semicolon-separated lists across all
+        speakers on the proposal. ``Dozent_Mattermost`` has no data source yet
+        (no Mattermost field exists on ``Speaker``) and is left empty.
+        """
+        speakers = list(proposal.speakers.all()) if proposal is not None else []
+        names = [s.display_name.strip() for s in speakers if s.display_name and s.display_name.strip()]
+        emails = [s.email.strip() for s in speakers if s.email and s.email.strip()]
+        return {
+            "Dozent_Name": "; ".join(names),
+            "Dozent_Email": "; ".join(emails),
+            "Dozent_Mattermost": "",
+            "Min_Teilnehmer": str(min_participants) if min_participants is not None else "",
+        }
+
+    @staticmethod
+    def _build_frontpage_text(proposal) -> str:
+        """Compose the Pretix ``frontpage_text`` from abstract, description and speakers.
+
+        Sections are separated by a "---" line and omitted if empty. Speaker
+        emails are intentionally excluded — only ``display_name`` is used.
+        """
+        if proposal is None:
+            return ""
+        sections = []
+        abstract = (getattr(proposal, "abstract", "") or "").strip()
+        if abstract:
+            sections.append(abstract)
+        description = (getattr(proposal, "description", "") or "").strip()
+        if description:
+            sections.append(description)
+        speaker_names = [
+            speaker.display_name.strip()
+            for speaker in proposal.speakers.all()
+            if speaker.display_name and speaker.display_name.strip()
+        ]
+        if speaker_names:
+            sections.append("\n".join(f"- {name}" for name in speaker_names))
+        return "\n---\n".join(sections)
+
     def _build_creation_preview_diff(self) -> SyncDiffData:
         """Return a diff showing local values vs an empty remote (creation preview).
 
@@ -700,6 +773,12 @@ class PretixSyncItem(SyncBaseItem):
             PropertyDiff(
                 property_name="date_to",
                 local_value=event.end_time.isoformat(),
+                remote_value="",
+                file_type="text",
+            ),
+            PropertyDiff(
+                property_name="frontpage_text",
+                local_value=self._build_frontpage_text(proposal),
                 remote_value="",
                 file_type="text",
             ),

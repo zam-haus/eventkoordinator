@@ -202,6 +202,9 @@ class PretixSyncItemSyncDiffTest(_PretixSyncItemTestBase):
                 "name": {"de": self.event.name},
                 "date_from": self.start_time.isoformat(),
                 "date_to": self.end_time.isoformat(),
+                "frontpage_text": {
+                    "de": f"{self.proposal.abstract}\n---\n{self.proposal.description}"
+                },
             },
             "quotas": [{"id": 1, "size": int(self.proposal.max_participants), "items": []}],
         }
@@ -331,6 +334,9 @@ class PretixSyncItemSyncDiffAllPropertiesTest(_PretixSyncItemTestBase):
                 "date_from": self.start_time.isoformat(),
                 "date_to": self.end_time.isoformat(),
                 "item_price_overrides": [],
+                "frontpage_text": {
+                    "de": f"{self.proposal.abstract}\n---\n{self.proposal.description}"
+                },
             },
             "quotas": [{"id": 1, "size": int(self.proposal.max_participants), "items": []}],
             "items": [],
@@ -454,6 +460,9 @@ class PretixSyncItemGetStatusTest(_PretixSyncItemTestBase):
                 "name": {"de": self.event.name},
                 "date_from": self.start_time.isoformat(),
                 "date_to": self.end_time.isoformat(),
+                "frontpage_text": {
+                    "de": f"{self.proposal.abstract}\n---\n{self.proposal.description}"
+                },
             },
             "quotas": [{"id": 1, "size": int(self.proposal.max_participants), "items": []}],
         }
@@ -524,6 +533,9 @@ class PretixSyncTargetGetStatusTest(_PretixSyncItemTestBase):
                 "name": {"de": self.event.name},
                 "date_from": self.start_time.isoformat(),
                 "date_to": self.end_time.isoformat(),
+                "frontpage_text": {
+                    "de": f"{self.proposal.abstract}\n---\n{self.proposal.description}"
+                },
             },
             "quotas": [{"id": 1, "size": int(self.proposal.max_participants), "items": []}],
         }
