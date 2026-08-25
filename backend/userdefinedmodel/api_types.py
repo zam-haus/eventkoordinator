@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import nullcontext
 from typing import Optional
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from ninja import Router
 from ninja.security import django_auth
@@ -80,12 +82,13 @@ def _require_evaluator_access(request):
 def eval_policy_for_type(
     request,
     type_id: uuid.UUID,
-    entity_id: uuid.UUID,
     user_id: uuid.UUID,
+    entity_id: Optional[uuid.UUID] = None,
     action: str = "view",
     transition: Optional[str] = None,
     node_id: Optional[uuid.UUID] = None,
     sudo: bool = False,
+    trace: bool = False,
 ):
     """Evaluate the Rego policy for a given entity + user and return the full
     input document, the raw policy sources, and the structured output.
@@ -93,19 +96,45 @@ def eval_policy_for_type(
     ``action`` accepts every entity action of the policy contract, including
     ``browse`` and ``create``. For ``transition``, ``node_id`` selects the
     target node (a submodel node of the entity, or the entity itself when
-    omitted); the transition is resolved against that node's own schema."""
+    omitted); the transition is resolved against that node's own schema.
+
+    ``trace`` opts into capturing the full eval trace (``PolicyEvalOut.trace``)
+    — off by default, since it's a per-step event log that can get very large
+    even for a modest policy set.
+
+    ``entity_id`` may be omitted only for ``action == "create"``: a real
+    entity is created inside a transaction that's always rolled back
+    afterwards (mirrors ``create_entity(validate=True)`` in api_entities.py),
+    so ``build_policy_input``'s DB-backed lookups work unmodified without
+    ever persisting anything."""
     if denied := _require_evaluator_access(request):
         return denied
 
-    from userdefinedmodel.models import UserDefinedModelEntity, UserDefinedModelType
+    from userdefinedmodel.models import ConfigVersion, UserDefinedModelEntity, UserDefinedModelType
     from userdefinedmodel.engine import build_policy_input, get_udm_type_for_node
 
-    try:
-        entity = UserDefinedModelEntity.objects.select_related(
-            "config_version", "user_defined_model_type"
-        ).get(id=entity_id)
-    except UserDefinedModelEntity.DoesNotExist:
-        return JsonResponse({"detail": "Entity not found"}, status=404)
+    creating_ephemeral_entity = entity_id is None
+    if not creating_ephemeral_entity:
+        try:
+            entity = UserDefinedModelEntity.objects.select_related(
+                "config_version", "user_defined_model_type"
+            ).get(id=entity_id)
+        except UserDefinedModelEntity.DoesNotExist:
+            return JsonResponse({"detail": "Entity not found"}, status=404)
+    else:
+        if action != "create":
+            return JsonResponse({"detail": "entity_id is required unless action == 'create'"}, status=400)
+        try:
+            create_udm_type = UserDefinedModelType.objects.select_related("field_config").get(id=type_id)
+        except UserDefinedModelType.DoesNotExist:
+            return JsonResponse({"detail": "UDMType not found"}, status=404)
+        if not create_udm_type.field_config:
+            return JsonResponse({"detail": "UDMType has no field config"}, status=400)
+        try:
+            create_version = ConfigVersion.objects.get(
+                config=create_udm_type.field_config, status=ConfigVersion.Status.PUBLISHED)
+        except ConfigVersion.DoesNotExist:
+            return JsonResponse({"detail": "No published config version"}, status=400)
 
     try:
         from openid_user_management.models import OpenIDUser
@@ -118,105 +147,124 @@ def eval_policy_for_type(
     if sudo:
         eval_user.sudo_mode = True
 
-    # Collect policy sources
-    udm_type = get_udm_type_for_node(entity)
-    policy_entries = []
-    if udm_type:
-        for tp in udm_type.type_policies.select_related("policy").order_by("sort_order"):
-            policy_entries.append({"slug": tp.policy.slug, "source": tp.policy.source})
-
-    # Build input document. Transition needs its descriptor; resolve it from
-    # the first workflow field ON THE TARGET NODE that defines the named
-    # transition — for submodel nodes that is the node's own schema, not the
-    # root entity's.
-    kwargs = {}
-    if transition and action == "transition":
-        from userdefinedmodel.models import FieldDefinition, UserDefinedModelEntityNode, WorkflowTransition
-        target = entity
-        if node_id is not None and node_id != entity.id:
-            try:
-                target = UserDefinedModelEntityNode.objects.select_related("config_version").get(id=node_id)
-            except UserDefinedModelEntityNode.DoesNotExist:
-                return JsonResponse({"detail": "Node not found"}, status=404)
-            if target.get_root().pk != entity.pk:
-                return JsonResponse({"detail": "Node does not belong to this entity"}, status=400)
-        for fd in target.config_version.field_definitions.filter(
-            data_type=FieldDefinition.DataType.WORKFLOW
-        ).select_related("workflow_version"):
-            t = WorkflowTransition.objects.filter(
-                version=fd.workflow_version, name=transition
-            ).select_related("from_state", "to_state", "version").first()
-            if t:
-                kwargs.update(
-                    transition=transition, field=fd.slug, node_id=str(target.id),
-                    transition_descriptor=t.to_descriptor(),
-                )
-                break
-    if action in ("save", "transition", "preview"):
-        from userdefinedmodel.engine import build_entity_document, evaluate_view_precheck
-        kwargs.setdefault("old_entity_doc", build_entity_document(entity))
-        # Mirror the real save/transition/preview flow: run the VIEW pre-check
-        # on the persisted state and hand its carry-over to the evaluation as
-        # input.additional_result. Unlike the real flow, a view denial does not
-        # abort here — the evaluator should still show the policy's verdict.
-        _, additional_result = evaluate_view_precheck(
-            entity, eval_user, kwargs["old_entity_doc"], locale=_locale(request))
-        kwargs["additional_result"] = additional_result
-    if action == "preview":
-        from userdefinedmodel.engine import build_candidate_transitions
-        kwargs["candidate_transitions"] = build_candidate_transitions(entity)
-    input_doc = build_policy_input(entity, eval_user, action, locale=_locale(request), **kwargs)
-
-    # Run evaluation on the SAME compiled-session code path as the engine
-    # (§3.1-2), reading the single aggregate rule data.udm.result.
     error_msg = None
     output = {"allow": False, "messages": [], "viewable_fields": {}, "editable_fields": {}}
     eval_prints: list[str] = []
     eval_coverage: list[dict] = []
+    eval_trace: list[dict] = []
     eval_rule_errors: list[str] = []
     full_document = None
-    if policy_entries:
-        try:
-            import opa_bindings
-            from userdefinedmodel.engine import RegoSession
-            session = RegoSession([
-                (f"policy_{entry['slug']}.rego", entry["source"]) for entry in policy_entries
-            ])
-            eng = session._engine
+    policy_entries = []
 
+    # The ephemeral-entity branch writes rows (entity + materialized field
+    # values) that build_policy_input below reads back via the ORM — both
+    # must run inside the same open transaction so the reads see the writes,
+    # and it must always roll back so nothing here is ever persisted.
+    txn = transaction.atomic() if creating_ephemeral_entity else nullcontext()
+    with txn:
+        if creating_ephemeral_entity:
+            entity = UserDefinedModelEntity.objects.create(
+                config_version=create_version, user_defined_model_type=create_udm_type,
+            )
+            entity.materialize_defaults()
+            entity.materialize_user_defaults(eval_user)
+
+        # Collect policy sources
+        udm_type = get_udm_type_for_node(entity)
+        if udm_type:
+            for tp in udm_type.type_policies.select_related("policy").order_by("sort_order"):
+                policy_entries.append({"slug": tp.policy.slug, "source": tp.policy.source})
+
+        # Build input document. Transition needs its descriptor; resolve it
+        # from the first workflow field ON THE TARGET NODE that defines the
+        # named transition — for submodel nodes that is the node's own
+        # schema, not the root entity's.
+        kwargs = {}
+        if transition and action == "transition":
+            from userdefinedmodel.models import FieldDefinition, UserDefinedModelEntityNode, WorkflowTransition
+            target = entity
+            if node_id is not None and node_id != entity.id:
+                try:
+                    target = UserDefinedModelEntityNode.objects.select_related("config_version").get(id=node_id)
+                except UserDefinedModelEntityNode.DoesNotExist:
+                    return JsonResponse({"detail": "Node not found"}, status=404)
+                if target.get_root().pk != entity.pk:
+                    return JsonResponse({"detail": "Node does not belong to this entity"}, status=400)
+            for fd in target.config_version.field_definitions.filter(
+                data_type=FieldDefinition.DataType.WORKFLOW
+            ).select_related("workflow_version"):
+                t = WorkflowTransition.objects.filter(
+                    version=fd.workflow_version, name=transition
+                ).select_related("from_state", "to_state", "version").first()
+                if t:
+                    kwargs.update(
+                        transition=transition, field=fd.slug, node_id=str(target.id),
+                        transition_descriptor=t.to_descriptor(),
+                    )
+                    break
+        if action in ("save", "transition", "preview"):
+            from userdefinedmodel.engine import build_entity_document, evaluate_view_precheck
+            kwargs.setdefault("old_entity_doc", build_entity_document(entity))
+            # Mirror the real save/transition/preview flow: run the VIEW pre-check
+            # on the persisted state and hand its carry-over to the evaluation as
+            # input.additional_result. Unlike the real flow, a view denial does not
+            # abort here — the evaluator should still show the policy's verdict.
+            _, additional_result = evaluate_view_precheck(
+                entity, eval_user, kwargs["old_entity_doc"], locale=_locale(request))
+            kwargs["additional_result"] = additional_result
+        if action == "preview":
+            from userdefinedmodel.engine import build_candidate_transitions
+            kwargs["candidate_transitions"] = build_candidate_transitions(entity)
+        input_doc = build_policy_input(entity, eval_user, action, locale=_locale(request), **kwargs)
+
+        # Run evaluation on the SAME compiled-session code path as the engine
+        # (§3.1-2), reading the single aggregate rule data.udm.result.
+        if policy_entries:
             try:
-                result_val = eng.eval_document("udm.result", input_doc, coverage=True)
-            except opa_bindings.OpaUndefinedError:
-                result_val = None
+                import opa_bindings
+                from userdefinedmodel.engine import RegoSession
+                session = RegoSession([
+                    (f"policy_{entry['slug']}.rego", entry["source"]) for entry in policy_entries
+                ])
+                eng = session._engine
+
+                try:
+                    result_val = eng.eval_document("udm.result", input_doc, coverage=True, trace=trace)
+                except opa_bindings.OpaUndefinedError:
+                    result_val = None
+                except Exception as exc:
+                    eval_rule_errors.append(f"data.udm.result: {exc}")
+                    result_val = None
+                if isinstance(result_val, dict):
+                    output = result_val
+                else:
+                    eval_rule_errors.append("data.udm.result: undefined or not an object (deny)")
+
+                # Capture this eval's prints/coverage/trace before the full-document
+                # eval below resets them (each eval_document call overwrites last_*).
+                eval_prints = [f"{location}: {message}" for message, location in eng.last_prints]
+                coverage = eng.last_coverage
+                eval_coverage = [
+                    {"path": path, **file_cov}
+                    for path, file_cov in (coverage or {}).get("files", {}).items()
+                ]
+                eval_trace = list(eng.last_trace or [])
+
+                try:
+                    full_document = eng.eval_document("udm", input_doc)
+                    logger.debug("policy full document entity=%s action=%s raw=%s", entity.id, action, full_document)
+                except opa_bindings.OpaUndefinedError:
+                    full_document = None
+                except Exception as full_exc:
+                    logger.debug("policy full document error entity=%s action=%s", entity.id, action, exc_info=full_exc)
+                    eval_rule_errors.append(f"data.udm: {full_exc}")
+                    full_document = None
             except Exception as exc:
-                eval_rule_errors.append(f"data.udm.result: {exc}")
-                result_val = None
-            if isinstance(result_val, dict):
-                output = result_val
-            else:
-                eval_rule_errors.append("data.udm.result: undefined or not an object (deny)")
+                error_msg = str(exc)
+                output = {"allow": False, "messages": [], "viewable_fields": {}, "editable_fields": {}}
 
-            # Capture this eval's prints/coverage before the full-document eval
-            # below resets them (each eval_document call overwrites last_*).
-            eval_prints = [f"{location}: {message}" for message, location in eng.last_prints]
-            coverage = eng.last_coverage
-            eval_coverage = [
-                {"path": path, **file_cov}
-                for path, file_cov in (coverage or {}).get("files", {}).items()
-            ]
-
-            try:
-                full_document = eng.eval_document("udm", input_doc)
-                logger.debug("policy full document entity=%s action=%s raw=%s", entity_id, action, full_document)
-            except opa_bindings.OpaUndefinedError:
-                full_document = None
-            except Exception as full_exc:
-                logger.debug("policy full document error entity=%s action=%s", entity_id, action, exc_info=full_exc)
-                eval_rule_errors.append(f"data.udm: {full_exc}")
-                full_document = None
-        except Exception as exc:
-            error_msg = str(exc)
-            output = {"allow": False, "messages": [], "viewable_fields": {}, "editable_fields": {}}
+        if creating_ephemeral_entity:
+            transaction.set_rollback(True)
 
     return PolicyEvalOut(
         input_document=input_doc,
@@ -227,6 +275,7 @@ def eval_policy_for_type(
         rule_errors=eval_rule_errors,
         prints=eval_prints,
         coverage=eval_coverage,
+        trace=eval_trace,
     )
 
 

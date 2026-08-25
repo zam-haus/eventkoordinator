@@ -1246,6 +1246,24 @@ interface PolicyEvaluatorProps {
   typeId: string
 }
 
+// opa_bindings coverage entries are lists of {start:{row,col}, end:{row,col}}
+// source ranges, not flat line numbers — expand them to the set of covered
+// lines for the line-by-line highlighting below.
+function expandCoverageRanges(ranges: unknown): Set<number> {
+  const lines = new Set<number>()
+  if (!Array.isArray(ranges)) return lines
+  for (const r of ranges) {
+    const start = (r as Record<string, unknown> | undefined)?.['start'] as Record<string, unknown> | undefined
+    const end = (r as Record<string, unknown> | undefined)?.['end'] as Record<string, unknown> | undefined
+    const startRow = start?.['row']
+    const endRow = end?.['row']
+    if (typeof startRow === 'number' && typeof endRow === 'number') {
+      for (let line = startRow; line <= endRow; line++) lines.add(line)
+    }
+  }
+  return lines
+}
+
 function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
   const [entities, setEntities] = useState<EntityAutocompleteItem[]>([])
   const [users, setUsers] = useState<UserAutocompleteItem[]>([])
@@ -1256,10 +1274,11 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
   const [nodes, setNodes] = useState<EvalNodeOut[]>([])
   const [nodeId, setNodeId] = useState('')
   const [sudo, setSudo] = useState(false)
+  const [includeTrace, setIncludeTrace] = useState(false)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<PolicyEvalOut | null>(null)
   const [evalError, setEvalError] = useState<string | null>(null)
-  const [activeResultTab, setActiveResultTab] = useState<'output' | 'full_doc' | 'input' | 'policies' | 'prints'>('output')
+  const [activeResultTab, setActiveResultTab] = useState<'output' | 'full_doc' | 'input' | 'policies' | 'prints' | 'trace'>('output')
 
   useEffect(() => {
     udmSearchEntities('', typeId).then(setEntities).catch(() => {})
@@ -1282,17 +1301,21 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
   const nodeTransitions = (selectedNode?.workflow_fields ?? []).flatMap(wf =>
     wf.transitions.map(t => ({ field: wf.slug, name: t })))
 
+  // "create" evaluates against a fresh, never-persisted entity the backend
+  // builds and rolls back — no existing entity to pick.
+  const entityRequired = action !== 'create'
+
   async function handleRun() {
-    if (!entityId || !userId) return
+    if (!userId || (entityRequired && !entityId)) return
     setRunning(true)
     setResult(null)
     setEvalError(null)
     try {
       const out = await udmEvalPolicy(
-        typeId, entityId, userId, action,
+        typeId, entityRequired ? entityId : undefined, userId, action,
         action === 'transition' && transitionName ? transitionName : undefined,
         action === 'transition' && nodeId ? nodeId : undefined,
-        sudo,
+        sudo, includeTrace,
       )
       setResult(out)
     } catch (e) {
@@ -1307,8 +1330,11 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
       {/* Controls */}
       <div className={styles.row} style={{ flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
         <div className={styles.formGroup} style={{ minWidth: '200px' }}>
-          <label className={styles.label}>Entity</label>
-          <select className={styles.select} value={entityId} onChange={e => setEntityId(e.target.value)}>
+          <label className={styles.label}>
+            Entity{!entityRequired && <span style={{ fontWeight: 400, color: '#777' }}> (not used for create)</span>}
+          </label>
+          <select className={styles.select} value={entityId} onChange={e => setEntityId(e.target.value)}
+            disabled={!entityRequired}>
             <option value="">— select entity —</option>
             {entities.map(e => (
               <option key={e.id} value={e.id}>
@@ -1374,12 +1400,20 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
           </label>
         </div>
 
+        <div className={styles.formGroup} style={{ minWidth: '110px', flex: 'none', justifyContent: 'flex-end' }}>
+          <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}
+            title="Capture the full eval trace — can be very large, off by default">
+            <input type="checkbox" checked={includeTrace} onChange={e => setIncludeTrace(e.target.checked)} />
+            Trace
+          </label>
+        </div>
+
         <button
           type="button"
           className={`${styles.btn} ${styles.btnPrimary}`}
           style={{ alignSelf: 'flex-end' }}
           onClick={handleRun}
-          disabled={running || !entityId || !userId}
+          disabled={running || !userId || (entityRequired && !entityId)}
         >
           {running ? 'Evaluating…' : 'Evaluate'}
         </button>
@@ -1452,8 +1486,9 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
 
           {/* Detail tabs */}
           <div className={styles.tabs} style={{ marginBottom: '0.5rem' }}>
-            {(['output', 'full_doc', 'input', 'policies', 'prints'] as const).map(tab => {
+            {(['output', 'full_doc', 'input', 'policies', 'prints', 'trace'] as const).map(tab => {
               if (tab === 'prints' && !(result.prints?.length)) return null
+              if (tab === 'trace' && !(result.trace?.length)) return null
               if (tab === 'full_doc' && !result.full_document && !(result.rule_errors?.length)) return null
               return (
                 <button key={tab} type="button"
@@ -1464,7 +1499,8 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
                       ? `Full Document${result.rule_errors?.length ? ` (${result.rule_errors.length} errors)` : ''}`
                     : tab === 'input' ? 'Input Document'
                     : tab === 'policies' ? `Policies (${result.policies.length})`
-                    : `Prints (${result.prints!.length})`}
+                    : tab === 'prints' ? `Prints (${result.prints!.length})`
+                    : `Trace (${result.trace!.length})`}
                 </button>
               )
             })}
@@ -1509,8 +1545,10 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
               ) : result.policies.map((p: Record<string, string>) => {
                 const slug = p['slug'] as string
                 const coverageFile = result.coverage?.find(f => f.path === `policy_${slug}.rego`)
-                const coveredSet = new Set((coverageFile?.covered ?? []) as number[])
-                const notCoveredSet = new Set((coverageFile?.not_covered ?? []) as number[])
+                const coveredSet = expandCoverageRanges(coverageFile?.covered)
+                const notCoveredSet = expandCoverageRanges(coverageFile?.not_covered)
+                const coveredCount = (coverageFile?.covered_lines as number | undefined) ?? coveredSet.size
+                const notCoveredCount = (coverageFile?.not_covered_lines as number | undefined) ?? notCoveredSet.size
 
                 // Map line number → print values emitted at that line for this policy
                 const printsByLine = new Map<number, string[]>()
@@ -1531,7 +1569,7 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
                       {slug}
                       {coverageFile && (
                         <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#555', marginLeft: '0.6rem' }}>
-                          {(coverageFile.covered as number[]).length} covered · {(coverageFile.not_covered as number[]).length} not covered
+                          {coveredCount} covered · {notCoveredCount} not covered
                         </span>
                       )}
                     </div>
@@ -1575,8 +1613,76 @@ function PolicyEvaluator({ typeId }: PolicyEvaluatorProps) {
               ))}
             </div>
           )}
+
+          {activeResultTab === 'trace' && result.trace && result.trace.length > 0 && (
+            <TraceViewer trace={result.trace} />
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Trace viewer ────────────────────────────────────────────────────────────
+// Renders opa_bindings' eval_document(..., trace=True) event log: a flat list
+// of {op, query_id, parent_id, location, node, locals?, message?} in
+// evaluation order. Indentation is derived from query_id/parent_id (a query's
+// depth is its parent's depth + 1; the root query is its own parent).
+
+const TRACE_OP_COLOR: Record<string, string> = {
+  Enter: '#60a5fa',
+  Exit: '#4ade80',
+  Fail: '#f87171',
+  Redo: '#fbbf24',
+  Note: '#c084fc',
+  Eval: '#9ca3af',
+  Unify: '#9ca3af',
+  Index: '#9ca3af',
+}
+
+function TraceViewer({ trace }: { trace: Record<string, unknown>[] }) {
+  const depthByQueryId = new Map<number, number>()
+  return (
+    <div style={{ background: '#1e1e1e', borderRadius: '6px', overflow: 'auto', maxHeight: '600px', padding: '0.5rem 0.75rem', border: '1px solid #333' }}>
+      {trace.map((ev, i) => {
+        const queryId = Number(ev['query_id'] ?? 0)
+        const parentId = Number(ev['parent_id'] ?? 0)
+        const depth = queryId === parentId
+          ? (depthByQueryId.get(queryId) ?? 0)
+          : (depthByQueryId.get(parentId) ?? 0) + 1
+        if (!depthByQueryId.has(queryId)) depthByQueryId.set(queryId, depth)
+
+        const op = String(ev['op'] ?? '')
+        const location = ev['location'] != null ? String(ev['location']) : ''
+        const node = ev['node'] != null ? String(ev['node']) : ''
+        const message = ev['message'] != null ? String(ev['message']) : ''
+        const locals = ev['locals']
+
+        return (
+          <div key={i} className={styles.monoText} style={{
+            display: 'flex', flexWrap: 'wrap', columnGap: '0.5rem',
+            fontSize: '0.75rem', color: '#d4d4d4',
+            paddingTop: '0.1rem', paddingBottom: '0.1rem', paddingLeft: `${depth * 1.1}rem`,
+            borderBottom: '1px solid #2a2a2a',
+          }}>
+            <span style={{ minWidth: '3.4rem', flexShrink: 0, fontWeight: 700, color: TRACE_OP_COLOR[op] ?? '#9ca3af' }}>
+              {op}
+            </span>
+            <span style={{ minWidth: '9rem', flexShrink: 0, color: '#888' }}>{location}</span>
+            <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{node}</span>
+            {message && (
+              <span style={{ color: '#f59e0b', fontStyle: 'italic', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                — {message}
+              </span>
+            )}
+            {locals != null && (
+              <span style={{ color: '#60a5fa', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                {JSON.stringify(locals)}
+              </span>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

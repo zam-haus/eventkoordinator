@@ -423,20 +423,21 @@ export async function udmGetType(typeId: string): Promise<UDMTypeOut> {
 
 export async function udmEvalPolicy(
   typeId: string,
-  entityId: string,
+  entityId: string | undefined,
   userId: string,
   action: string,
   transition?: string,
   nodeId?: string,
   sudo?: boolean,
+  trace?: boolean,
 ): Promise<PolicyEvalOut> {
   const { data, error, response } = await udmClient.GET('/api/udm/types/{type_id}/eval-policy/', {
     params: {
       path: { type_id: typeId },
       query: {
-        entity_id: entityId, user_id: userId, action,
+        entity_id: entityId ?? null, user_id: userId, action,
         transition: transition ?? null, node_id: nodeId ?? null,
-        sudo: sudo ?? false,
+        sudo: sudo ?? false, trace: trace ?? false,
       },
     },
   })

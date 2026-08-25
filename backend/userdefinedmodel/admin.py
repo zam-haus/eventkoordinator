@@ -483,10 +483,12 @@ class FieldValueInlineForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._preexisting_mismatch = False
         instance = kwargs.get("instance")
         if instance is None or instance.pk is None or instance.field_id is None:
             return  # new row: field/data_type unknown yet, show everything
         expected, wrong = _field_value_mismatches(instance)
+        self._preexisting_mismatch = bool(wrong)
         for name, _attr in _VALUE_COLUMNS:
             if name not in self.fields:
                 continue
@@ -503,18 +505,41 @@ class FieldValueInlineForm(forms.ModelForm):
                 # tabular column headers stay aligned, but grey it out. A real
                 # HiddenInput (is_hidden=True) would be pulled out of its <td>.
                 self.fields[name].disabled = True
-                self.fields[name].widget = forms.TextInput(
-                    attrs={
-                        "style": (
-                            "background:var(--darkened-bg,#f3f3f3);"
-                            "color:var(--body-quiet-color,#999);"
-                            "border-color:var(--border-color,#ddd);"
-                            "pointer-events:none;opacity:.5;"
-                        ),
-                        "tabindex": "-1",
-                        "placeholder": "n/a",
-                    }
-                )
+                if hasattr(self.fields[name], "empty_value"):
+                    # Unlike CharField, TextField.formfield() does not set
+                    # empty_value=None for a nullable field, so cleaning this
+                    # disabled field's None initial would coerce it to "" and
+                    # construct_instance() would write that "" back onto the
+                    # instance, tripping the wrong-column check on every save.
+                    self.fields[name].empty_value = None
+                style_attrs = {
+                    "style": (
+                        "background:var(--darkened-bg,#f3f3f3);"
+                        "color:var(--body-quiet-color,#999);"
+                        "border-color:var(--border-color,#ddd);"
+                        "pointer-events:none;opacity:.5;"
+                    ),
+                    "tabindex": "-1",
+                    "placeholder": "n/a",
+                }
+                widget = self.fields[name].widget
+                if isinstance(widget, forms.MultiWidget):
+                    # Swapping in a plain TextInput here would drop
+                    # decompress(), which MultiValueField.clean() requires.
+                    for subwidget in widget.widgets:
+                        subwidget.attrs.update(style_attrs)
+                else:
+                    self.fields[name].widget = forms.TextInput(attrs=style_attrs)
+
+    def _post_clean(self):
+        # Pre-existing rows can already have legacy data in the wrong value
+        # column (flagged red above, and by FieldValueWarningMixin on GET).
+        # Full model validation would otherwise reject the *entire* formset
+        # -- including unrelated edits on other rows -- just because this
+        # untouched row still carries its old, already-known-bad data.
+        if self._preexisting_mismatch and not self.has_changed():
+            return
+        super()._post_clean()
 
 
 class FieldValueInline(admin.TabularInline):

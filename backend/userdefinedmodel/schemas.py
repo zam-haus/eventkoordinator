@@ -1109,6 +1109,7 @@ class PolicyEvalOut(Schema):
     rule_errors: list[str] = []      # per-rule evaluation errors
     prints: list[str] = []           # stdout lines emitted by print() in Rego
     coverage: list[dict] = []        # per-file coverage: {path, covered, not_covered}
+    trace: list[dict] = []           # eval trace events: {op, query_id, parent_id, location, node, locals, message}
 
 
 # ─── Draft-as-input export schemas ───────────────────────────────────────────

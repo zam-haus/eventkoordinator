@@ -827,6 +827,16 @@ export interface paths {
          *     ``browse`` and ``create``. For ``transition``, ``node_id`` selects the
          *     target node (a submodel node of the entity, or the entity itself when
          *     omitted); the transition is resolved against that node's own schema.
+         *
+         *     ``trace`` opts into capturing the full eval trace (``PolicyEvalOut.trace``)
+         *     — off by default, since it's a per-step event log that can get very large
+         *     even for a modest policy set.
+         *
+         *     ``entity_id`` may be omitted only for ``action == "create"``: a real
+         *     entity is created inside a transaction that's always rolled back
+         *     afterwards (mirrors ``create_entity(validate=True)`` in api_entities.py),
+         *     so ``build_policy_input``'s DB-backed lookups work unmodified without
+         *     ever persisting anything.
          */
         get: operations["userdefinedmodel_api_types_eval_policy_for_type"];
         put?: never;
@@ -2014,6 +2024,13 @@ export interface components {
              * @default []
              */
             rule_errors: string[];
+            /**
+             * Trace
+             * @default []
+             */
+            trace: {
+                [key: string]: unknown;
+            }[];
         };
         /** PolicyOut */
         PolicyOut: {
@@ -3752,12 +3769,13 @@ export interface operations {
     userdefinedmodel_api_types_eval_policy_for_type: {
         parameters: {
             query: {
-                entity_id: string;
                 user_id: string;
+                entity_id?: string | null;
                 action?: string;
                 transition?: string | null;
                 node_id?: string | null;
                 sudo?: boolean;
+                trace?: boolean;
             };
             header?: never;
             path: {

@@ -713,7 +713,7 @@ class TypedValue(models.Model):
                     has_value = True
                 else:
                     raise ValidationError(
-                        {field.slug: f"Unexpected value in column {c} for data_type {dt}"}
+                        f"{field.slug}: Unexpected value in column {c} for data_type {dt}"
                     )
 
         # Type-specific validation
@@ -724,24 +724,24 @@ class TypedValue(models.Model):
 
         if dt in (FieldDefinition.DataType.INTEGER, FieldDefinition.DataType.SLUG_ID):
             if not isinstance(val, (int, decimal.Decimal)) or (isinstance(val, decimal.Decimal) and val != val.to_integral_value()):
-                raise ValidationError({field.slug: "Value must be an integer"})
+                raise ValidationError(f"{field.slug}: Value must be an integer")
             if dt == FieldDefinition.DataType.SLUG_ID and int(val) < 1:
-                raise ValidationError({field.slug: "Slug ID value must be a positive integer"})
+                raise ValidationError(f"{field.slug}: Slug ID value must be a positive integer")
         elif dt == FieldDefinition.DataType.SELECT_SINGLE:
             choices = (field.type_config or {}).get("choices", [])
             if choices and val not in choices:
-                raise ValidationError({field.slug: f"'{val}' is not a valid choice"})
+                raise ValidationError(f"{field.slug}: '{val}' is not a valid choice")
         elif dt == FieldDefinition.DataType.SELECT_MULTI:
             choices = (field.type_config or {}).get("choices", [])
             if not isinstance(val, list):
-                raise ValidationError({field.slug: "Value must be a list"})
+                raise ValidationError(f"{field.slug}: Value must be a list")
             if choices:
                 for item in val:
                     if item not in choices:
-                        raise ValidationError({field.slug: f"'{item}' is not a valid choice"})
+                        raise ValidationError(f"{field.slug}: '{item}' is not a valid choice")
         elif dt in (FieldDefinition.DataType.USER_SELECT_MULTI, FieldDefinition.DataType.GROUP_SELECT_MULTI, FieldDefinition.DataType.ENTITY_SELECT_MULTI):
             if not isinstance(val, list):
-                raise ValidationError({field.slug: "Value must be a list"})
+                raise ValidationError(f"{field.slug}: Value must be a list")
 
 
 class FieldDefaultValue(TypedValue, MetaBase):
@@ -775,7 +775,7 @@ class FieldDefaultValue(TypedValue, MetaBase):
         from django.core.exceptions import ValidationError
         if self.field_id and self.field.data_type in self._NO_DEFAULT_TYPES:
             raise ValidationError(
-                {self.field.slug: f"Defaults are not supported for data_type '{self.field.data_type}'."}
+                f"{self.field.slug}: Defaults are not supported for data_type '{self.field.data_type}'."
             )
         self._clean_typed_value(self.field)
 

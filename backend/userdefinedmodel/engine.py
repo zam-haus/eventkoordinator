@@ -69,9 +69,13 @@ class RegoSession:
             return None
 
     def evaluate(self, input_doc: dict, rule_path: str, *, gather_prints: bool = False):
-        """One evaluation. Returns (value, prints)."""
+        """One evaluation. Returns (value, prints) where prints are formatted
+        "location: message" strings (last_prints itself holds (message,
+        location) tuples)."""
         value = self.eval_rule(self._engine, rule_path, input_doc)
-        prints = list(self._engine.last_prints) if gather_prints else []
+        prints = [
+            f"{location}: {message}" for message, location in self._engine.last_prints
+        ] if gather_prints else []
         return value, prints
 
 
