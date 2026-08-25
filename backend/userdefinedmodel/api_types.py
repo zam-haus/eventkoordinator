@@ -185,7 +185,9 @@ def eval_policy_for_type(
             eng = session._engine
 
             try:
-                result_val = RegoSession.eval_rule(eng, "data.udm.result", input_doc)
+                result_val = eng.eval_document("udm.result", input_doc, coverage=True)
+            except opa_bindings.OpaUndefinedError:
+                result_val = None
             except Exception as exc:
                 eval_rule_errors.append(f"data.udm.result: {exc}")
                 result_val = None
@@ -193,6 +195,15 @@ def eval_policy_for_type(
                 output = result_val
             else:
                 eval_rule_errors.append("data.udm.result: undefined or not an object (deny)")
+
+            # Capture this eval's prints/coverage before the full-document eval
+            # below resets them (each eval_document call overwrites last_*).
+            eval_prints = [f"{location}: {message}" for message, location in eng.last_prints]
+            coverage = eng.last_coverage
+            eval_coverage = [
+                {"path": path, **file_cov}
+                for path, file_cov in (coverage or {}).get("files", {}).items()
+            ]
 
             try:
                 full_document = eng.eval_document("udm", input_doc)
@@ -203,11 +214,6 @@ def eval_policy_for_type(
                 logger.debug("policy full document error entity=%s action=%s", entity_id, action, exc_info=full_exc)
                 eval_rule_errors.append(f"data.udm: {full_exc}")
                 full_document = None
-
-            eval_prints = [f"{location}: {message}" for message, location in eng.last_prints]
-            # Coverage reporting isn't available through opa_bindings; the
-            # engine swap dropped it, and `coverage` stays empty until/unless
-            # a replacement is added.
         except Exception as exc:
             error_msg = str(exc)
             output = {"allow": False, "messages": [], "viewable_fields": {}, "editable_fields": {}}

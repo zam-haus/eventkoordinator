@@ -825,14 +825,14 @@ wheels = [
 
 [[package]]
 name = "opa-golib-python-bindings"
-version = "0.1.2"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2b/0f/440e074d079ef3dcb3bf28f341a8fada9388f85ba795364cd9d778e8bb47/opa_golib_python_bindings-0.1.2.tar.gz", hash = "sha256:31c049c057bc9b935223ceb7ade8c38fc88235be8429c861a436799ac45d411d", size = 19053, upload-time = "2026-08-25T19:04:18.56Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/a4/0140a9e263cd9b7c985d99aad21c1473502696eafa7bdb132bd8e37d7489/opa_golib_python_bindings-0.2.0.tar.gz", hash = "sha256:db3a9dda91363e7b6d5835bbbf5d0df3fb439fa7289b99c25c383e2cc8947237", size = 20874, upload-time = "2026-08-25T21:04:55.444Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/eb/66e6430a663d18049bb3d4a6a8385a965effb488cba8d03701ad8c0b0816/opa_golib_python_bindings-0.1.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:f9034a38bc1dfa8eb9fa07885eb03c4f74e08a7b422dadcea70d038f1baca9eb", size = 7628416, upload-time = "2026-08-25T19:04:10.766Z" },
-    { url = "https://files.pythonhosted.org/packages/a6/7e/9f99187a5c20492674ae61a174985416123af9aeecc5cc17ffcc56749639/opa_golib_python_bindings-0.1.2-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:987e2838a9231dbf32423ab31613070ebc9970acd3925ae320191539acdb82ce", size = 8272981, upload-time = "2026-08-25T19:04:12.713Z" },
-    { url = "https://files.pythonhosted.org/packages/f2/56/347566916cb4f9bbf6fe72dbba774244f0dbe0cb01df6ccda7b21e5f8184/opa_golib_python_bindings-0.1.2-py3-none-manylinux_2_34_aarch64.whl", hash = "sha256:f2c725d8541fefffe3f6cc6044ddc5a0bee4452f7e6ada943bd78d270a753805", size = 13326460, upload-time = "2026-08-25T19:04:14.638Z" },
-    { url = "https://files.pythonhosted.org/packages/4b/16/c06081ce74f8cfafa324d9777475c40f35c639221a5e4843191d138296c5/opa_golib_python_bindings-0.1.2-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:e37f627df2d9949dc544a6ddad22c913e00749657c2575024e44f9f74e624cd7", size = 14704751, upload-time = "2026-08-25T19:04:16.668Z" },
+    { url = "https://files.pythonhosted.org/packages/65/a8/11d7f599464ad4829721dc772ef5c83d0c1204745ebe71c2170983a00ed4/opa_golib_python_bindings-0.2.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:e6b3a9d4288bb501a8aed49a48a5c3475176804e70a7193dbd0c05b93e5acb5d", size = 7642270, upload-time = "2026-08-25T21:04:46.754Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/32/9ee393b04f350e517fdead0fa02361a1e438ae6e5a7433fe31b2fa2c9526/opa_golib_python_bindings-0.2.0-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:2289a271e8db5d76d691c7c7dffa6a90e1ecb85a7d12be54017db425f4c79e21", size = 8292465, upload-time = "2026-08-25T21:04:49.007Z" },
+    { url = "https://files.pythonhosted.org/packages/56/b6/0936e7182115b26686fd62d9e9057a71af328979c05598c2223270bad9c4/opa_golib_python_bindings-0.2.0-py3-none-manylinux_2_34_aarch64.whl", hash = "sha256:11237543ba9ae78c75e4aad8beffb2f9ffba24365dd50052ea9c548dc9af69e6", size = 13355737, upload-time = "2026-08-25T21:04:51.089Z" },
+    { url = "https://files.pythonhosted.org/packages/11/a3/ad471bb6bfa07ffae35eee13b9d06ba55913c8387d6a1c42d60dd088dade/opa_golib_python_bindings-0.2.0-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:f54150295927509cac7bf5fd19de1d1c4ac8f80028fd144f6b37da9018442164", size = 14735535, upload-time = "2026-08-25T21:04:53.583Z" },
 ]
 
 [[package]]
@@ -1519,7 +1519,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "mozilla-django-oidc", specifier = ">=5.0.2" },
     { name = "nh3", specifier = ">=0.2.21" },
-    { name = "opa-golib-python-bindings", specifier = ">=0.1.2" },
+    { name = "opa-golib-python-bindings", specifier = ">=0.2.0" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "polars", specifier = ">=1.40.1" },
     { name = "psycopg2-binary", specifier = ">=2.9.11" },
