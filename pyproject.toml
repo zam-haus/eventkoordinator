@@ -3,7 +3,7 @@ name = "zameventkoordination"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "django>=6.0.3",
     "django-ninja>=1.6.0",
@@ -34,16 +34,14 @@ dependencies = [
     "polars>=1.40.1",
     "xlsxwriter>=3.2.9",
     "caldav>=1.4.0",
-    #"celine-regorus>=0.9.1.post20260227075446",
-    "regorus>=0.10.1",
     "nh3>=0.2.21",
     "pyparsing>=3.3.2",
     "factory-boy>=3.3.3",
     "dateparser>=1.4.2",
+    # Import name is "opa_bindings", not the PyPI/dist name.
+    "opa-golib-python-bindings>=0.1.2",
 ]
 default-groups = []
-[tool.uv.sources]
-regorus = { url = "https://github.com/phi1010/regorus/releases/download/releases%2Fphi1010-2026.7.12%2Bgecc6a3a/regorus-2026.7.12+gecc6a3a-cp310-abi3-manylinux_2_34_x86_64.whl" }
 [dependency-groups]
 dev = [
     "playwright>=1.58.0",

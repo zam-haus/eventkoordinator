@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 """Validate the generated example input documents of _input_schema.rego.
 
-Usage (from backend/, so the project venv with regorus is used):
+Usage (from backend/, so the project venv with opa_bindings is used):
     uv run python ../documentation/configuration/policies/check_input_schema.py
         -> validates every example against the Rego contract (valid_input)
            AND the Pydantic contract (userdefinedmodel.policy_input), listing them
@@ -16,27 +16,35 @@ import json
 import sys
 from pathlib import Path
 
-import regorus
+import opa_bindings
 
 POLICY_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = POLICY_DIR.parent.parent.parent / "backend"
-PKG = "data.udm.udmframeworkv1.input_schema"
+PKG = "udm.udmframeworkv1.input_schema"
 
 sys.path.insert(0, str(BACKEND_DIR))
 from userdefinedmodel.policy_input import validate_policy_input  # noqa: E402
 
 
-def build_engine() -> regorus.Engine:
-    eng = regorus.Engine()
+def build_engine() -> opa_bindings.OpaEngine:
+    eng = opa_bindings.OpaEngine()
     for name in ("_input_schema.rego", "_template.rego"):
         eng.add_policy(name, (POLICY_DIR / name).read_text())
     return eng
 
 
-def load_examples(eng: regorus.Engine) -> list[dict]:
-    eng.set_input_json("{}")
-    examples = json.loads(eng.eval_rule_as_json(f"{PKG}.example_inputs"))
+def load_examples(eng: opa_bindings.OpaEngine) -> list[dict]:
+    examples = eng.eval_document(f"{PKG}.example_inputs")
     return sorted(examples, key=lambda d: (d["action"], json.dumps(d, sort_keys=True)))
+
+
+def eval_bool(eng: opa_bindings.OpaEngine, path: str, doc: dict | None = None) -> bool:
+    """valid_input/examples_valid have no `default false`, so a failing check
+    leaves the rule undefined rather than false."""
+    try:
+        return eng.eval_document(path, doc) is True
+    except opa_bindings.OpaUndefinedError:
+        return False
 
 
 def describe(doc: dict) -> str:
@@ -70,16 +78,14 @@ def main() -> int:
         return 0
 
     # Aggregate self-check inside Rego...
-    eng.set_input_json("{}")
-    aggregate_ok = eng.eval_rule_as_json(f"{PKG}.examples_valid") == "true"
+    aggregate_ok = eval_bool(eng, f"{PKG}.examples_valid")
 
     # ...and each example individually against BOTH contracts, so a failure
     # names the document and the side (rego / pydantic) that rejected it.
     failures = []
     for i, doc in enumerate(examples):
         problems = []
-        eng.set_input_json(json.dumps(doc))
-        if eng.eval_rule_as_json(f"{PKG}.valid_input") != "true":
+        if not eval_bool(eng, f"{PKG}.valid_input", doc):
             problems.append("rego")
         try:
             validate_policy_input(doc)

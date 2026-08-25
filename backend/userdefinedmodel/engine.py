@@ -10,7 +10,6 @@ on the ROOT entity document; the engine reads exactly one aggregate rule:
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import threading
 from typing import TYPE_CHECKING, ClassVar, Optional
@@ -29,10 +28,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# regorus renders an undefined rule result as this JSON string. It must never be
-# treated as a truthy value (bool("<undefined>") is True), or deny-by-default fails open.
-_UNDEFINED = "<undefined>"
-
 # entity_select targets are resolved into input.linked_entities exactly this
 # many entities deep (contract §3.2-8). Raise deliberately if policies need it.
 LINKED_ENTITY_DEPTH = 1
@@ -41,46 +36,48 @@ LINKED_ENTITY_DEPTH = 1
 # ─── Rego session + per-type compiled engine cache ───────────────────────────
 
 class RegoSession:
-    """A compiled regorus engine over a fixed set of policy sources.
+    """An OPA engine over a fixed set of policy sources.
 
-    Compile once, ``clone()`` per evaluation — regorus engines are cheap to
-    clone but expensive to compile. Shared by the real evaluation path and the
-    introspection endpoint so the two can never drift.
+    Compile once (``add_policy`` per source), evaluate many times — the engine
+    is a stateful handle with no ``clone()``; unlike the previous regorus
+    engine, ``eval_document`` takes the input directly, so no per-eval clone
+    step is needed. Shared by the real evaluation path and the introspection
+    endpoint so the two can never drift.
     """
 
     def __init__(self, sources: list[tuple[str, str]]):
-        import regorus
+        import opa_bindings
 
-        self._engine = regorus.Engine()
+        self._engine = opa_bindings.OpaEngine()
+        # opa_bindings always captures print() output into last_prints; a
+        # None print_handler additionally echoes each print to stderr. Set a
+        # no-op handler so evaluation never spams the server's stderr.
+        self._engine.print_handler = lambda message, location: None
         for filename, source in sources:
             self._engine.add_policy(filename, source)
         self.sources = sources
 
-    def clone(self):
-        return self._engine.clone()
-
     @staticmethod
-    def eval_rule(engine, rule_path: str):
+    def eval_rule(engine, rule_path: str, input_doc: dict | None = None):
         """Evaluate a rule; return the parsed JSON value or None when undefined."""
-        raw = json.loads(engine.eval_rule_as_json(rule_path))
-        if raw == _UNDEFINED:
+        import opa_bindings
+
+        path = rule_path.removeprefix("data.")
+        try:
+            return engine.eval_document(path, input_doc)
+        except opa_bindings.OpaUndefinedError:
             return None
-        return raw
 
     def evaluate(self, input_doc: dict, rule_path: str, *, gather_prints: bool = False):
-        """One evaluation on a fresh clone. Returns (value, prints)."""
-        eng = self.clone()
-        eng.set_input_json(json.dumps(input_doc))
-        if gather_prints:
-            eng.set_gather_prints(True)
-        value = self.eval_rule(eng, rule_path)
-        prints = eng.take_prints() if gather_prints else []
+        """One evaluation. Returns (value, prints)."""
+        value = self.eval_rule(self._engine, rule_path, input_doc)
+        prints = list(self._engine.last_prints) if gather_prints else []
         return value, prints
 
 
-# PyO3 regorus engines are UNSENDABLE: an Engine (and its clones) may only be
-# used on the thread that created it. The cache is therefore thread-local —
-# still bounded to one entry per udm_type_id, per serving thread.
+# The Go bridge documents no cross-thread safety for a single engine handle,
+# so the cache stays thread-local — still bounded to one entry per
+# udm_type_id, per serving thread.
 _ENGINE_CACHE_TLS = threading.local()
 
 
@@ -504,15 +501,9 @@ def _resolve_backlink(entry: dict, context_entity_id: str) -> list[dict]:
 
 def _eval_optional_set_rule(session: "RegoSession", input_doc: dict, rule_path: str) -> list:
     """Like session.evaluate, but tolerates policies that never define the
-    rule at all: regorus raises "not a valid rule path" for a path no loaded
-    module contributes to (distinct from a defined-but-unmatched rule, which
-    evaluates to an empty set/undefined instead)."""
-    try:
-        value, _ = session.evaluate(input_doc, rule_path)
-    except RuntimeError as exc:
-        if "not a valid rule path" not in str(exc):
-            raise
-        return []
+    rule at all: session.evaluate() already maps OpaUndefinedError (raised for
+    both "no module defines this rule" and "defined but unmatched") to None."""
+    value, _ = session.evaluate(input_doc, rule_path)
     return value or []
 
 

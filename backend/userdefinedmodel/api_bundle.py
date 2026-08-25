@@ -53,20 +53,12 @@ def _extract_bundle_from_rego(source: str) -> dict | None:
     and Rego built-ins but not input.* fields.
     Returns None if the rule is missing or evaluation fails.
     """
-    import json as _json
+    import opa_bindings
     try:
-        import regorus
-        eng = regorus.Engine()
-        eng.add_policy("bundle.rego", source)
-        eng.set_input_json("{}")
-        raw = _json.loads(eng.eval_rule_as_json(f"data.udm.{_BUNDLE_RULE}"))
-        if raw == "<undefined>" or raw is None:
-            return None
-        if isinstance(raw, list) and raw:
-            raw = raw[0]
-        if isinstance(raw, dict):
-            return raw
-        return None
+        with opa_bindings.OpaEngine() as eng:
+            eng.add_policy("bundle.rego", source)
+            raw = eng.eval_document(f"udm.{_BUNDLE_RULE}")
+        return raw if isinstance(raw, dict) else None
     except Exception:
         return None
 

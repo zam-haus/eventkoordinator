@@ -177,18 +177,15 @@ def eval_policy_for_type(
     full_document = None
     if policy_entries:
         try:
-            import json as _json
-            from userdefinedmodel.engine import RegoSession, _UNDEFINED
+            import opa_bindings
+            from userdefinedmodel.engine import RegoSession
             session = RegoSession([
                 (f"policy_{entry['slug']}.rego", entry["source"]) for entry in policy_entries
             ])
-            eng = session.clone()
-            eng.set_input_json(_json.dumps(input_doc))
-            eng.set_gather_prints(True)
-            eng.set_enable_coverage(True)
+            eng = session._engine
 
             try:
-                result_val = RegoSession.eval_rule(eng, "data.udm.result")
+                result_val = RegoSession.eval_rule(eng, "data.udm.result", input_doc)
             except Exception as exc:
                 eval_rule_errors.append(f"data.udm.result: {exc}")
                 result_val = None
@@ -198,22 +195,19 @@ def eval_policy_for_type(
                 eval_rule_errors.append("data.udm.result: undefined or not an object (deny)")
 
             try:
-                raw_full = eng.eval_query_as_json("data.udm")
-                logger.debug("policy full document entity=%s action=%s raw=%s", entity_id, action, raw_full)
-                parsed_full = _json.loads(raw_full)
-                full_document = None if parsed_full == _UNDEFINED else parsed_full
+                full_document = eng.eval_document("udm", input_doc)
+                logger.debug("policy full document entity=%s action=%s raw=%s", entity_id, action, full_document)
+            except opa_bindings.OpaUndefinedError:
+                full_document = None
             except Exception as full_exc:
                 logger.debug("policy full document error entity=%s action=%s", entity_id, action, exc_info=full_exc)
                 eval_rule_errors.append(f"data.udm: {full_exc}")
                 full_document = None
 
-            eval_prints = eng.take_prints()
-            coverage_json = _json.loads(eng.get_coverage_report_as_json())
-            # Strip the redundant `code` field — sources are already in `policies`.
-            eval_coverage = [
-                {k: v for k, v in f.items() if k != "code"}
-                for f in coverage_json.get("files", [])
-            ]
+            eval_prints = [f"{location}: {message}" for message, location in eng.last_prints]
+            # Coverage reporting isn't available through opa_bindings; the
+            # engine swap dropped it, and `coverage` stays empty until/unless
+            # a replacement is added.
         except Exception as exc:
             error_msg = str(exc)
             output = {"allow": False, "messages": [], "viewable_fields": {}, "editable_fields": {}}

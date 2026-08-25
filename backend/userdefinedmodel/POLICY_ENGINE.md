@@ -1,7 +1,9 @@
 # Policy Engine — Input & Output Reference
 
 Policies are [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) programs evaluated by the
-[regorus](https://github.com/microsoft/regorus) engine. All rules live under the `data.udm` package.
+real [OPA](https://www.openpolicyagent.org/) engine, embedded via
+[opa-golib-python-bindings](https://github.com/phi1010/opa-golib-python-bindings) (`opa_bindings`). All rules
+live under the `data.udm` package.
 
 The authoritative, executable contract lives in
 `documentation/configuration/policies/_input_schema.rego` (input shape, generated example documents,
@@ -32,8 +34,9 @@ Current `input_version`: **1**.
 - The engine reads exactly **one aggregate rule** per evaluation:
   - `data.udm.result` for entity actions (fixed schema for *every* action),
   - `data.udm.type_result` for `action == "public_type_fields"`.
-- Compiled policies are cached: one `regorus.Engine` per `udm_type_id`, validated against a hash of the
-  policy sources and replaced when it changes; each evaluation runs on a `clone()` (`engine.RegoSession`).
+- Compiled policies are cached: one `opa_bindings.OpaEngine` per `udm_type_id`, validated against a hash of
+  the policy sources and replaced when it changes; the engine has no `clone()` — each evaluation calls
+  `eval_document` directly on the shared, cached instance (`engine.RegoSession`).
 - Default-deny: no UDMType, no attached policies, an undefined `result`, a malformed input document, or an
   evaluation error all yield the deny output.
 
@@ -248,8 +251,12 @@ framework layer (`udm.rego` aggregator, `framework.rego` tree walker in `package
   `public_type_fields`/`TYPE_DESCRIPTION`. See `_template.rego`.
 - `data.udmtree.tree_nodes` / `tree_nodes_with_path` walk the whole tree (node + dotted path prefix);
   schema-specific validators are ordinary modules gating on `node.schema_id`.
-- **regorus constraints**: modules must never reference `data.udm.*` (the dynamic `modules[name]` scan
-  cannot recurse back — cycle); cross-module *function* calls do not resolve — define helpers locally.
+- **Constraint (framework design, not engine-specific)**: modules must never reference `data.udm.*` (the
+  dynamic `modules[name]` scan cannot recurse back — cycle).
+- **Historical constraint (regorus-only, lifted since the OPA engine swap)**: cross-module *function* calls
+  used to not resolve, so helpers were defined locally per module instead of shared. The real OPA engine
+  supports this; existing modules were left as-is (each still defines its own copies) since deduplicating
+  them is a follow-up cleanup, not required for anything to work.
 - Multiple policies per type compose by set union; any one module's `allow` suffices unless the aggregator
   denies.
 
