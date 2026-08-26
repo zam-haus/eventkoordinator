@@ -665,8 +665,8 @@ INPUT_DOCUMENT := {
 			},
 			"title": {
 				"data_type": "text_short",
-				"localized": false,
-				"value": "My submission",
+				"localized": true,
+				"value": {"en": "My submission"},
 			},
 			"status": {
 				"data_type": "workflow",
@@ -776,13 +776,13 @@ INPUT_DOCUMENT := {
 			},
 			"abstract": {
 				"data_type": "text_long",
-				"localized": false,
-				"value": "apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß",
+				"localized": true,
+				"value": {"en": "apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß"},
 			},
 			"description": {
 				"data_type": "text_markdown",
-				"localized": false,
-				"value": "# apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß\n\n## apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß\n\napodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß\n\n| apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß | apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß |\n| 1 | 2 |",
+				"localized": true,
+				"value": {"en": "# apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß\n\n## apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß\n\napodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß\n\n| apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß | apodj poqdßowq uwqudß921u ß921u ßueß 0ßu20ßuu ßdu21ß |\n| 1 | 2 |"},
 			},
 			"photo-copyright-consent": {
 				"data_type": "boolean",

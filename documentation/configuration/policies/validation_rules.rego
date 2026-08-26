@@ -17,57 +17,128 @@ _checklist_ctx if {
 	is_owner_or_editor
 }
 
-# title: 1–30 non-empty characters
-_title_complete if {
-	v := input.entity.fields.title.value
-	print("[check:title] value=", v)
-	v != null
-	count(trim_space(v)) >= 1
-	count(v) <= 30
-	print("[check:title] PASS len=", count(v))
+# ─── Bilingual (de/en) fields: title, abstract, description ────────────────────
+# Each is localized; a language value is either absent (both null and unset) or
+# must satisfy the field's length bounds. Rules:
+#  1. Each field needs a valid value in at least one language; the other
+#     language may stay empty but, if present, must itself be valid.
+#  2. Per language: once any of the three fields is filled in that language,
+#     all three must be filled in that language.
+
+_bilingual_langs := {"en", "de"}
+
+_bilingual_bounds := {
+	"title": {"min": 1, "max": 30},
+	"abstract": {"min": 50, "max": 250},
+	"description": {"min": 50, "max": 1000},
 }
 
+_lang_value(slug, lang) := v if {
+	raw := input.entity.fields[slug].value
+	is_object(raw)
+	v := object.get(raw, lang, null)
+}
+
+default _lang_value(slug, lang) := null
+
+_lang_empty(slug, lang) if trim_space(_field_lang_text(slug, lang)) == ""
+
+_field_lang_text(slug, lang) := v if {
+	v := _lang_value(slug, lang)
+	v != null
+}
+
+default _field_lang_text(slug, lang) := ""
+
+_lang_valid(slug, lang) if {
+	bounds := _bilingual_bounds[slug]
+	v := _lang_value(slug, lang)
+	v != null
+	count(trim_space(v)) >= bounds.min
+	count(v) <= bounds.max
+}
+
+_lang_invalid(slug, lang) if {
+	not _lang_empty(slug, lang)
+	not _lang_valid(slug, lang)
+}
+
+_has_valid_value(slug) if {
+	some lang in _bilingual_langs
+	_lang_valid(slug, lang)
+}
+
+# Rule 2: for each language, "started" means at least one of the three fields
+# is filled there; once started, every field must be filled there.
+_lang_started(lang) if {
+	some slug in object.keys(_bilingual_bounds)
+	not _lang_empty(slug, lang)
+}
+
+_field_missing_while_lang_started(slug, lang) if {
+	_lang_started(lang)
+	_lang_empty(slug, lang)
+}
+
+_bilingual_field_complete(slug) if {
+	print("[check:", slug, "] value=", input.entity.fields[slug].value)
+	_has_valid_value(slug)
+	not _lang_invalid(slug, "en")
+	not _lang_invalid(slug, "de")
+	not _field_missing_while_lang_started(slug, "en")
+	not _field_missing_while_lang_started(slug, "de")
+	print("[check:", slug, "] PASS")
+}
+
+_title_complete if _bilingual_field_complete("title")
+
+_abstract_complete if _bilingual_field_complete("abstract")
+
+_description_complete if _bilingual_field_complete("description")
+
+# No valid value in either language.
 error_messages contains msg if {
 	_checklist_ctx
-	not _title_complete
-	print("[checklist:title] FAIL title=", input.entity.fields.title.value)
-	msg := {"level": "warning", "text": "Title is required (1–30 characters).", "field_slug": "title"}
+	some slug in object.keys(_bilingual_bounds)
+	not _has_valid_value(slug)
+	bounds := _bilingual_bounds[slug]
+	print("[checklist:", slug, "] FAIL no valid value in either language, value=", input.entity.fields[slug].value)
+	msg := {
+		"level": "warning",
+		"text": sprintf("%s must be %d–%d characters in at least one language (English or German).", [slug, bounds.min, bounds.max]),
+		"field_slug": slug,
+	}
 }
 
-# abstract: 50–250 characters
-_abstract_complete if {
-	v := input.entity.fields.abstract.value
-	v != null
-	print("[check:abstract] value_len=", count(v))
-	count(v) >= 50
-	count(v) <= 250
-	print("[check:abstract] PASS len=", count(v))
-}
-
+# A provided (non-empty) language value that doesn't meet the length bounds.
 error_messages contains msg if {
 	_checklist_ctx
-	not _abstract_complete
-	v := input.entity.fields.abstract.value
-	print("[checklist:abstract] FAIL v=", v)
-	msg := {"level": "warning", "text": "Abstract must be 50–250 characters.", "field_slug": "abstract"}
+	some slug in object.keys(_bilingual_bounds)
+	some lang in _bilingual_langs
+	_lang_invalid(slug, lang)
+	bounds := _bilingual_bounds[slug]
+	print("[checklist:", slug, "] FAIL invalid ", lang, " value=", _lang_value(slug, lang))
+	msg := {
+		"level": "warning",
+		"text": sprintf("%s (%s) must be %d–%d characters.", [slug, lang, bounds.min, bounds.max]),
+		"field_slug": slug,
+	}
 }
 
-# description: 50–1000 characters
-_description_complete if {
-	v := input.entity.fields.description.value
-	v != null
-	print("[check:description] value_len=", count(v))
-	count(v) >= 50
-	count(v) <= 1000
-	print("[check:description] PASS len=", count(v))
-}
-
+# Per-language completeness: once one of title/abstract/description is filled
+# in a language, all three must be — flagged on every field still missing there.
 error_messages contains msg if {
 	_checklist_ctx
-	not _description_complete
-	v := input.entity.fields.description.value
-	print("[checklist:description] FAIL v=", v)
-	msg := {"level": "warning", "text": "Description must be 50–1000 characters.", "field_slug": "description"}
+	some lang in _bilingual_langs
+	_lang_started(lang)
+	some slug in object.keys(_bilingual_bounds)
+	_field_missing_while_lang_started(slug, lang)
+	print("[checklist:", slug, "] FAIL missing in ", lang, " while other fields filled in that language")
+	msg := {
+		"level": "warning",
+		"text": sprintf("%s must also be filled in (%s), since other fields are already filled in that language.", [slug, lang]),
+		"field_slug": slug,
+	}
 }
 
 # duration: duration-days >= 1 and duration-time-per-day is a non-zero HH:MM value
