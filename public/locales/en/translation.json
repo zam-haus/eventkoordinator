@@ -152,6 +152,10 @@
     "deleteProposal": "Delete Proposal",
     "deleting": "Deleting...",
     "confirmDelete": "Delete proposal \"{{title}}\"? This cannot be undone.",
+    "copyProposal": "Copy Proposal",
+    "copying": "Copying...",
+    "failedToCopy": "Failed to copy proposal",
+    "copyDisabledUnsaved": "Save or discard your changes before copying",
     "noProposalId": "No proposal ID provided",
     "failedToSave": "Failed to save proposal",
     "failedToLoad": "Failed to load proposal",
@@ -514,7 +518,8 @@
     "prices.invalidDecimal": "Invalid numeric value",
     "users.notFound": "User not found",
     "common.internalError": "An unexpected error occurred",
-    "common.invalidRequest": "Invalid request"
+    "common.invalidRequest": "Invalid request",
+    "proposals.copyFailed": "Failed to copy proposal"
   },
   "reviews": {
     "legend": "Reviews",

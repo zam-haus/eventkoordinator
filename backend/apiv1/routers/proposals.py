@@ -6,13 +6,15 @@ Handles endpoints for managing proposals, associations, and validation.
 
 import inspect
 import logging
+import os
 import uuid
 from datetime import timedelta
 from typing import cast
 
 import pydot
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.core.files.base import ContentFile
+from django.db import models, transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from ninja import File, Router, UploadedFile
@@ -250,6 +252,81 @@ def create_proposal(
     except Exception as e:
         logger.error(f"Failed to create proposal: {str(e)}")
         return 400, ErrorOut(code="proposals.createFailed")
+
+
+def _copy_image_field(source_file, target_file) -> None:
+    """Duplicate an image file so the copy does not share storage with the source."""
+    if not source_file:
+        return
+    source_file.open("rb")
+    try:
+        content = source_file.read()
+    finally:
+        source_file.close()
+    target_file.save(os.path.basename(source_file.name), ContentFile(content), save=False)
+
+
+@router.post(
+    "/{proposal_id}/copy",
+    response={201: ProposalSummary, 404: ErrorOut, 401: ErrorOut, 403: ErrorOut},
+)
+@api_permission_required((apiv1, "add", ProposalModel))
+def copy_proposal(
+    request, proposal_id: uuid.UUID
+) -> tuple[int, ProposalSummary] | tuple[int, ErrorOut]:
+    """Create a new draft proposal as a copy of an existing one.
+
+    The copy starts in the initial workflow status, is owned by the current
+    user, has no reviews and no moderation comment. Speakers (including their
+    profile pictures) and the proposal photo are duplicated.
+    """
+    try:
+        source = ProposalModel.objects.select_related(
+            "submission_type", "area", "language"
+        ).prefetch_related("speakers", "editors").get(pk=proposal_id)
+    except ProposalModel.DoesNotExist:
+        return 404, ErrorOut(code="proposals.notFound")
+
+    if not request.user.has_perm((apiv1, "view", ProposalModel), source):
+        return 401, ErrorOut(code="auth.permissionDenied")
+
+    with transaction.atomic():
+        copy = ProposalModel(
+            title=source.title,
+            submission_type=source.submission_type,
+            area=source.area,
+            language=source.language,
+            abstract=source.abstract,
+            description=source.description,
+            internal_notes=source.internal_notes,
+            occurrence_count=source.occurrence_count,
+            duration_days=source.duration_days,
+            duration_time_per_day=source.duration_time_per_day,
+            is_basic_course=source.is_basic_course,
+            max_participants=source.max_participants,
+            material_cost_eur=source.material_cost_eur,
+            preferred_dates=source.preferred_dates,
+            has_building_access=source.has_building_access,
+            call=source.call,
+            owner=request.user,
+        )
+        _copy_image_field(source.photo, copy.photo)
+        copy.save()
+        copy.editors.set(source.editors.all())
+
+        for speaker in source.speakers.all():
+            speaker_copy = Speaker(
+                proposal=copy,
+                email=speaker.email,
+                display_name=speaker.display_name,
+                biography=speaker.biography,
+                role=speaker.role,
+                sort_order=speaker.sort_order,
+            )
+            _copy_image_field(speaker.profile_picture, speaker_copy.profile_picture)
+            speaker_copy.save()
+
+    return 201, model_proposal_to_schema(copy)
 
 
 _ACCEPTED_EVENT_STATUSES = {

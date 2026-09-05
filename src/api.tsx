@@ -999,6 +999,22 @@ export async function createProposal(formData?: {
   return data as unknown as ProposalSummary
 }
 
+export async function copyProposal(proposalId: string): Promise<ProposalSummary> {
+  const { data, error, response } = await client.POST('/api/v1/proposals/{proposal_id}/copy', {
+    params: {
+      path: {
+        proposal_id: proposalId,
+      },
+    },
+  })
+
+  if (error || !response.ok || !data) {
+    throw new Error(error?.code || 'proposals.copyFailed')
+  }
+
+  return data as unknown as ProposalSummary
+}
+
 export async function deleteProposal(proposalId: string): Promise<void> {
   const { error, response } = await client.DELETE('/api/v1/proposals/{proposal_id}', {
     params: {

@@ -4,6 +4,7 @@ import {usePermissions} from "./usePermissions.tsx";
 import {useNavigate, useParams} from "react-router-dom";
 import {
     checkObjectPermission,
+    copyProposal,
     createProposal,
     deleteProposal,
     fetchProposalTransitions,
@@ -218,6 +219,22 @@ export function ProposalSelectionPanel({onCreateProposal, onProposalSave}: Propo
         navigate(`/proposal-editor/${newProposalId}`, {replace: true})
     }
 
+    const handleProposalCopy = async (proposalId: string) => {
+        const newProposal = await copyProposal(proposalId)
+
+        const newItem: ProposalItem = {
+            id: String(newProposal.id),
+            proposalId: String(newProposal.id),
+            title: newProposal.title,
+            submission_type: newProposal.submission_type,
+            workflow_status: 'draft',
+        }
+
+        setProposals((prev) => [newItem, ...prev])
+        setSelectedProposalId(newItem.id)
+        navigate(`/proposal-editor/${newItem.id}`, {replace: true})
+    }
+
     const handleProposalDelete = async (proposalId: string) => {
         await deleteProposal(proposalId)
 
@@ -329,6 +346,8 @@ export function ProposalSelectionPanel({onCreateProposal, onProposalSave}: Propo
                         canEdit={canEditSelectedProposal ?? false}
                         canDelete={canDeleteSelectedProposal}
                         onDeleteProposal={handleProposalDelete}
+                        canCopy={canAdd('proposal')}
+                        onCopyProposal={handleProposalCopy}
                         onUnsavedChangesChange={setHasUnsavedChanges}
                         onTransitionSuccess={() => {
                             void checkSelectedProposalPermissions()

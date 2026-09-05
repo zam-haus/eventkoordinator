@@ -23,6 +23,7 @@ from apiv1.models.basedata import (
     Proposal,
     ProposalArea,
     ProposalLanguage,
+    Speaker,
     SubmissionType,
 )
 from apiv1.tests.util_imggen import write_large_noise_png
@@ -428,3 +429,86 @@ class ProposalUxPlaywrightTest(ProposalNavigationMixin, SnapshotMixin, ViteStati
             "Proposal should be deleted after accepting the confirmation dialog",
         )
         logger.info("=== Completed test_delete_proposal_via_ui ===")
+
+    def test_copy_proposal_via_ui(self) -> None:
+        logger.info("=== Starting test_copy_proposal_via_ui ===")
+        user = OpenIDUser.objects.get(username=self.username)
+        accepted_proposal = Proposal.objects.create(
+            title="Copy Me Proposal",
+            status=Proposal.Status.ACCEPTED,
+            submission_type=SubmissionType.objects.get(code="workshop"),
+            area=ProposalArea.objects.get(code="woodworking"),
+            language=ProposalLanguage.objects.get(code="de"),
+            abstract="This accepted proposal exists only to exercise the copy button in the UI.",
+            description="This accepted proposal contains enough detail to satisfy model validation during the copy UX test.",
+            internal_notes="",
+            occurrence_count=1,
+            duration_days=1,
+            duration_time_per_day="02:00",
+            is_basic_course=False,
+            max_participants=8,
+            material_cost_eur="0.00",
+            preferred_dates="2026-09-10",
+            has_building_access=False,
+            owner=user,
+        )
+        Speaker.objects.create(
+            proposal=accepted_proposal,
+            email="copy-speaker@example.com",
+            display_name="Copy Speaker",
+            biography="A speaker biography that is definitely long enough for validation.",
+            role=Speaker.Role.PRIMARY,
+            sort_order=0,
+        )
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(**playwright_launch_options())
+            page = browser.new_page()
+            try:
+                with print_aria_on_timeout(page):
+                    base_url = self.live_server_url
+                    if callable(base_url):
+                        base_url = base_url()
+
+                    self._login_via_navbar(page, base_url)
+                    page.get_by_role("list").get_by_text("Proposal Editor").click()
+                    page.get_by_role("heading", name="Proposal Editor").wait_for(timeout=5000)
+                    page.get_by_role("listbox", name="Proposals").get_by_role(
+                        "option", name=re.compile(r"^Copy Me Proposal\b")
+                    ).click()
+                    page.get_by_role("form", name="Proposal editor").wait_for(
+                        timeout=5000
+                    )
+                    wait_for_loading_indicators_to_disappear(page)
+
+                    with self.subTest(stage="before_copy"):
+                        self.assert_snapshot(page.locator("body").aria_snapshot())
+
+                    with self.subTest(stage="after_copy"):
+                        with page.expect_response(
+                            lambda response: (
+                                response.url.endswith("/copy") and response.status == 201
+                            ),
+                            timeout=5000,
+                        ):
+                            page.get_by_role("button", name="Copy Proposal").click()
+                        self.wait_some_more(page)
+                        wait_for_loading_indicators_to_disappear(page)
+                        options = page.get_by_role("listbox", name="Proposals").get_by_role(
+                            "option", name=re.compile(r"^Copy Me Proposal\b")
+                        )
+                        expect(options).to_have_count(2)
+                        self.assert_snapshot(page.locator("body").aria_snapshot())
+            finally:
+                browser.close()
+
+        copies = Proposal.objects.filter(title="Copy Me Proposal").exclude(pk=accepted_proposal.pk)
+        self.assertEqual(copies.count(), 1)
+        copy = copies.get()
+        self.assertEqual(copy.status, Proposal.Status.DRAFT)
+        self.assertEqual(copy.owner, user)
+        self.assertEqual(copy.reviews.count(), 0)
+        self.assertEqual(
+            list(copy.speakers.values_list("display_name", flat=True)), ["Copy Speaker"]
+        )
+        logger.info("=== Completed test_copy_proposal_via_ui ===")

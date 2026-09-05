@@ -39,7 +39,7 @@ services:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a strong password for the postgres user}
       - POSTGRES_DB=db
-    restart: no
+    restart: "no"
     volumes:
       - postgres_db:/var/lib/postgresql
     ports:
@@ -106,7 +106,7 @@ services:
 
   redis:
     image: docker.io/redis:7-alpine
-    restart: no
+    restart: "no"
     ports:
       - "127.0.0.1:6379:6379"
 
@@ -117,7 +117,7 @@ services:
     volumes: *backend-volumes
     environment: *backend-environment
     command: ["uv", "run", "celery", "-A", "project.celeryapp", "worker", "--loglevel=info"]
-    restart: no
+    restart: "no"
     depends_on:
       - db
       - redis
@@ -129,7 +129,7 @@ services:
     volumes: *backend-volumes
     environment: *backend-environment
     command: ["uv", "run", "celery", "-A", "project.celeryapp", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
-    restart: no
+    restart: "no"
     depends_on:
       - db
       - redis

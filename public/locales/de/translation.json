@@ -150,6 +150,10 @@
     "deleteProposal": "Vorschlag löschen",
     "deleting": "Lösche...",
     "confirmDelete": "Vorschlag \"{{title}}\" löschen? Dies kann nicht rückgängig gemacht werden.",
+    "copyProposal": "Vorschlag kopieren",
+    "copying": "Kopiere...",
+    "failedToCopy": "Kopieren des Vorschlags fehlgeschlagen",
+    "copyDisabledUnsaved": "Speichern oder verwerfen Sie Ihre Änderungen vor dem Kopieren",
     "noProposalId": "Keine Vorschlag-ID angegeben",
     "failedToSave": "Speichern des Vorschlags fehlgeschlagen",
     "failedToLoad": "Laden des Vorschlags fehlgeschlagen",
@@ -344,7 +348,8 @@
     "prices.invalidDecimal": "Ungültiger numerischer Wert",
     "users.notFound": "Benutzer nicht gefunden",
     "common.internalError": "Ein unerwarteter Fehler ist aufgetreten",
-    "common.invalidRequest": "Ungültige Anfrage"
+    "common.invalidRequest": "Ungültige Anfrage",
+    "proposals.copyFailed": "Kopieren des Vorschlags fehlgeschlagen"
   },
   "series": {
     "name": "Reihenname",

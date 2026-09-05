@@ -94,8 +94,10 @@ interface ProposalEditorProps {
     proposalId?: string
     canEdit?: boolean
     canDelete?: boolean
+    canCopy?: boolean
     onProposalSave?: (formData: ProposalFormData, freshProposal: ProposalDetail) => void
     onDeleteProposal?: (proposalId: string) => Promise<void>
+    onCopyProposal?: (proposalId: string) => Promise<void>
     onRequestNavigation?: (confirmFn: () => Promise<boolean>) => void
     onTransitionSuccess?: () => void
     onUnsavedChangesChange?: (hasChanges: boolean) => void
@@ -240,8 +242,10 @@ export function ProposalEditor({
                                    proposalId: _proposalId,
                                    canEdit = false,
                                    canDelete = false,
+                                   canCopy = false,
                                    onProposalSave,
                                    onDeleteProposal,
+                                   onCopyProposal,
                                    onRequestNavigation,
                                    onTransitionSuccess: onTransitionSuccessProp,
                                    onUnsavedChangesChange,
@@ -254,6 +258,7 @@ export function ProposalEditor({
     const changedFieldsRef = useRef(changedFields)
     const [isSaving, setIsSaving] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [isCopying, setIsCopying] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [checklist, setChecklist] = useState<Record<string, ProposalChecklistItem>>({})
@@ -368,6 +373,23 @@ export function ProposalEditor({
 
         if (resetChangedFields) {
             clearChangedFields()
+        }
+    }
+
+    const handleCopy = async () => {
+        if (!_proposalId || !onCopyProposal) {
+            return
+        }
+
+        try {
+            setIsCopying(true)
+            setError(null)
+            await onCopyProposal(_proposalId)
+        } catch (err) {
+            console.error('Failed to copy proposal:', err)
+            setError(t('proposal.failedToCopy'))
+        } finally {
+            setIsCopying(false)
         }
     }
 
@@ -1958,6 +1980,14 @@ export function ProposalEditor({
                                     disabled={isSaving || isDeleting || !canEdit}
                                     className={styles.cancelButton}>
                                 {t('common.cancel')}
+                            </button>
+                        )}
+                        {canCopy && _proposalId && onCopyProposal && (
+                            <button type="button" onClick={() => void handleCopy()}
+                                    disabled={hasChanges || isSaving || isDeleting || isCopying}
+                                    title={hasChanges ? t('proposal.copyDisabledUnsaved') : undefined}
+                                    className={styles.copyButton}>
+                                {isCopying ? t('proposal.copying') : t('proposal.copyProposal')}
                             </button>
                         )}
                         {canDelete && _proposalId && onDeleteProposal && (
