@@ -60,6 +60,7 @@ const CHECKLIST_FIELD_MAP: Record<string, { tabId: number; elementId: string }> 
     atLeastOneSpeaker: {tabId: 3, elementId: 'proposal-speaker-list-section'},
     speakersHaveBio: {tabId: 3, elementId: 'proposal-speaker-list-section'},
     photo: {tabId: 0, elementId: 'proposal-image-section'},
+    photoAltText: {tabId: 0, elementId: 'proposal-photo-alt-text'},
     submissionDeadline: {tabId: 0, elementId: 'proposal-call'},
 }
 
@@ -70,6 +71,7 @@ interface ProposalFormData {
     area: string
     language: string
     abstract: string
+    photo_alt_text: string
     description: string
     internal_notes: string
     occurrence_count: number
@@ -109,6 +111,7 @@ const DEFAULT_FORM_DATA: ProposalFormData = {
     area: '',
     language: '',
     abstract: '',
+    photo_alt_text: '',
     description: '',
     internal_notes: '',
     call_id: null,
@@ -127,7 +130,7 @@ const DEFAULT_FORM_DATA: ProposalFormData = {
 }
 
 const TAB_FIELD_MAP: Record<number, Array<ChangedFieldName>> = {
-    0: ['title', 'submission_type', 'area', 'language', 'abstract', 'description', 'call_id'],
+    0: ['title', 'submission_type', 'area', 'language', 'photo_alt_text', 'abstract', 'description', 'call_id'],
     1: ['is_basic_course', 'max_participants', 'material_cost_eur'],
     2: ['duration_days', 'duration_time_per_day', 'occurrence_count', 'preferred_dates'],
     3: ['has_building_access', 'editors'],
@@ -152,6 +155,7 @@ function proposalToFormData(data: ProposalDetail): ProposalFormData {
         area: data.area || '',
         language: data.language || '',
         abstract: data.abstract,
+        photo_alt_text: data.photo_alt_text || '',
         description: data.description,
         internal_notes: data.internal_notes,
         occurrence_count: data.occurrence_count,
@@ -755,6 +759,7 @@ export function ProposalEditor({
                 'area',
                 'language',
                 'abstract',
+                'photo_alt_text',
                 'description',
                 'internal_notes',
                 'occurrence_count',
@@ -1091,6 +1096,29 @@ export function ProposalEditor({
                                         {t('common.imageUploadCopyrightConsent')}
                                     </label>
                                 </ImageUploadField>
+                            </div>
+
+                            <div className={styles.formGroup}>
+                                <label htmlFor="proposal-photo-alt-text" className={styles.label}>
+                                    {t('proposal.photoAltText')}
+                                    {changedFields.has('photo_alt_text') &&
+                                        <span className={styles.changedIndicator} aria-label="unsaved change">●</span>}
+                                </label>
+                                <textarea
+                                    id="proposal-photo-alt-text"
+                                    value={formData.photo_alt_text}
+                                    onChange={(e) => handleFieldChange('photo_alt_text', e.target.value.slice(0, 300))}
+                                    className={`${styles.textarea} ${changedFields.has('photo_alt_text') ? styles.changed : ''} ${highlightedChecklistItem === 'photoAltText' ? styles.checklistHighlight : ''}`}
+                                    disabled={isSaving || !canEdit}
+                                    maxLength={300}
+                                    rows={2}
+                                    required
+                                    aria-describedby="proposal-photo-alt-text-hint"
+                                />
+                                <p id="proposal-photo-alt-text-hint" className={styles.fieldHint}>
+                                    {t('proposal.photoAltTextHint')}
+                                </p>
+                                <small aria-live="polite">{formData.photo_alt_text.length}/300</small>
                             </div>
 
                             {lookupLoading && (

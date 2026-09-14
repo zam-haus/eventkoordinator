@@ -1817,6 +1817,8 @@ export interface components {
             max_participants?: number | null;
             /** Occurrence Count */
             occurrence_count?: number | null;
+            /** Photo Alt Text */
+            photo_alt_text?: string | null;
             /** Preferred Dates */
             preferred_dates?: string | null;
             /** Submission Type */
@@ -1870,6 +1872,11 @@ export interface components {
             owner?: components["schemas"]["UserBasic"] | null;
             /** Photo */
             photo?: string | null;
+            /**
+             * Photo Alt Text
+             * @default
+             */
+            photo_alt_text: string;
             /** Preferred Dates */
             preferred_dates: string;
             /** Submission Type */
@@ -2190,6 +2197,8 @@ export interface components {
             moderation_comment?: string | null;
             /** Occurrence Count */
             occurrence_count?: number | null;
+            /** Photo Alt Text */
+            photo_alt_text?: string | null;
             /** Preferred Dates */
             preferred_dates?: string | null;
             /** Submission Type */

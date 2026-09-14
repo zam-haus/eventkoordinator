@@ -1102,6 +1102,7 @@ export interface ProposalDetail {
   preferred_dates: string
   has_building_access: boolean
   photo?: string | null
+  photo_alt_text?: string
   owner?: UserBasic | null
   editors?: UserBasic[]
   moderation_comment?: string
@@ -1143,6 +1144,7 @@ export async function updateProposal(proposalId: string, formData: {
   // owner_id removed - owner is set on creation and cannot be changed
   editor_ids?: string[]
   moderation_comment?: string
+  photo_alt_text?: string
   call_id?: string | null
 }): Promise<ProposalDetail> {
   const { data, error, response } = await client.PUT('/api/v1/proposals/{proposal_id}', {

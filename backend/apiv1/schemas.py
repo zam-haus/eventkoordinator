@@ -194,6 +194,7 @@ class ProposalCreateIn(Schema):
     material_cost_eur: Optional[str] = None
     preferred_dates: Optional[str] = None
     has_building_access: Optional[bool] = None
+    photo_alt_text: Optional[str] = Field(default=None, max_length=300)
     call_id: Optional[uuid.UUID] = None
 
 
@@ -216,6 +217,7 @@ class ProposalUpdateIn(Schema):
     # owner_id removed - owner is set on creation and cannot be changed
     editor_ids: Optional[list[str]] = None
     moderation_comment: Optional[str] = None
+    photo_alt_text: Optional[str] = Field(default=None, max_length=300)
     call_id: Optional[uuid.UUID] = None
 
 
@@ -274,6 +276,7 @@ class ProposalDetail(Schema):
     preferred_dates: str
     has_building_access: bool
     photo: Optional[str] = None
+    photo_alt_text: str = ""
     owner: Optional[UserBasic] = None
     editors: list[UserBasic] = []
     moderation_comment: str = ""

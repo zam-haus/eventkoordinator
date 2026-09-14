@@ -92,6 +92,7 @@ def _proposal_to_detail_schema(proposal: ProposalModel) -> ProposalDetail:
         preferred_dates=proposal.preferred_dates,
         has_building_access=proposal.has_building_access,
         photo=proposal.photo.url if proposal.photo else None,
+        photo_alt_text=proposal.photo_alt_text,
         owner=owner,
         editors=editors,
         moderation_comment=proposal.moderation_comment,
@@ -219,6 +220,7 @@ def create_proposal(
             abstract=abstract,
             description=description,
             internal_notes=payload.internal_notes or "",
+            photo_alt_text=payload.photo_alt_text or "",
             occurrence_count=occurrence_count,
             duration_days=duration_days,
             duration_time_per_day=duration_time_per_day,
@@ -299,6 +301,7 @@ def copy_proposal(
             abstract=source.abstract,
             description=source.description,
             internal_notes=source.internal_notes,
+            photo_alt_text=source.photo_alt_text,
             occurrence_count=source.occurrence_count,
             duration_days=source.duration_days,
             duration_time_per_day=source.duration_time_per_day,
@@ -573,6 +576,9 @@ def update_proposal(
 
     if payload.description is not None:
         proposal.description = payload.description
+
+    if payload.photo_alt_text is not None:
+        proposal.photo_alt_text = payload.photo_alt_text
 
     if payload.internal_notes is not None:
         proposal.internal_notes = payload.internal_notes

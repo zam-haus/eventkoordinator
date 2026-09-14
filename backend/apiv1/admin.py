@@ -273,6 +273,7 @@ class ProposalAdmin(fsm.FlowAdminMixin, SimpleHistoryAdmin):
                     "language",
                     "abstract",
                     "description",
+                    "photo_alt_text",
                     "internal_notes",
                 )
             },

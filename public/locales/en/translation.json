@@ -85,6 +85,7 @@
       "atLeastOneSpeaker": "At least one speaker added",
       "speakersHaveBio": "All speakers have a biography",
       "photo": "Proposal image uploaded (min. 1440×1080 px)",
+      "photoAltText": "Image alt text provided (20–300 characters)",
       "submissionDeadline": "Within submission deadline"
     },
     "editorTitle": "Proposal Editor",
@@ -93,6 +94,8 @@
     "title": "Title (max 30 characters)",
     "proposalImage": "Proposal image",
     "proposalImageHelp": "Upload a JPG or PNG image up to 10 MB for this proposal. Minimum resolution: 1440×1080 pixels.",
+    "photoAltText": "Image alt text",
+    "photoAltTextHint": "Accessible description of the image content: briefly describe what the image shows, so that e.g. people using screen readers can understand it. (Required, 20–300 characters)",
     "loading": "Loading...",
     "submissionType": "Submission Type",
     "submissionTypeHint": "Workshop: Fixed booking, fee required, providers receive a remuneration; Open offer: No booking or fee required; takes place in the main building.",

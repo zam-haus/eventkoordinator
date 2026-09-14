@@ -481,6 +481,7 @@ class Proposal(ExportModelOperationsMixin("proposal"), HistoricalMetaBase):
         blank=True,
         null=True,
     )
+    photo_alt_text = models.CharField(max_length=300, blank=True, default="")
     duration_days = models.PositiveSmallIntegerField(default=1)
     duration_time_per_day = models.CharField(
         max_length=5, default="00:00"
@@ -713,6 +714,12 @@ def check_proposal_required_fields(proposal: Proposal) -> dict[Any, Any]:
             checklist["photo"] = {"status": "error"}
     else:
         checklist["photo"] = {"status": "error"}
+
+    if proposal.photo_alt_text and 20 <= len(proposal.photo_alt_text.strip()) <= 300:
+        checklist["photoAltText"] = {"status": "ok"}
+    else:
+        checklist["photoAltText"] = {"status": "error"}
+
     if proposal.status == Proposal.Status.DRAFT:
         if (proposal.call is not None) and (datetime.now().date() <= proposal.call.submission_deadline):
             checklist["submissionDeadline"] = {"status": "ok"}

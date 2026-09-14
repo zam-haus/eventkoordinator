@@ -85,6 +85,7 @@
       "atLeastOneSpeaker": "Mindestens ein Referent hinzugefügt",
       "speakersHaveBio": "Alle Referenten haben eine Biografie",
       "photo": "Vorschlagsbild hochgeladen (min. 1440×1080 Px)",
+      "photoAltText": "Alternativtext zum Bild angegeben (20–300 Zeichen)",
       "submissionDeadline": "Innerhalb der Einreichungsfrist"
     },
     "editorTitle": "Vorschlagseditor",
@@ -93,6 +94,8 @@
     "title": "Titel (max 30 Zeichen)",
     "proposalImage": "Vorschlagsbild",
     "proposalImageHelp": "Laden Sie ein JPG- oder PNG-Bild bis zu 10 MB für diesen Vorschlag hoch. Mindestauflösung: 1440×1080 Pixel.",
+    "photoAltText": "Alternativtext zum Bild",
+    "photoAltTextHint": "Barrierefreie Beschreibung des Bildinhaltes: Beschreibe kurz, was auf dem Bild zu sehen ist, damit z. B. Menschen mit Screenreadern den Inhalt erfassen können. (Pflichtfeld, 20–300 Zeichen)",
     "loading": "Laden...",
     "submissionType": "Einreichungstyp",
     "submissionTypeHint": "Workshop: Feste Buchung, Gebühr erforderlich, Anbieter erhalten eine Vergütung; Offenes Angebot: Keine Buchung oder Gebühr erforderlich; findet im Hauptgebäude statt.",
