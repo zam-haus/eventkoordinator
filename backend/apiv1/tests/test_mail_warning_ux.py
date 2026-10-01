@@ -193,6 +193,29 @@ class MailWarningUxPlaywrightTest(ViteStaticLiveServerTestCase):
         )
         self.assertIn("abgelehnt", owner_mails[0].subject)
 
+    def test_submit_button_is_greyed_out_for_a_non_author(self) -> None:
+        """A superuser moderator sees Submit Proposal, but disabled."""
+        self.proposal.status = Proposal.Status.DRAFT
+        self.proposal.save(update_fields=["status"])
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(**playwright_launch_options())
+            page = browser.new_page()
+            try:
+                with print_aria_on_timeout(page):
+                    base_url = self.live_server_url
+                    if callable(base_url):
+                        base_url = base_url()
+                    self._login_via_navbar(page, base_url)
+                    self._open_submission_tab(page, base_url)
+
+                    submit_button = page.get_by_role("button", name="Submit Proposal")
+                    submit_button.wait_for(timeout=10000)
+                    self.assertFalse(submit_button.is_enabled())
+                    self.assertIn("on behalf", submit_button.get_attribute("title") or "")
+            finally:
+                browser.close()
+
     def test_review_request_warns_about_the_reviewer_mail(self) -> None:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(**playwright_launch_options())

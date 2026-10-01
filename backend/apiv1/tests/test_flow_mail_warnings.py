@@ -91,6 +91,56 @@ class ProposalMailWarningTest(TestCase):
         self.assertIsNone(warnings.get("revise"))
 
 
+class SubmitIsAuthorOnlyTest(TestCase):
+    """submit/resubmit stay visible but disabled for everyone but author and editors."""
+
+    def setUp(self) -> None:
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            username="author-owner", email="author-owner@example.com", password="pw"
+        )
+        self.editor = user_model.objects.create_user(
+            username="author-editor", email="author-editor@example.com", password="pw"
+        )
+        self.superuser = user_model.objects.create_superuser(
+            username="author-superuser", email="author-superuser@example.com", password="pw"
+        )
+        self.proposal = Proposal.objects.create(
+            title="Author Only Proposal",
+            status=Proposal.Status.DRAFT,
+            owner=self.owner,
+            material_cost_eur="0",
+        )
+        self.proposal.editors.add(self.editor)
+
+    def _submit(self, user) -> object:
+        transitions = {
+            t.label_id: t
+            for t in ProposalFlow(self.proposal).get_available_transitions(user)
+        }
+        return transitions["submit" if self.proposal.status == Proposal.Status.DRAFT else "resubmit"]
+
+    def test_superuser_sees_submit_disabled(self) -> None:
+        submit = self._submit(self.superuser)
+        self.assertFalse(submit.enabled)
+        self.assertIn("on behalf", submit.disable_reason)
+        self.assertIsNone(submit.mail_warning_id)
+
+    def test_resubmit_is_disabled_for_a_superuser_too(self) -> None:
+        self.proposal.status = Proposal.Status.REVISE
+        self.proposal.save(update_fields=["status"])
+        resubmit = self._submit(self.superuser)
+        self.assertFalse(resubmit.enabled)
+        self.assertIn("on behalf", resubmit.disable_reason)
+
+    def test_owner_and_editor_are_not_blocked_by_the_author_check(self) -> None:
+        """They may still be blocked by the completeness condition, but not by this one."""
+        for user in (self.owner, self.editor):
+            with self.subTest(user=user.username):
+                submit = self._submit(user)
+                self.assertNotIn("on behalf", submit.disable_reason or "")
+
+
 class EventMailWarningTest(TestCase):
     def setUp(self) -> None:
         user_model = get_user_model()

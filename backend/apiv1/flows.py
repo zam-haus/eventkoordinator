@@ -44,6 +44,11 @@ PROPOSAL_MAIL_WARNINGS = {
     "reject": "proposal.reject",
 }
 
+# Submitting in one's own name is reserved for the author and their editors, even
+# for users whose global permissions (e.g. superusers) would otherwise allow it.
+# Moderators use the "on behalf" transitions instead.
+AUTHOR_ONLY_PROPOSAL_LABELS = frozenset({"submit", "resubmit"})
+
 EVENT_MAIL_WARNINGS = {
     "submit": "event.submit",
     "publish": "event.publish",
@@ -421,6 +426,10 @@ class ProposalFlow:
 
         return transitions_list
 
+    def _user_is_author(self, user: OpenIDUser) -> bool:
+        """Whether the user submits in their own name, i.e. owns or edits the proposal."""
+        return user == self.object.owner or self.object.editors.filter(pk=user.pk).exists()
+
     def _mail_warning_id(self, label_id: str) -> str | None:
         """Warning id if executing this transition mails the proposal owner."""
         owner = self.object.owner
@@ -436,6 +445,20 @@ class ProposalFlow:
         Uses the FSM transition's conditions and permissions.
         """
         label_id = transition.label
+
+        # Submitting in one's own name is the author's prerogative, regardless of
+        # any global permissions the user may hold.
+        if label_id in AUTHOR_ONLY_PROPOSAL_LABELS and not self._user_is_author(user):
+            return ProposalTransition(
+                action=action,
+                label_id=label_id,
+                target_status=transition.target,
+                enabled=False,
+                disable_reason=(
+                    "Only the proposal owner or one of its editors can submit it in "
+                    "their own name — use the \"on behalf\" action instead"
+                ),
+            )
 
         # Check conditions
         conditions_met = transition.conditions_met(self)
