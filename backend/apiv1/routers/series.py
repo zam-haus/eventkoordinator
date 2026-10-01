@@ -20,6 +20,7 @@ from apiv1.api_utils import (
 )
 from apiv1.flows import EventFlow
 from apiv1.helpers import (
+    maybe_create_calculated_prices,
     model_event_to_schema,
     model_series_list_item_to_schema,
     model_series_to_schema,
@@ -153,6 +154,8 @@ def create_event(request, series_id: str, payload: CreateEventIn) -> tuple[int, 
         use_full_days=payload.useFullDays or False,
         proposal_id=payload.proposal_id,
     )
+
+    maybe_create_calculated_prices(event_model)
 
     return 201, CreateEventOut(series_id=series_model.id, event=model_event_to_schema(event_model))
 

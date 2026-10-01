@@ -5,15 +5,20 @@ This module contains utility functions for converting models to schemas,
 parsing dates, and other common operations used across routers.
 """
 
+import logging
 import re
 from datetime import datetime
 from typing import Optional
+
+from django.core.exceptions import ValidationError
 from apiv1.models import (
     Series as SeriesModel,
     Event as EventModel,
     Proposal as ProposalModel,
 )
 from apiv1.schemas import Series, SeriesListItem, Event, ProposalSummary
+
+logger = logging.getLogger(__name__)
 
 
 def model_series_list_item_to_schema(series_model: SeriesModel) -> SeriesListItem:
@@ -116,3 +121,31 @@ def unescape_ical_text(text: Optional[str]) -> Optional[str]:
     # Match backslash followed by any character
     result = re.sub(r"\\(.)", replace_escape, text)
     return result
+
+
+def maybe_create_calculated_prices(event_model: EventModel) -> Optional[object]:
+    """Create calculated prices for a newly created event if its submission type asks for it.
+
+    Returns the created ``CalculatedPrices`` instance, or ``None`` when the event has no
+    proposal, the submission type does not opt in, or prices already exist.
+    """
+    from sync_pretix.models import CalculatedPrices
+
+    proposal = event_model.proposal
+    if proposal is None or proposal.submission_type is None:
+        return None
+    if not proposal.submission_type.auto_calculate_prices:
+        return None
+    if CalculatedPrices.objects.filter(event=event_model).exists():
+        return None
+
+    instance = CalculatedPrices(event=event_model)
+    try:
+        instance.save()
+    except ValidationError:
+        logger.getChild("maybe_create_calculated_prices").warning(
+            "Could not auto-create calculated prices for event %s", event_model.pk,
+            exc_info=True,
+        )
+        return None
+    return instance

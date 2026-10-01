@@ -139,8 +139,8 @@ class EventAdmin(PolymorphicInlineSupportMixin, SimpleHistoryAdmin):
 
 @admin.register(models.SubmissionType)
 class SubmissionTypeAdmin(SimpleHistoryAdmin):
-    list_display = ("code", "label", "is_active", "sort_order")
-    list_editable = ("label", "is_active", "sort_order")
+    list_display = ("code", "label", "is_active", "auto_calculate_prices", "sort_order")
+    list_editable = ("label", "is_active", "auto_calculate_prices", "sort_order")
     search_fields = ("code", "label")
 
 

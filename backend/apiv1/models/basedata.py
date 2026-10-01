@@ -329,6 +329,15 @@ class LookupBase(HistoricalMetaBase):
 
 
 class SubmissionType(LookupBase):
+    auto_calculate_prices = models.BooleanField(
+        default=False,
+        verbose_name="Preise automatisch berechnen",
+        help_text=(
+            "If enabled, calculated prices are created automatically for an event "
+            "as soon as the event is created for a proposal of this submission type."
+        ),
+    )
+
     class Meta(LookupBase.Meta):
         verbose_name = "Submission type"
         verbose_name_plural = "Submission types"
