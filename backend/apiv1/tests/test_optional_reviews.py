@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core import mail
@@ -47,6 +49,17 @@ class OptionalReviewTestBase(TestCase):
         self.area, _ = ProposalArea.objects.get_or_create(
             code="metal", defaults={"label": "Metal"}
         )
+
+    def _login(self, user) -> None:
+        """Log in and keep the OIDC session fresh.
+
+        mozilla_django_oidc's SessionRefresh middleware redirects GET requests
+        whose id token has no recorded expiry, which a force_login never sets.
+        """
+        self.client.force_login(user)
+        session = self.client.session
+        session["oidc_id_token_expiration"] = time.time() + 3600
+        session.save()
 
     def _create_proposal(self, status: str = Proposal.Status.SUBMITTED) -> Proposal:
         return Proposal.objects.create(
@@ -242,7 +255,7 @@ class BlockingEndpointTests(OptionalReviewTestBase):
         return f"/api/v1/proposals/{self.proposal.pk}/reviews/{self.review.pk}/blocking"
 
     def test_moderator_can_make_a_review_optional(self) -> None:
-        self.client.force_login(self.moderator)
+        self._login(self.moderator)
         response = self.client.patch(
             self._url(), data={"is_blocking": False}, content_type="application/json"
         )
@@ -252,10 +265,123 @@ class BlockingEndpointTests(OptionalReviewTestBase):
         self.assertFalse(self.review.is_blocking)
 
     def test_reviewer_cannot_change_their_own_blocking_flag(self) -> None:
-        self.client.force_login(self.reviewer)
+        self._login(self.reviewer)
         response = self.client.patch(
             self._url(), data={"is_blocking": False}, content_type="application/json"
         )
         self.assertIn(response.status_code, (401, 403))
         self.review.refresh_from_db()
         self.assertTrue(self.review.is_blocking)
+
+
+class GroupLinkSyncTests(OptionalReviewTestBase):
+    """A vote must count for every requested group its reviewer belongs to,
+    even when the membership or the group request came later."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.proposal = self._create_proposal()
+        self.group_a = Group.objects.create(name="Holzwerkstattleitungen")
+        self.group_b = Group.objects.create(name="Sonstwasleitungen")
+        self.request_a = ProposalReview.objects.create(
+            proposal=self.proposal,
+            kind=ProposalReview.KIND_GROUP,
+            group_code=str(self.group_a.pk),
+            is_blocking=False,
+        )
+        self.request_b = ProposalReview.objects.create(
+            proposal=self.proposal,
+            kind=ProposalReview.KIND_GROUP,
+            group_code=str(self.group_b.pk),
+        )
+
+    def _vote(self, status: str = ProposalReview.STATUS_REJECTED) -> ProposalReview:
+        return ProposalReview.objects.create(
+            proposal=self.proposal,
+            kind=ProposalReview.KIND_USER,
+            reviewer=self.moderator,
+            status=status,
+            comment="no",
+        )
+
+    def test_joining_a_group_after_voting_links_the_existing_vote(self) -> None:
+        vote = self._vote()
+        self.assertEqual(vote.requested_via_groups, [])
+
+        self.group_a.user_set.add(self.moderator)
+        self.group_b.user_set.add(self.moderator)
+
+        self._login(self.moderator)
+        response = self.client.get(f"/api/v1/proposals/{self.proposal.pk}/reviews")
+        self.assertEqual(response.status_code, 200)
+
+        vote.refresh_from_db()
+        self.assertCountEqual(
+            vote.requested_via_groups,
+            [str(self.group_a.pk), str(self.group_b.pk)],
+        )
+
+    def test_linked_vote_decides_the_group_requests(self) -> None:
+        vote = self._vote()
+        self.group_a.user_set.add(self.moderator)
+        self.group_b.user_set.add(self.moderator)
+
+        # The blocking group inherits the rejection, so acceptance stays blocked.
+        message = ProposalFlow._review_gate_message(self.proposal)
+        self.assertIsNotNone(message)
+        self.assertIn("rejected", message)
+
+        vote.refresh_from_db()
+        self.assertCountEqual(
+            vote.requested_via_groups,
+            [str(self.group_a.pk), str(self.group_b.pk)],
+        )
+
+    def test_vote_is_not_counted_twice_once_linked(self) -> None:
+        self.group_a.user_set.add(self.moderator)
+        self.group_b.user_set.add(self.moderator)
+        self._vote(status=ProposalReview.STATUS_APPROVED)
+        ProposalFlow._review_gate_message(self.proposal)
+
+        from apiv1.routers.proposals import _compute_review_stats
+
+        stats, _ = _compute_review_stats(
+            list(ProposalReview.objects.filter(proposal=self.proposal)), self.moderator.pk
+        )
+        # One blocking group (approved) plus one optional group; the vote itself is
+        # counted through its groups rather than on its own.
+        self.assertEqual(stats.total, 1)
+        self.assertEqual(stats.approved, 1)
+        self.assertEqual(stats.optional, 1)
+
+    def test_group_member_may_review_without_claiming_group_codes(self) -> None:
+        self.group_b.user_set.add(self.reviewer)
+        self._login(self.reviewer)
+        response = self.client.post(
+            f"/api/v1/proposals/{self.proposal.pk}/reviews",
+            data={"kind": "user", "status": "approved", "comment": "fine by me"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["requested_via_groups"], [str(self.group_b.pk)])
+
+    def test_non_member_without_permission_is_still_rejected(self) -> None:
+        self._login(self.reviewer)
+        response = self.client.post(
+            f"/api/v1/proposals/{self.proposal.pk}/reviews",
+            data={"kind": "user", "status": "approved", "comment": "fine by me"},
+            content_type="application/json",
+        )
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_links_are_not_removed_when_a_member_leaves(self) -> None:
+        self.group_a.user_set.add(self.moderator)
+        vote = self._vote()
+        ProposalFlow._review_gate_message(self.proposal)
+        vote.refresh_from_db()
+        self.assertEqual(vote.requested_via_groups, [str(self.group_a.pk)])
+
+        self.group_a.user_set.remove(self.moderator)
+        ProposalFlow._review_gate_message(self.proposal)
+        vote.refresh_from_db()
+        self.assertEqual(vote.requested_via_groups, [str(self.group_a.pk)])

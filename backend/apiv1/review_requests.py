@@ -1,8 +1,10 @@
 """Review-request helpers shared by the flow engine and the reviews router."""
 
 import logging
+from typing import Any
 
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -29,6 +31,58 @@ def send_review_requested_mail(proposal: Proposal, reviewer) -> None:
         )
     except BaseException as e:
         logger.error("Failed to send review-requested notification: " + str(e), exc_info=e)
+
+
+def sync_group_review_links(proposal: Proposal, reviews: list[ProposalReview] | None = None) -> bool:
+    """Link every user review to the requested groups its reviewer belongs to.
+
+    ``ProposalReview.requested_via_groups`` is what ties an individual vote to a
+    group request, and it is stored on the vote. Membership can change after the
+    vote was cast (or after a group request was added), so the stored links are
+    recomputed here from the current memberships. Links are only added, never
+    removed: withdrawing a group request clears its links explicitly.
+
+    Returns True if anything changed.
+    """
+    if reviews is None:
+        reviews = list(ProposalReview.objects.filter(proposal=proposal))
+
+    # Map the pk of every requested group to the code the reviews store it under.
+    code_by_pk = {
+        int(r.group_code): r.group_code
+        for r in reviews
+        if r.kind == ProposalReview.KIND_GROUP and r.group_code.isdigit()
+    }
+    if not code_by_pk:
+        return False
+
+    memberships: dict[Any, set[str]] = {}
+    for group_pk, user_pk in Group.objects.filter(pk__in=code_by_pk).values_list(
+        "pk", "user__pk"
+    ):
+        if user_pk is not None:
+            memberships.setdefault(user_pk, set()).add(code_by_pk[group_pk])
+
+    to_update = []
+    for review in reviews:
+        if review.kind != ProposalReview.KIND_USER or review.reviewer_id is None:
+            continue
+        current = list(review.requested_via_groups or [])
+        missing = sorted(memberships.get(review.reviewer_id, set()) - set(current))
+        if missing:
+            review.requested_via_groups = current + missing
+            to_update.append(review)
+            logger.info(
+                "Linked review %s by %s to group request(s) %s on proposal %s",
+                review.pk,
+                review.reviewer_id,
+                missing,
+                proposal.pk,
+            )
+
+    if to_update:
+        ProposalReview.objects.bulk_update(to_update, ["requested_via_groups"])
+    return bool(to_update)
 
 
 def auto_request_area_reviews(proposal: Proposal, requested_by=None) -> list[ProposalReview]:
@@ -74,21 +128,11 @@ def auto_request_area_reviews(proposal: Proposal, requested_by=None) -> list[Pro
             mapping.group.name,
             proposal.pk,
         )
-        # Link votes group members may already have cast to this new request.
-        member_pks = list(mapping.group.user_set.values_list("pk", flat=True))
-        to_update = []
-        for member_review in ProposalReview.objects.filter(
-            proposal=proposal, kind=ProposalReview.KIND_USER, reviewer__in=member_pks
-        ):
-            if group_code not in (member_review.requested_via_groups or []):
-                member_review.requested_via_groups = (
-                    member_review.requested_via_groups or []
-                ) + [group_code]
-                to_update.append(member_review)
-        if to_update:
-            ProposalReview.objects.bulk_update(to_update, ["requested_via_groups"])
-
         for member in mapping.group.user_set.filter(email__gt=""):
             send_review_requested_mail(proposal, member)
+
+    if created:
+        # Link votes group members may already have cast to the new requests.
+        sync_group_review_links(proposal)
 
     return created

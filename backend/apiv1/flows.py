@@ -123,6 +123,12 @@ class ProposalFlow:
     @staticmethod
     def _review_gate_message(proposal: Proposal) -> str | None:
         """Return a disable reason if any reviews block acceptance, or None if clear."""
+        # A vote only counts towards its group request through the stored links, so
+        # make sure they reflect the current group memberships before deciding.
+        # Imported lazily: review_requests imports call_from_email from this module.
+        from apiv1.review_requests import sync_group_review_links
+
+        sync_group_review_links(proposal)
         reviews = list(
             ProposalReview.objects.filter(proposal=proposal).values(
                 "kind", "status", "reviewer_is_system", "is_blocking",

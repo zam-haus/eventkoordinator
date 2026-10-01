@@ -20,7 +20,10 @@ from apiv1.auth_groups import AUTHENTICATED_USERS_GROUP_NAME
 from apiv1.flows import call_from_email
 from apiv1.models import Proposal as ProposalModel
 from apiv1.models.basedata import ProposalReview
-from apiv1.review_requests import send_review_requested_mail as _send_review_requested_mail
+from apiv1.review_requests import (
+    send_review_requested_mail as _send_review_requested_mail,
+    sync_group_review_links,
+)
 from apiv1.schemas import (
     ErrorOut,
     ProposalReviewBlockingIn,
@@ -137,6 +140,10 @@ def list_reviews(request, proposal_id: uuid.UUID):
     reviews_qs = list(
         ProposalReview.objects.filter(proposal=proposal).select_related("reviewer", "requested_by")
     )
+
+    # Votes cast before their reviewer joined a requested group are not linked to
+    # that group yet; catch up before deriving anything from the links.
+    sync_group_review_links(proposal, reviews_qs)
 
     # Determine which requested groups the current user belongs to (and hasn't voted in yet)
     has_own_review = any(
@@ -260,14 +267,16 @@ def create_review(request, proposal_id: uuid.UUID, payload: ProposalReviewCreate
         reviewer = request.user
         has_create_review = request.user.has_perm((apiv1, "create_review", ProposalModel), None)
         if not has_create_review and not can_moderate:
-            # Allow if user is genuinely in one of the requested groups for this proposal
+            # Allow if the user is genuinely in one of the groups asked to review
+            # this proposal. The membership is checked against the request itself
+            # rather than against the codes the client claims, because the client's
+            # view of the memberships may predate a group change.
             requested_group_codes = set(
                 ProposalReview.objects.filter(proposal=proposal, kind="group")
                 .values_list("group_code", flat=True)
             )
-            claimed_codes = [c for c in (payload.requested_via_groups or []) if c in requested_group_codes]
-            is_group_member = bool(claimed_codes) and Group.objects.filter(
-                pk__in=[int(c) for c in claimed_codes if c.isdigit()],
+            is_group_member = Group.objects.filter(
+                pk__in=[int(c) for c in requested_group_codes if c.isdigit()],
                 user=request.user,
             ).exists()
             if not is_group_member:
@@ -294,6 +303,11 @@ def create_review(request, proposal_id: uuid.UUID, payload: ProposalReviewCreate
         # Only a moderator requesting someone else's review may mark it optional.
         is_blocking=payload.is_blocking if payload.reviewer_id else True,
     )
+    # The client's view of the user's group memberships can be stale, so the
+    # links are (re)derived from the actual memberships here.
+    sync_group_review_links(proposal)
+    r.refresh_from_db()
+
     if payload.reviewer_id and reviewer.email:
         _send_review_requested_mail(proposal, reviewer)
     elif payload.reviewer_id is None and r.status not in ("pending", "note"):
