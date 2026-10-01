@@ -880,8 +880,12 @@ def _execute_proposal_transition(
             code="proposals.transitionNotAllowed", detail=transition.disable_reason
         )
 
-    # For resubmissions, reset all completed reviews to pending
-    is_resubmission = action == "submit" and proposal.status != ProposalModel.Status.DRAFT
+    # For resubmissions, reset all completed reviews to pending — whether the
+    # author resubmitted themselves or a moderator did it on their behalf.
+    is_resubmission = (
+        action in ("submit", "submit_on_behalf")
+        and proposal.status != ProposalModel.Status.DRAFT
+    )
 
     # Execute the transition
     try:
@@ -984,7 +988,7 @@ def revise_proposal(
 def submit_proposal_on_behalf(
     request, proposal_id: uuid.UUID
 ) -> tuple[int, ProposalDetail | ErrorOut]:
-    """Submit a proposal on behalf of the author."""
+    """Submit or resubmit a proposal on behalf of the author."""
     return _execute_proposal_transition(request, proposal_id, "submit_on_behalf")
 
 

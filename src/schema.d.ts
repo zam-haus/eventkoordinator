@@ -841,7 +841,7 @@ export interface paths {
         put?: never;
         /**
          * Submit Proposal On Behalf
-         * @description Submit a proposal on behalf of the author.
+         * @description Submit or resubmit a proposal on behalf of the author.
          */
         post: operations["apiv1_routers_proposals_submit_proposal_on_behalf"];
         delete?: never;

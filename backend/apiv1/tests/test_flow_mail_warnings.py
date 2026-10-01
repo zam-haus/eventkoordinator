@@ -47,6 +47,37 @@ class ProposalMailWarningTest(TestCase):
         self.assertEqual(warnings.get("reject"), "proposal.reject")
         self.assertEqual(warnings.get("revise"), "proposal.revise")
 
+    def test_on_behalf_submissions_are_split_by_source_status(self) -> None:
+        """A draft is submitted on behalf, a revision is resubmitted on behalf."""
+        draft = self._proposal(Proposal.Status.DRAFT)
+        draft_transitions = {
+            t.action: t
+            for t in ProposalFlow(draft).get_available_transitions(self.moderator)
+        }
+        self.assertEqual(draft_transitions["submit_on_behalf"].label_id, "submit_on_behalf")
+        self.assertEqual(
+            draft_transitions["submit_on_behalf"].mail_warning_id,
+            "proposal.submit_on_behalf",
+        )
+
+        revise = Proposal.objects.create(
+            title="Revised Proposal",
+            status=Proposal.Status.REVISE,
+            owner=self.owner,
+            material_cost_eur="0",
+        )
+        revise_transitions = {
+            t.action: t
+            for t in ProposalFlow(revise).get_available_transitions(self.moderator)
+        }
+        self.assertEqual(
+            revise_transitions["submit_on_behalf"].label_id, "resubmit_on_behalf"
+        )
+        self.assertEqual(
+            revise_transitions["submit_on_behalf"].mail_warning_id,
+            "proposal.resubmit_on_behalf",
+        )
+
     def test_undo_accept_has_no_warning(self) -> None:
         proposal = self._proposal(Proposal.Status.ACCEPTED)
         warnings = _warnings(ProposalFlow(proposal).get_available_transitions(self.moderator))

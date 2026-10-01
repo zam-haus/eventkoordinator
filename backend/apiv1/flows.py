@@ -37,6 +37,7 @@ def call_from_email(call) -> str:
 # submission, so they are not annotated; submit_on_behalf is a moderator action.
 PROPOSAL_MAIL_WARNINGS = {
     "submit_on_behalf": "proposal.submit_on_behalf",
+    "resubmit_on_behalf": "proposal.resubmit_on_behalf",
     "revise": "proposal.revise",
     "revise_after_rejection": "proposal.revise",
     "accept": "proposal.accept",
@@ -201,6 +202,13 @@ class ProposalFlow:
         source=Proposal.Status.DRAFT,
         target=Proposal.Status.SUBMITTED,
         label="submit_on_behalf",
+        conditions=[],
+        permission=has_permission((apiv1, "revise", Proposal)),
+    )
+    @status.transition(
+        source=Proposal.Status.REVISE,
+        target=Proposal.Status.SUBMITTED,
+        label="resubmit_on_behalf",
         conditions=[],
         permission=has_permission((apiv1, "revise", Proposal)),
     )
