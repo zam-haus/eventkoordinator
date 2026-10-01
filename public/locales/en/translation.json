@@ -533,7 +533,8 @@
       "approved": "{{count}} approved",
       "revise": "{{count}} revise",
       "rejected": "{{count}} rejected",
-      "pending": "{{count}} pending"
+      "pending": "{{count}} pending",
+      "optional": "{{count}} optional"
     },
     "status": {
       "approved": "Approved",
@@ -603,7 +604,15 @@
       "requestFrom": "Request review from:",
       "requestButton": "+ Request review",
       "cancel": "Cancel",
-      "hint": "Pick a person or a permission group. Group reviews let all members comment."
+      "hint": "Pick a person or a permission group. Group reviews let all members comment.",
+      "optionalLabel": "optional (does not block acceptance)"
+    },
+    "blocking": {
+      "requiredTag": "required",
+      "optionalTag": "optional",
+      "optionalTitle": "Optional review: it is requested and shown, but it does not block acceptance.",
+      "makeOptional": "Make this review optional — it will no longer block acceptance",
+      "makeRequired": "Make this review required — it will block acceptance until approved"
     }
   },
   "proposalDashboard": {

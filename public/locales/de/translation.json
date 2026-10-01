@@ -529,7 +529,8 @@
       "approved": "{{count}} genehmigt",
       "revise": "{{count}} Überarbeitung",
       "rejected": "{{count}} abgelehnt",
-      "pending": "{{count}} ausstehend"
+      "pending": "{{count}} ausstehend",
+      "optional": "{{count}} optional"
     },
     "status": {
       "approved": "Genehmigt",
@@ -599,7 +600,15 @@
       "requestFrom": "Bewertung anfordern von:",
       "requestButton": "+ Bewertung anfordern",
       "cancel": "Abbrechen",
-      "hint": "Wähle eine Person oder eine Berechtigungsgruppe. Gruppenbewertungen erlauben allen Mitgliedern zu kommentieren."
+      "hint": "Wähle eine Person oder eine Berechtigungsgruppe. Gruppenbewertungen erlauben allen Mitgliedern zu kommentieren.",
+      "optionalLabel": "optional (blockiert die Annahme nicht)"
+    },
+    "blocking": {
+      "requiredTag": "erforderlich",
+      "optionalTag": "optional",
+      "optionalTitle": "Optionales Gutachten: Es wird angefragt und angezeigt, blockiert die Annahme aber nicht.",
+      "makeOptional": "Dieses Gutachten optional machen – es blockiert die Annahme dann nicht mehr",
+      "makeRequired": "Dieses Gutachten erforderlich machen – es blockiert die Annahme bis zur Zustimmung"
     }
   },
   "proposalDashboard": {

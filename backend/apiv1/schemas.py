@@ -154,6 +154,8 @@ class ReviewStats(Schema):
     rejected: int = 0
     pending: int = 0
     total: int = 0
+    # Optional (non-blocking) reviews, counted separately from the blocking totals
+    optional: int = 0
 
 
 class ProposalListItem(Schema):
@@ -494,6 +496,8 @@ class ProposalReviewOut(Schema):
     # status/comment
     status: str = "pending"
     comment: str = ""
+    # False for optional reviews, which never block acceptance
+    is_blocking: bool = True
     # attribution
     requested_by_id: Optional[uuid.UUID] = None
     requested_by_username: Optional[str] = None
@@ -529,12 +533,18 @@ class ProposalReviewCreateIn(Schema):
     requested_directly: bool = False
     requested_via_groups: list[str] = Field(default_factory=list)
     migrated: bool = False
+    is_blocking: bool = True
 
 
 class ProposalReviewUpdateIn(Schema):
     """Submit or update a vote on an existing user review."""
     status: str
     comment: str = ""
+
+
+class ProposalReviewBlockingIn(Schema):
+    """Change whether a review blocks acceptance (moderators only)."""
+    is_blocking: bool
 
 
 class ProposalReviewResetIn(Schema):

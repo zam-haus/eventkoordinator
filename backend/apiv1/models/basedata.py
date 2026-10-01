@@ -561,6 +561,49 @@ class Proposal(ExportModelOperationsMixin("proposal"), HistoricalMetaBase):
         return self.title
 
 
+class ProposalAreaReviewGroup(HistoricalMetaBase):
+    """Maps a submission area to a group whose review is requested automatically.
+
+    Every ProposalArea can be mapped to none, one or multiple permission groups.
+    When a proposal of that area is submitted, a group-review request is created
+    for each mapped group. ``is_blocking`` decides per map entry whether the
+    resulting review blocks acceptance or is merely optional.
+    """
+
+    area = models.ForeignKey(
+        ProposalArea,
+        on_delete=models.CASCADE,
+        related_name="review_group_mappings",
+    )
+    group = models.ForeignKey(
+        "auth.Group",
+        on_delete=models.CASCADE,
+        related_name="proposal_area_review_mappings",
+    )
+    is_blocking = models.BooleanField(
+        default=True,
+        verbose_name="Blocks acceptance",
+        help_text=(
+            "If disabled, the automatically requested review is optional: it is "
+            "requested and shown, but it does not block acceptance."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "Automatic area review request"
+        verbose_name_plural = "Automatic area review requests"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["area", "group"], name="unique_area_review_group"
+            )
+        ]
+        ordering = ["area__sort_order", "group__name"]
+
+    def __str__(self):
+        suffix = "" if self.is_blocking else " (optional)"
+        return f"{self.area} → {self.group}{suffix}"
+
+
 class ProposalReview(MetaBase):
     """A review or group-review-request for a proposal.
 
@@ -614,6 +657,18 @@ class ProposalReview(MetaBase):
         max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING
     )
     comment = models.TextField(blank=True, max_length=2000)
+
+    # Whether this review has to be approved before the proposal can be accepted.
+    # Non-blocking ("optional") reviews are advisory only: a pending, rejecting or
+    # revision-requesting optional review never prevents acceptance.
+    is_blocking = models.BooleanField(
+        default=True,
+        verbose_name="Blocks acceptance",
+        help_text=(
+            "If disabled, this review is optional: it is still requested and shown, "
+            "but it does not block acceptance of the proposal."
+        ),
+    )
 
     # Who requested this review
     requested_by = models.ForeignKey(

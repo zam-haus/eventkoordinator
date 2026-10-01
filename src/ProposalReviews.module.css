@@ -139,6 +139,43 @@
   font-weight: 400;
 }
 
+/* ── Blocking / optional flag ─────────────────────────────────────── */
+.tagOptional {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.tagBlocking {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.tagToggle {
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.tagToggle:hover {
+  filter: brightness(0.96);
+}
+
+.optionalCheckbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #374151;
+  cursor: pointer;
+}
+
 .reviewMeta {
   display: flex;
   align-items: center;

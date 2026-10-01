@@ -125,7 +125,7 @@ class ProposalFlow:
         """Return a disable reason if any reviews block acceptance, or None if clear."""
         reviews = list(
             ProposalReview.objects.filter(proposal=proposal).values(
-                "kind", "status", "reviewer_is_system",
+                "kind", "status", "reviewer_is_system", "is_blocking",
                 "group_code", "requested_directly", "requested_via_groups",
             )
         )
@@ -146,6 +146,9 @@ class ProposalFlow:
         pending_count = rejected_count = revise_count = 0
         for r in reviews:
             if r["kind"] == "user" and (r["status"] == "note" or r["reviewer_is_system"]):
+                continue
+            if not r["is_blocking"]:
+                # Optional review: requested and shown, but never blocks acceptance.
                 continue
             if (
                 r["kind"] == "user"
@@ -252,6 +255,14 @@ class ProposalFlow:
         logger.info(f"Submitting proposal: {self.object!r}")
         g_proposal_submit.inc()
         self.object.save()
+        # Request the reviews configured for this proposal's submission area.
+        # Imported lazily: review_requests imports call_from_email from this module.
+        from apiv1.review_requests import auto_request_area_reviews
+
+        try:
+            auto_request_area_reviews(self.object)
+        except BaseException as e:
+            logger.error("Failed to auto-request area reviews: " + str(e), exc_info=e)
         proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{self.object.pk}"
         try:
             send_mail(

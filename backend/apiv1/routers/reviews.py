@@ -20,8 +20,10 @@ from apiv1.auth_groups import AUTHENTICATED_USERS_GROUP_NAME
 from apiv1.flows import call_from_email
 from apiv1.models import Proposal as ProposalModel
 from apiv1.models.basedata import ProposalReview
+from apiv1.review_requests import send_review_requested_mail as _send_review_requested_mail
 from apiv1.schemas import (
     ErrorOut,
+    ProposalReviewBlockingIn,
     ProposalReviewCreateIn,
     ProposalReviewOut,
     ProposalReviewsOut,
@@ -61,6 +63,7 @@ def _review_to_schema(r: ProposalReview) -> ProposalReviewOut:
         group_member_count=_group_member_count(r.group_code) if r.kind == "group" and r.group_code else None,
         status=r.status,
         comment=r.comment,
+        is_blocking=r.is_blocking,
         requested_by_id=r.requested_by_id,
         requested_by_username=r.requested_by.username if r.requested_by else None,
         requested_at=r.requested_at.isoformat() if r.requested_at else None,
@@ -90,23 +93,6 @@ def _get_proposal_or_404(proposal_id: uuid.UUID, request) -> tuple[ProposalModel
 
 
 # ── Mail helpers ──────────────────────────────────────────────────────────────
-
-def _send_review_requested_mail(proposal: ProposalModel, reviewer) -> None:
-    """Notify a reviewer that they have been asked to review a proposal."""
-    proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{proposal.pk}"
-    ctx = dict(object=proposal, proposal_url=proposal_url, reviewer=reviewer)
-    try:
-        send_mail(
-            subject=f"Bitte um Gutachten / Review requested: {proposal.title}",
-            message=render_to_string("apiv1/mails/review_requested.txt.j2", ctx),
-            html_message=render_to_string("apiv1/mails/review_requested.html.j2", ctx),
-            from_email=call_from_email(proposal.call),
-            recipient_list=[reviewer.email],
-            fail_silently=False,
-        )
-    except BaseException as e:
-        logger.error("Failed to send review-requested notification: " + str(e), exc_info=e)
-
 
 def _send_review_given_mail(proposal: ProposalModel, review: ProposalReview) -> None:
     """Notify the call organizer that a reviewer has submitted their review."""
@@ -216,6 +202,7 @@ def create_review(request, proposal_id: uuid.UUID, payload: ProposalReviewCreate
             proposal=proposal,
             kind="group",
             group_code=payload.group_code,
+            is_blocking=payload.is_blocking,
             requested_by=request.user,
             requested_at=timezone.now(),
         )
@@ -304,6 +291,8 @@ def create_review(request, proposal_id: uuid.UUID, payload: ProposalReviewCreate
         requested_directly=payload.requested_directly,
         requested_via_groups=payload.requested_via_groups or [],
         migrated=payload.migrated,
+        # Only a moderator requesting someone else's review may mark it optional.
+        is_blocking=payload.is_blocking if payload.reviewer_id else True,
     )
     if payload.reviewer_id and reviewer.email:
         _send_review_requested_mail(proposal, reviewer)
@@ -364,6 +353,40 @@ def update_review(
         review.completed_at = timezone.now()
         review.save()
         _send_review_given_mail(proposal, review)
+    return 200, _review_to_schema(review)
+
+
+# ── Change blocking flag ──────────────────────────────────────────────────────
+
+@router.patch(
+    "/{proposal_id}/reviews/{review_id}/blocking",
+    response={200: ProposalReviewOut, 401: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+)
+@api_permission_mandatory()
+def set_review_blocking(
+    request, proposal_id: uuid.UUID, review_id: uuid.UUID, payload: ProposalReviewBlockingIn
+):
+    """Mark a review as blocking or optional. Moderators only.
+
+    An optional review is still requested and displayed, but it never prevents
+    the proposal from being accepted.
+    """
+    proposal, err = _get_proposal_or_404(proposal_id, request)
+    if err:
+        return err
+
+    if not request.user.has_perm((apiv1, "moderate", ProposalModel), proposal):
+        return 403, ErrorOut(code="auth.permissionDenied")
+
+    try:
+        review = ProposalReview.objects.select_related("reviewer", "requested_by").get(
+            pk=review_id, proposal=proposal
+        )
+    except ProposalReview.DoesNotExist:
+        return 404, ErrorOut(code="reviews.notFound")
+
+    review.is_blocking = payload.is_blocking
+    review.save(update_fields=["is_blocking", "updated_at"])
     return 200, _review_to_schema(review)
 
 

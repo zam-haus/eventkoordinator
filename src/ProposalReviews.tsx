@@ -8,6 +8,7 @@ import {
   createProposalReview,
   updateProposalReview,
   deleteProposalReview,
+  setProposalReviewBlocking,
   type UserBasic,
   type LookupItem,
   type ProposalReviewOut,
@@ -114,6 +115,46 @@ function StatusBadge({ status }: { status: ReviewStatus }) {
       <span className={styles.badgeDot} />
       {t(`reviews.status.${status}`)}
     </span>
+  )
+}
+
+// ── BlockingFlag ──────────────────────────────────────────────────────────────
+
+interface BlockingFlagProps {
+  review: ProposalReviewOut
+  canModerate: boolean
+  onToggle: (isBlocking: boolean) => void
+}
+
+/** Shows whether a review blocks acceptance; moderators can switch it here. */
+function BlockingFlag({ review, canModerate, onToggle }: BlockingFlagProps) {
+  const { t } = useTranslation()
+  if (!canModerate) {
+    if (review.is_blocking) return null
+    return (
+      <span className={styles.tagOptional} title={t('reviews.blocking.optionalTitle')}>
+        {t('reviews.blocking.optionalTag')}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className={`${styles.tagOptional} ${
+        review.is_blocking ? styles.tagBlocking : ''
+      } ${styles.tagToggle}`}
+      onClick={() => onToggle(!review.is_blocking)}
+      title={
+        review.is_blocking
+          ? t('reviews.blocking.makeOptional')
+          : t('reviews.blocking.makeRequired')
+      }
+      aria-pressed={!review.is_blocking}
+    >
+      {review.is_blocking
+        ? t('reviews.blocking.requiredTag')
+        : t('reviews.blocking.optionalTag')}
+    </button>
   )
 }
 
@@ -330,9 +371,10 @@ interface ReviewCardProps {
   onRemove: () => void
   onWithdraw: () => void
   onEditOwn: () => void
+  onToggleBlocking: (isBlocking: boolean) => void
 }
 
-function ReviewCard({ review, currentUserId, groups, canModerate, canDeleteReview, onRemove, onWithdraw, onEditOwn }: ReviewCardProps) {
+function ReviewCard({ review, currentUserId, groups, canModerate, canDeleteReview, onRemove, onWithdraw, onEditOwn, onToggleBlocking }: ReviewCardProps) {
   const { t } = useTranslation()
   const isSelf = review.reviewer_id === currentUserId
   const isSystem = review.reviewer_is_system
@@ -364,6 +406,13 @@ function ReviewCard({ review, currentUserId, groups, canModerate, canDeleteRevie
           )}
         </span>
         <StatusBadge status={review.status as ReviewStatus} />
+        {!isSystem && review.status !== 'note' && (
+          <BlockingFlag
+            review={review}
+            canModerate={canModerate}
+            onToggle={onToggleBlocking}
+          />
+        )}
         <span className={styles.reviewMeta}>
           {review.status === 'pending' ? (
             <span>{t('reviews.card.requested', { when: fmtRel(review.requested_at, t) })}</span>
@@ -460,14 +509,18 @@ interface GroupReviewCardProps {
   groupRequest: ProposalReviewOut
   allReviews: ProposalReviewOut[]
   currentUserId: string
+  canModerate: boolean
   onWithdraw: () => void
+  onToggleBlocking: (isBlocking: boolean) => void
 }
 
 function GroupReviewCard({
   groupRequest,
   allReviews,
   currentUserId,
+  canModerate,
   onWithdraw,
+  onToggleBlocking,
 }: GroupReviewCardProps) {
   const { t } = useTranslation()
   const derived = deriveGroupStatus(groupRequest.group_code, allReviews)
@@ -500,6 +553,11 @@ function GroupReviewCard({
           <span className={styles.tagSoft}>{t('reviews.group.permissionGroup')}</span>
         </span>
         <StatusBadge status={derived} />
+        <BlockingFlag
+          review={groupRequest}
+          canModerate={canModerate}
+          onToggle={onToggleBlocking}
+        />
         <span className={styles.reviewMeta}>
           <span>{t('reviews.card.requested', { when: fmtRel(groupRequest.requested_at, t) })}</span>
           {derived !== 'approved' && (
@@ -786,6 +844,7 @@ export function ReviewsSection({
   const [loading, setLoading] = useState(true)
   const [editingOwn, setEditingOwn] = useState(false)
   const [pendingRequestee, setPendingRequestee] = useState<PickResult | null>(null)
+  const [pendingOptional, setPendingOptional] = useState(false)
   const [saving, setSaving] = useState(false)
   const prevStatusRef = useRef(proposalStatus)
   const moderationCommentSeededRef = useRef(false)
@@ -862,7 +921,7 @@ export function ReviewsSection({
 
   // Stats: count each direct ask once; group requests count once via derived status
   const stats = useMemo(() => {
-    let approved = 0, revise = 0, rejected = 0, pending = 0
+    let approved = 0, revise = 0, rejected = 0, pending = 0, optional = 0
     for (const r of reviews) {
       if (r.kind === 'user' && r.status === 'note') continue
       if (
@@ -871,13 +930,21 @@ export function ReviewsSection({
         (r.requested_via_groups || []).length > 0
       )
         continue
+      if (!r.is_blocking) {
+        // Optional reviews never block acceptance, so keep them out of the totals
+        optional++
+        continue
+      }
       const s = r.kind === 'group' ? deriveGroupStatus(r.group_code, reviews) : r.status
       if (s === 'approved') approved++
       else if (s === 'revise') revise++
       else if (s === 'rejected') rejected++
       else pending++
     }
-    return { approved, revise, rejected, pending, total: approved + revise + rejected + pending }
+    return {
+      approved, revise, rejected, pending, optional,
+      total: approved + revise + rejected + pending,
+    }
   }, [reviews])
 
   const requestReview = useCallback(async () => {
@@ -891,6 +958,7 @@ export function ReviewsSection({
         const r = await createProposalReview(proposalId, {
           kind: 'group',
           group_code: pendingRequestee.group.code,
+          is_blocking: !pendingOptional,
         })
         setReviews((prev) => [...prev, r])
       } else {
@@ -901,16 +969,18 @@ export function ReviewsSection({
           kind: 'user',
           reviewer_id: pendingRequestee.user.id,
           requested_directly: true,
+          is_blocking: !pendingOptional,
         })
         setReviews((prev) => [...prev, r])
       }
       setPendingRequestee(null)
+      setPendingOptional(false)
     } catch (err) {
       console.error('Failed to request review:', err)
     } finally {
       setSaving(false)
     }
-  }, [pendingRequestee, proposalId, t])
+  }, [pendingRequestee, pendingOptional, proposalId, t])
 
   const removeReview = useCallback(
     async (reviewId: string) => {
@@ -920,6 +990,19 @@ export function ReviewsSection({
         setReviews((prev) => prev.filter((r) => r.id !== reviewId))
       } catch (err) {
         console.error('Failed to remove review:', err)
+      }
+    },
+    [proposalId],
+  )
+
+  const toggleReviewBlocking = useCallback(
+    async (reviewId: string, isBlocking: boolean) => {
+      if (!proposalId) return
+      try {
+        const updated = await setProposalReviewBlocking(proposalId, reviewId, isBlocking)
+        setReviews((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+      } catch (err) {
+        console.error('Failed to change the blocking flag:', err)
       }
     },
     [proposalId],
@@ -992,7 +1075,7 @@ export function ReviewsSection({
 
       <div className={styles.reviewsHeader}>
         <div className={styles.reviewsCount}>
-          {stats.total === 0 ? (
+          {stats.total === 0 && stats.optional === 0 ? (
             <span>{t('reviews.noReviewsYet')}</span>
           ) : (
             <>
@@ -1007,6 +1090,9 @@ export function ReviewsSection({
               )}
               {stats.pending > 0 && (
                 <span style={{ color: '#b25e09' }}>{t('reviews.stats.pending', { count: stats.pending })}</span>
+              )}
+              {stats.optional > 0 && (
+                <span style={{ color: '#6b7280' }}>{t('reviews.stats.optional', { count: stats.optional })}</span>
               )}
             </>
           )}
@@ -1058,7 +1144,9 @@ export function ReviewsSection({
                 groupRequest={r}
                 allReviews={reviews}
                 currentUserId={currentUserId}
+                canModerate={canModerate && !isLocked}
                 onWithdraw={() => void removeReview(r.id)}
+                onToggleBlocking={(b) => void toggleReviewBlocking(r.id, b)}
               />
             )
           }
@@ -1068,11 +1156,12 @@ export function ReviewsSection({
               review={r}
               currentUserId={currentUserId}
               groups={groups}
-              canModerate={canModerate}
+              canModerate={canModerate && !isLocked}
               canDeleteReview={canDeleteReview}
               onRemove={() => void removeReview(r.id)}
               onWithdraw={() => void resetReviewToPending(r)}
               onEditOwn={() => setEditingOwn(true)}
+              onToggleBlocking={(b) => void toggleReviewBlocking(r.id, b)}
             />
           )
         })}
@@ -1130,6 +1219,16 @@ export function ReviewsSection({
                       : pendingRequestee.user.username}
                   </strong>
                 </span>
+                <label className={styles.optionalCheckbox}>
+                  <input
+                    type="checkbox"
+                    checked={pendingOptional}
+                    onChange={(e) => setPendingOptional(e.target.checked)}
+                  />
+                  <span title={t('reviews.blocking.optionalTitle')}>
+                    {t('reviews.requestRow.optionalLabel')}
+                  </span>
+                </label>
                 <button
                   type="button"
                   className={`${styles.btn} ${styles.btnPrimary}`}
@@ -1141,7 +1240,10 @@ export function ReviewsSection({
                 <button
                   type="button"
                   className={`${styles.btn} ${styles.btnGhost}`}
-                  onClick={() => setPendingRequestee(null)}
+                  onClick={() => {
+                    setPendingRequestee(null)
+                    setPendingOptional(false)
+                  }}
                 >
                   {t('reviews.requestRow.cancel')}
                 </button>

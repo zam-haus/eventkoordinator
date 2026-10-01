@@ -151,12 +151,28 @@ class ProposalLanguageAdmin(SimpleHistoryAdmin):
     search_fields = ("code", "label")
 
 
+class ProposalAreaReviewGroupInline(admin.TabularInline):
+    model = models.ProposalAreaReviewGroup
+    extra = 1
+    fields = ("group", "is_blocking")
+    verbose_name = "Automatic review request"
+    verbose_name_plural = "Automatic review requests"
+
+
 @admin.register(models.ProposalArea)
 class ProposalAreaAdmin(SimpleHistoryAdmin):
     list_display = ("code", "label", "is_active", "sort_order")
     list_editable = ("label", "is_active", "sort_order")
     search_fields = ("code", "label")
-    inlines = (PretixSyncTargetAreaAssociationInline,)
+    inlines = (ProposalAreaReviewGroupInline, PretixSyncTargetAreaAssociationInline)
+
+
+@admin.register(models.ProposalAreaReviewGroup)
+class ProposalAreaReviewGroupAdmin(SimpleHistoryAdmin):
+    list_display = ("area", "group", "is_blocking")
+    list_editable = ("is_blocking",)
+    list_filter = ("area", "group", "is_blocking")
+    search_fields = ("area__code", "area__label", "group__name")
 
 
 @admin.register(models.Speaker)
@@ -320,13 +336,13 @@ class CallAdmin(SimpleHistoryAdmin):
 
 @admin.register(models.ProposalReview)
 class ProposalReviewAdmin(ModelAdmin):
-    list_display = ("id", "proposal", "kind", "status", "reviewer", "requested_by", "created_at", "completed_at")
-    list_filter = ("kind", "status", "reviewer_is_system", "migrated")
+    list_display = ("id", "proposal", "kind", "status", "is_blocking", "reviewer", "requested_by", "created_at", "completed_at")
+    list_filter = ("kind", "status", "is_blocking", "reviewer_is_system", "migrated")
     search_fields = ("proposal__title", "reviewer__email", "requested_by__email", "group_code", "comment")
     readonly_fields = ("id", "created_at", "updated_at")
     raw_id_fields = ("proposal", "reviewer", "requested_by")
     fieldsets = (
-        ("General", {"fields": ("id", "proposal", "kind", "status", "comment")}),
+        ("General", {"fields": ("id", "proposal", "kind", "status", "is_blocking", "comment")}),
         ("Reviewer", {"fields": ("reviewer", "reviewer_is_system", "group_code")}),
         ("Request", {"fields": ("requested_by", "requested_directly", "requested_via_groups", "requested_at", "completed_at")}),
         ("History", {"fields": ("previous_status", "previous_comment", "migrated")}),

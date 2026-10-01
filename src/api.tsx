@@ -1635,6 +1635,7 @@ export interface ProposalReviewOut {
   group_member_count: number | null
   status: string
   comment: string
+  is_blocking: boolean
   requested_by_id: string | null
   requested_by_username: string | null
   requested_at: string | null
@@ -1670,6 +1671,7 @@ export interface ProposalReviewCreateIn {
   requested_directly?: boolean
   requested_via_groups?: string[]
   migrated?: boolean
+  is_blocking?: boolean
 }
 
 export async function createProposalReview(
@@ -1703,6 +1705,28 @@ export async function updateProposalReview(
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
     body: JSON.stringify({ status, comment }),
   })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { code?: string }).code || 'common.internalError')
+  }
+  return response.json() as Promise<ProposalReviewOut>
+}
+
+export async function setProposalReviewBlocking(
+  proposalId: string,
+  reviewId: string,
+  isBlocking: boolean,
+): Promise<ProposalReviewOut> {
+  const csrf = await getCsrfToken()
+  const response = await apiFetch(
+    `/api/v1/proposals/${proposalId}/reviews/${reviewId}/blocking`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify({ is_blocking: isBlocking }),
+    },
+  )
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     throw new Error((err as { code?: string }).code || 'common.internalError')

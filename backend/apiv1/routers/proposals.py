@@ -356,7 +356,7 @@ def _derive_group_status(group_code: str, reviews: list) -> str:
 
 def _compute_review_stats(reviews: list, current_user_id) -> tuple[ReviewStats, str | None]:
     """Compute aggregate review stats and the current user's review status."""
-    approved = revise = rejected = pending = 0
+    approved = revise = rejected = pending = optional = 0
     my_status: str | None = None
 
     # Determine current user's review status first (before aggregation filtering)
@@ -383,6 +383,10 @@ def _compute_review_stats(reviews: list, current_user_id) -> tuple[ReviewStats, 
         ):
             # Counted via their group entry instead
             continue
+        if not r.is_blocking:
+            # Optional reviews are advisory and tracked separately
+            optional += 1
+            continue
         s = _derive_group_status(r.group_code, reviews) if r.kind == ProposalReview.KIND_GROUP else r.status
         if s == "approved":
             approved += 1
@@ -394,7 +398,14 @@ def _compute_review_stats(reviews: list, current_user_id) -> tuple[ReviewStats, 
             pending += 1
 
     total = approved + revise + rejected + pending
-    return ReviewStats(approved=approved, revise=revise, rejected=rejected, pending=pending, total=total), my_status
+    return ReviewStats(
+        approved=approved,
+        revise=revise,
+        rejected=rejected,
+        pending=pending,
+        total=total,
+        optional=optional,
+    ), my_status
 
 
 @router.get(

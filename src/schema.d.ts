@@ -722,6 +722,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/proposals/{proposal_id}/reviews/{review_id}/blocking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Review Blocking
+         * @description Mark a review as blocking or optional. Moderators only.
+         *
+         *     An optional review is still requested and displayed, but it never prevents
+         *     the proposal from being accepted.
+         */
+        patch: operations["apiv1_routers_reviews_set_review_blocking"];
+        trace?: never;
+    };
     "/api/v1/proposals/{proposal_id}/revise": {
         parameters: {
             query?: never;
@@ -1972,6 +1995,14 @@ export interface components {
             title: string;
         };
         /**
+         * ProposalReviewBlockingIn
+         * @description Change whether a review blocks acceptance (moderators only).
+         */
+        ProposalReviewBlockingIn: {
+            /** Is Blocking */
+            is_blocking: boolean;
+        };
+        /**
          * ProposalReviewCreateIn
          * @description Create a new review or group-review request.
          */
@@ -1983,6 +2014,11 @@ export interface components {
             comment: string;
             /** Group Code */
             group_code?: string | null;
+            /**
+             * Is Blocking
+             * @default true
+             */
+            is_blocking: boolean;
             /** Kind */
             kind: string;
             /**
@@ -2041,6 +2077,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Is Blocking
+             * @default true
+             */
+            is_blocking: boolean;
             /** Kind */
             kind: string;
             /**
@@ -2217,6 +2258,11 @@ export interface components {
              * @default 0
              */
             approved: number;
+            /**
+             * Optional
+             * @default 0
+             */
+            optional: number;
             /**
              * Pending
              * @default 0
@@ -4331,6 +4377,60 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    apiv1_routers_reviews_set_review_blocking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalReviewBlockingIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalReviewOut"];
+                };
             };
             /** @description Unauthorized */
             401: {
