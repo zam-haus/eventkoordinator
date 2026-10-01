@@ -44,7 +44,7 @@
         - paragraph: When checked, the event spans continuously over midnight (e.g. Mon 08:00 → Tue 16:00 shows as one block). When unchecked, multi-day events are split into daily blocks using the same daily start/end hours (e.g. Mon <time-range> and Tue <time-range>).
         - text: Drag on the calendar to update start and end.
         - button "Previous week": ‹
-        - text: <week-range>
+        - text: Sep 28 – Oct 4, 2026
         - button "Next week": ›
         - text: "New events for:"
         - combobox "New events for:":
