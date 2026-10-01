@@ -10,74 +10,19 @@
   - button "Auf Deutsch wechseln": 🇩🇪
   - button "User menu": proposaleventux-user
 - main:
-  - complementary "Proposals":
-    - heading "Proposals" [level=2]
-    - button "Create New Proposal"
-    - listbox "Proposals":
-      - option
-      - option "My Title workshop" [selected]
-  - main "Proposals content":
-    - heading "Proposal Editor" [level=1]
-    - alert:
-      - heading "Submitted – under review" [level=3]
-      - paragraph: Thank you for your submission! Please wait for feedback after our team has reviewed your proposal.
-    - form "Proposal editor":
-      - tablist:
-        - tab "✓ General"
-        - tab "✓ Participants and Costs"
-        - tab "✓ Scheduling"
-        - tab "✓ Speakers"
-        - tab "⧗ Submission" [selected]
-      - tabpanel:
-        - text: Additional Information for the ZAM (optional)
-        - textbox "Additional Information for the ZAM (optional)" [disabled]: Internal Notes
-        - text: Not public. Use this to communicate with the ZAM team, e.g. equipment needs (laptops, projector, laser cutter) or other notes.
-        - heading "Submission Checklist" [level=3]
-        - list:
-          - listitem:
-            - text: ✓
-            - button "Title (max 30 characters)"
-          - listitem:
-            - text: ✓
-            - button "Abstract (50–250 characters)"
-          - listitem:
-            - text: ✓
-            - button "Description (50–1000 characters)"
-          - listitem:
-            - text: ✓
-            - button "Duration set"
-          - listitem:
-            - text: ✓
-            - button "Max participants set"
-          - listitem:
-            - text: ✓
-            - button "Occurrence count set"
-          - listitem:
-            - text: ✓
-            - button "Preferred dates specified"
-          - listitem:
-            - text: ✓
-            - button "Language selected"
-          - listitem:
-            - text: ✓
-            - button "Submission type selected"
-          - listitem:
-            - text: ✓
-            - button "Workshop area selected"
-          - listitem:
-            - text: ✓
-            - button "At least one speaker added"
-          - listitem:
-            - text: ✓
-            - button "All speakers have a biography"
-          - listitem:
-            - text: ✓
-            - button "Proposal image uploaded (min. 1440×1080 px)"
-      - button "← Back"
-      - button "Request Revision"
-      - button "Accept Proposal"
-      - button "Reject Proposal"
-      - button "▶ Proposal lifecycle diagram"
-      - button "Save Proposal" [disabled]
-      - group "Reviews": Reviews no reviews yet No reviews yet. Request one below or add your own.
-      - group: Edit history last changed just now
+  - heading "Current Calls" [level=1]
+  - paragraph: Submit a proposal for a workshop, course, or talk.
+  - heading "UX Test Call" [level=2]
+  - text: Overdue
+  - paragraph: A call created for UX testing
+  - text: "Execution period:"
+  - strong: März 2026 – April 2026
+  - text: "Submission deadline:"
+  - strong: 15.09.2026
+  - text: "Print deadline:"
+  - strong: 20.09.2026
+  - text: "Responsible:"
+  - link "Test Responsible":
+    - /url: mailto:test@example.com
+  - button "Submit proposal" [disabled]
+  - button "Go to Coordinator →"
