@@ -9,6 +9,8 @@ Du kannst die Einreichung unter folgendem Link einsehen und dein Gutachten abgeb
 
 {{ proposal_url }}
 
+{% include "apiv1/mails/_reply_hint_de.txt.j2" %}
+
 ================================
 
 [English]
@@ -20,3 +22,5 @@ You have been asked to review the submission "{{ object.title }}"{% if call_titl
 You can view the submission and submit your review at the following link:
 
 {{ proposal_url }}
+
+{% include "apiv1/mails/_reply_hint_en.txt.j2" %}
