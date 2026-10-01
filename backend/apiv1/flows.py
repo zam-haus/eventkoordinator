@@ -24,6 +24,12 @@ g_proposal_revise = Gauge('eventkoordinator_flow_proposal_revise_count', 'Revise
 g_proposal_accept = Gauge('eventkoordinator_flow_proposal_accept_count', 'Accepted proposals')
 
 
+def call_from_email(call) -> str:
+    """From address for flow mails: the call's contact address, if any."""
+    return call.responsible_email if call and call.responsible_email else settings.DEFAULT_FROM_EMAIL
+
+
+
 
 
 
@@ -220,7 +226,7 @@ class ProposalFlow:
                     "apiv1/mails/submit.html.j2",
                     dict(object=self.object, proposal_url=proposal_url),
                 ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=call_from_email(self.object.call),
                 recipient_list=[self.object.owner.email],
                 fail_silently=False,
             )
@@ -239,7 +245,7 @@ class ProposalFlow:
                         "apiv1/mails/submit_contact.html.j2",
                         dict(object=self.object, proposal_url=proposal_url),
                     ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    from_email=call_from_email(self.object.call),
                     recipient_list=[self.object.call.responsible_email],
                     fail_silently=False,
                 )
@@ -279,7 +285,7 @@ class ProposalFlow:
                     "apiv1/mails/revise.html.j2",
                     dict(object=self.object, proposal_url=proposal_url, reviews=reviews_with_comments),
                 ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=call_from_email(self.object.call),
                 recipient_list=[self.object.owner.email],
                 fail_silently=False,
             )
@@ -311,7 +317,7 @@ class ProposalFlow:
                     "apiv1/mails/accept.html.j2",
                     dict(object=self.object, proposal_url=proposal_url),
                 ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=call_from_email(self.object.call),
                 recipient_list=[self.object.owner.email],
                 fail_silently=False,
             )
@@ -341,7 +347,7 @@ class ProposalFlow:
                     "apiv1/mails/reject.html.j2",
                     dict(object=self.object, proposal_url=proposal_url),
                 ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=call_from_email(self.object.call),
                 recipient_list=[self.object.owner.email],
                 fail_silently=False,
             )
@@ -725,7 +731,7 @@ class EventFlow:
                 subject=f"{subject_de} / {subject_en}: {self.object.name}",
                 message=render_to_string(f"apiv1/mails/event_{action}_owner.txt.j2", ctx),
                 html_message=render_to_string(f"apiv1/mails/event_{action}_owner.html.j2", ctx),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=call_from_email(proposal.call),
                 recipient_list=[proposal.owner.email],
                 fail_silently=False,
             )
@@ -765,7 +771,7 @@ class EventFlow:
                 subject=f"{subject_de} / {subject_en}: {self.object.name}",
                 message=render_to_string(f"apiv1/mails/{template_name}.txt.j2", ctx),
                 html_message=render_to_string(f"apiv1/mails/{template_name}.html.j2", ctx),
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=call_from_email(call),
                 recipient_list=[call.responsible_email],
                 fail_silently=False,
             )

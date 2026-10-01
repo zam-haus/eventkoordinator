@@ -17,6 +17,7 @@ from ninja import Router
 import apiv1
 from apiv1.api_utils import api_permission_mandatory
 from apiv1.auth_groups import AUTHENTICATED_USERS_GROUP_NAME
+from apiv1.flows import call_from_email
 from apiv1.models import Proposal as ProposalModel
 from apiv1.models.basedata import ProposalReview
 from apiv1.schemas import (
@@ -99,7 +100,7 @@ def _send_review_requested_mail(proposal: ProposalModel, reviewer) -> None:
             subject=f"Bitte um Gutachten / Review requested: {proposal.title}",
             message=render_to_string("apiv1/mails/review_requested.txt.j2", ctx),
             html_message=render_to_string("apiv1/mails/review_requested.html.j2", ctx),
-            from_email=settings.DEFAULT_FROM_EMAIL,
+            from_email=call_from_email(proposal.call),
             recipient_list=[reviewer.email],
             fail_silently=False,
         )
@@ -122,7 +123,7 @@ def _send_review_given_mail(proposal: ProposalModel, review: ProposalReview) -> 
             subject=f"Gutachten eingegangen / Review submitted: {proposal.title}",
             message=render_to_string("apiv1/mails/review_given.txt.j2", ctx),
             html_message=render_to_string("apiv1/mails/review_given.html.j2", ctx),
-            from_email=settings.DEFAULT_FROM_EMAIL,
+            from_email=call_from_email(proposal.call),
             recipient_list=[proposal.call.responsible_email],
             fail_silently=False,
         )
