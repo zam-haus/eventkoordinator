@@ -11,6 +11,7 @@ import {
   type Event,
 } from './api'
 import { EventStatusBadge } from './EventStatusBadge'
+import { confirmMailAction } from './mailConfirm'
 import styles from './EventTransitionButtons.module.css'
 
 mermaid.initialize({ startOnLoad: false, theme: 'default' })
@@ -125,7 +126,11 @@ export function EventTransitionButtons({
     }
   }
 
-  const handleExecute = async (action: string) => {
+  const handleExecute = async (transition: EventTransition) => {
+    const action = transition.action
+    if (!confirmMailAction(t, transition.mail_warning_id)) {
+      return
+    }
     try {
       setExecuting(action)
       setError(null)
@@ -161,7 +166,7 @@ export function EventTransitionButtons({
             <button
               key={t_item.action}
               className={`${styles.transitionButton} ${executing !== null && executing !== t_item.action ? styles.busy : ''}`}
-              onClick={() => void handleExecute(t_item.action)}
+              onClick={() => void handleExecute(t_item)}
               disabled={!t_item.enabled || executing !== null}
               title={t_item.disable_reason ?? undefined}
               aria-busy={executing === t_item.action}

@@ -623,5 +623,26 @@
       "eventStatus": "Status",
       "eventSync": "Sync"
     }
+  },
+  "mails": {
+    "confirm": {
+      "proposal": {
+        "revise": "Überarbeitung anfordern? An die einreichende Person wird eine Mail mit der Bitte um Überarbeitung versandt — sie enthält alle Kommentare der Gutachten.",
+        "accept": "Diese Einreichung annehmen? An die einreichende Person wird eine Mail versandt, dass die Einreichung angenommen wurde.",
+        "reject": "Diese Einreichung ablehnen? An die einreichende Person wird eine Mail versandt, dass die Einreichung abgelehnt wurde.",
+        "submit_on_behalf": "Diese Einreichung im Namen der einreichenden Person abschicken? An sie wird eine Bestätigungsmail („Einreichung eingegangen“) versandt."
+      },
+      "event": {
+        "submit": "Diesen Termin vorschlagen? An die einreichende Person wird eine Mail mit dem Terminvorschlag und der Bitte um Bestätigung versandt.",
+        "publish": "Diesen Termin veröffentlichen? An die einreichende Person wird eine Mail versandt, dass der Termin veröffentlicht wird.",
+        "confirm": "Diesen Termin bestätigen? An die einreichende Person wird eine Bestätigungsmail zum Termin versandt.",
+        "cancel": "Diesen Termin absagen? An die einreichende Person wird eine Mail versandt, dass der Termin abgesagt wurde."
+      },
+      "review": {
+        "request_user": "Gutachten von {{name}} anfordern? Die Person erhält eine Mail mit der Bitte um ein Gutachten und einem Link zur Einreichung.",
+        "request_group": "Gutachten von der Gruppe „{{name}}“ anfordern? Alle Mitglieder der Gruppe mit E-Mail-Adresse erhalten eine Anfrage per Mail."
+      },
+      "generic": "Diese Aktion versendet eine E-Mail an die einreichende Person oder an Gutachtende. Fortfahren?"
+    }
   }
 }

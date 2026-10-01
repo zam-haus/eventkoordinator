@@ -12,6 +12,7 @@ import {
   type ProposalDetail,
 } from './api'
 import { translateApiError } from './apiError'
+import { confirmMailAction } from './mailConfirm'
 import styles from './ProposalTransitionButtons.module.css'
 
 interface ProposalTransitionButtonsProps {
@@ -53,7 +54,11 @@ export function ProposalTransitionButtons({
     }
   }, [proposalId])
 
-  const executeTransition = async (action: string) => {
+  const executeTransition = async (transition: ProposalTransition) => {
+    const action = transition.action
+    if (!confirmMailAction(t, transition.mail_warning_id)) {
+      return
+    }
     try {
       setExecuting(action)
       setError(null)
@@ -129,7 +134,7 @@ export function ProposalTransitionButtons({
         {transitions.map((transition) => (
           <button
             key={transition.action}
-            onClick={() => executeTransition(transition.action)}
+            onClick={() => void executeTransition(transition)}
             disabled={!transition.enabled || executing !== null}
             style={{
               padding: '0.6rem 1.2rem',

@@ -29,6 +29,28 @@ def call_from_email(call) -> str:
     return call.responsible_email if call and call.responsible_email else settings.DEFAULT_FROM_EMAIL
 
 
+# Warning ids for actions that mail somebody outside the moderator team (the proposal
+# owner, or a reviewer). The frontend localizes these ids and asks for confirmation
+# before executing the action. Actions whose mails only reach the call's own
+# responsible address (event approve/reject) are intentionally absent.
+# submit/resubmit are owner actions whose mail only confirms the owner's own
+# submission, so they are not annotated; submit_on_behalf is a moderator action.
+PROPOSAL_MAIL_WARNINGS = {
+    "submit_on_behalf": "proposal.submit_on_behalf",
+    "revise": "proposal.revise",
+    "revise_after_rejection": "proposal.revise",
+    "accept": "proposal.accept",
+    "reject": "proposal.reject",
+}
+
+EVENT_MAIL_WARNINGS = {
+    "submit": "event.submit",
+    "publish": "event.publish",
+    "confirm": "event.confirm",
+    "cancel": "event.cancel",
+}
+
+
 
 
 
@@ -43,12 +65,14 @@ class ProposalTransition:
         target_status: str,
         enabled: bool,
         disable_reason: str | None = None,
+        mail_warning_id: str | None = None,
     ):
         self.action = action
         self.label_id = label_id
         self.target_status = target_status
         self.enabled = enabled
         self.disable_reason = disable_reason
+        self.mail_warning_id = mail_warning_id
 
     def to_dict(self):
         return {
@@ -57,6 +81,7 @@ class ProposalTransition:
             "target_status": self.target_status,
             "enabled": self.enabled,
             "disable_reason": self.disable_reason,
+            "mail_warning_id": self.mail_warning_id,
         }
 
 
@@ -388,6 +413,13 @@ class ProposalFlow:
 
         return transitions_list
 
+    def _mail_warning_id(self, label_id: str) -> str | None:
+        """Warning id if executing this transition mails the proposal owner."""
+        owner = self.object.owner
+        if not owner or not owner.email:
+            return None
+        return PROPOSAL_MAIL_WARNINGS.get(label_id)
+
     def _evaluate_transition(
         self, transition: Transition, action: str, user: OpenIDUser
     ) -> ProposalTransition:
@@ -443,6 +475,7 @@ class ProposalFlow:
             target_status=transition.target,
             enabled=True,
             disable_reason=None,
+            mail_warning_id=self._mail_warning_id(label_id),
         )
 
     def execute_transition(self, action: str) -> bool:
@@ -482,12 +515,14 @@ class EventTransition:
         target_status: str,
         enabled: bool,
         disable_reason: str | None = None,
+        mail_warning_id: str | None = None,
     ):
         self.action = action
         self.label_id = label_id
         self.target_status = target_status
         self.enabled = enabled
         self.disable_reason = disable_reason
+        self.mail_warning_id = mail_warning_id
 
     def to_dict(self):
         return {
@@ -496,6 +531,7 @@ class EventTransition:
             "target_status": self.target_status,
             "enabled": self.enabled,
             "disable_reason": self.disable_reason,
+            "mail_warning_id": self.mail_warning_id,
         }
 
 
@@ -813,6 +849,13 @@ class EventFlow:
 
         return transitions_list
 
+    def _mail_warning_id(self, action: str) -> str | None:
+        """Warning id if executing this transition mails the proposal owner."""
+        proposal = self.object.proposal
+        if not proposal or not proposal.owner or not proposal.owner.email:
+            return None
+        return EVENT_MAIL_WARNINGS.get(action)
+
     def _evaluate_transition(
         self, transition: Transition, action: str, user: OpenIDUser
     ) -> EventTransition:
@@ -850,6 +893,7 @@ class EventFlow:
             target_status=transition.target,
             enabled=True,
             disable_reason=None,
+            mail_warning_id=self._mail_warning_id(action),
         )
 
     def execute_transition(self, action: str) -> bool:

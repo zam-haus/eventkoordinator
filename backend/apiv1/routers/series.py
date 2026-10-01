@@ -320,6 +320,7 @@ def get_event_transitions(
                 target_status=t.target_status,
                 enabled=t.enabled,
                 disable_reason=t.disable_reason,
+                mail_warning_id=t.mail_warning_id,
             )
             for t in transitions
         ],

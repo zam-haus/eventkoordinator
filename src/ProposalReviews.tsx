@@ -12,6 +12,7 @@ import {
   type LookupItem,
   type ProposalReviewOut,
 } from './api'
+import { confirmMailAction } from './mailConfirm'
 import styles from './ProposalReviews.module.css'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -884,12 +885,18 @@ export function ReviewsSection({
     setSaving(true)
     try {
       if (pendingRequestee.kind === 'group') {
+        if (!confirmMailAction(t, 'review.request_group', { name: pendingRequestee.group.label })) {
+          return
+        }
         const r = await createProposalReview(proposalId, {
           kind: 'group',
           group_code: pendingRequestee.group.code,
         })
         setReviews((prev) => [...prev, r])
       } else {
+        if (!confirmMailAction(t, 'review.request_user', { name: pendingRequestee.user.username })) {
+          return
+        }
         const r = await createProposalReview(proposalId, {
           kind: 'user',
           reviewer_id: pendingRequestee.user.id,
@@ -903,7 +910,7 @@ export function ReviewsSection({
     } finally {
       setSaving(false)
     }
-  }, [pendingRequestee, proposalId])
+  }, [pendingRequestee, proposalId, t])
 
   const removeReview = useCallback(
     async (reviewId: string) => {

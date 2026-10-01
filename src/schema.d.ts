@@ -1616,6 +1616,8 @@ export interface components {
             enabled: boolean;
             /** Label Id */
             label_id: string;
+            /** Mail Warning Id */
+            mail_warning_id?: string | null;
             /** Target Status */
             target_status: string;
         };
@@ -2147,6 +2149,8 @@ export interface components {
             enabled: boolean;
             /** Label Id */
             label_id: string;
+            /** Mail Warning Id */
+            mail_warning_id?: string | null;
             /** Target Status */
             target_status: string;
         };

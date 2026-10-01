@@ -850,6 +850,7 @@ export interface ProposalTransition {
   target_status: string  // target status
   enabled: boolean  // whether the transition is currently allowed
   disable_reason?: string | null  // reason if disabled
+  mail_warning_id?: string | null  // i18n id of a mail warning, null if no mail is sent
 }
 
 export interface ProposalTransitions {
@@ -1375,6 +1376,7 @@ export interface EventTransition {
   target_status: string
   enabled: boolean
   disable_reason?: string | null
+  mail_warning_id?: string | null  // i18n id of a mail warning, null if no mail is sent
 }
 
 export interface EventTransitions {

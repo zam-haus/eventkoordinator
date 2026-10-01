@@ -379,6 +379,8 @@ class ProposalTransitionOut(Schema):
     target_status: str  # target status
     enabled: bool  # whether the transition is currently allowed
     disable_reason: Optional[str] = None  # reason if disabled
+    # i18n id of a warning about mail sent to the proposal owner, None if no such mail
+    mail_warning_id: Optional[str] = None
 
 
 class ProposalTransitions(Schema):
@@ -409,6 +411,8 @@ class EventTransitionOut(Schema):
     target_status: str
     enabled: bool
     disable_reason: Optional[str] = None
+    # i18n id of a warning about mail sent to the proposal owner, None if no such mail
+    mail_warning_id: Optional[str] = None
 
 
 class EventTransitions(Schema):

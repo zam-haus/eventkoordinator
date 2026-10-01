@@ -13,7 +13,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "loading": "Loading\u2026",
+    "loading": "Loading…",
     "error": "Error",
     "close": "Close",
     "edit": "Edit",
@@ -626,6 +626,27 @@
       "eventDatetime": "Date / Time",
       "eventStatus": "Status",
       "eventSync": "Sync"
+    }
+  },
+  "mails": {
+    "confirm": {
+      "proposal": {
+        "revise": "Request a revision? An e-mail will be sent to the proposal owner asking them to revise their submission — it quotes all reviewer comments.",
+        "accept": "Accept this proposal? An e-mail will be sent to the proposal owner telling them their submission has been accepted.",
+        "reject": "Reject this proposal? An e-mail will be sent to the proposal owner telling them their submission has been rejected.",
+        "submit_on_behalf": "Submit this proposal on behalf of its owner? A confirmation e-mail (“Submission received”) will be sent to the proposal owner."
+      },
+      "event": {
+        "submit": "Propose this date? An e-mail will be sent to the proposal owner with the proposed date, asking them to confirm it.",
+        "publish": "Publish this event? An e-mail will be sent to the proposal owner telling them the date is about to be published.",
+        "confirm": "Confirm this event? An e-mail will be sent to the proposal owner confirming the date.",
+        "cancel": "Cancel this event? An e-mail will be sent to the proposal owner telling them the date has been canceled."
+      },
+      "review": {
+        "request_user": "Request a review from {{name}}? They will receive an e-mail asking them to review this proposal, with a link to it.",
+        "request_group": "Request a review from the group “{{name}}”? Every member of the group with an e-mail address will receive a review request mail."
+      },
+      "generic": "This action sends an e-mail to the proposal owner or to a reviewer. Continue?"
     }
   }
 }
