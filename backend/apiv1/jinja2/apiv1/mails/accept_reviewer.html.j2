@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .proposal-title {
+            font-weight: bold;
+        }
+        .cta-link {
+            display: inline-block;
+            margin: 8px 0 20px;
+            color: #0066cc;
+            word-break: break-all;
+        }
+        .divider {
+            border: none;
+            border-top: 2px solid #ddd;
+            margin: 30px 0;
+        }
+        .reply-hint {
+            margin-top: 20px;
+            color: #555;
+        }
+        .lang-label {
+            font-size: 0.75em;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+    </style>
+</head>
+<body>
+    {% set call_title = object.call.title if object.call else '' %}
+
+    <p class="lang-label">Deutsch</p>
+
+    <p>Hi {{ reviewer.username }}!</p>
+
+    <p>Die Einreichung <span class="proposal-title">"{{ object.title }}"</span>{% if call_title %} für <span class="proposal-title">"{{ call_title }}"</span>{% endif %}, für die du als Gutachter*in angefragt wurdest oder die du begutachtet hast, wurde von der Moderation angenommen.</p>
+
+    <p>Diese Mail dient nur zur Information, du musst nichts weiter tun.</p>
+
+    <p>Du kannst die Einreichung unter folgendem Link einsehen:</p>
+
+    <a class="cta-link" href="{{ proposal_url }}">{{ proposal_url }}</a>
+
+    {% include "apiv1/mails/_reply_hint_de.html.j2" %}
+
+    <hr class="divider">
+
+    <p class="lang-label">English</p>
+
+    <p>Hi {{ reviewer.username }}!</p>
+
+    <p>The submission <span class="proposal-title">"{{ object.title }}"</span>{% if call_title %} for <span class="proposal-title">"{{ call_title }}"</span>{% endif %}, which you were asked to review or have reviewed, has been accepted by a moderator.</p>
+
+    <p>This mail is for your information only, no action is required.</p>
+
+    <p>You can view the submission at the following link:</p>
+
+    <a class="cta-link" href="{{ proposal_url }}">{{ proposal_url }}</a>
+    {% include "apiv1/mails/_reply_hint_en.html.j2" %}
+</body>
+</html>

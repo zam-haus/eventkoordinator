@@ -379,6 +379,13 @@ class ProposalFlow:
         except BaseException as e:
             logger.error("Failed to send acceptance mail: " + str(e), exc_info=e)
             raise
+        # Imported lazily: review_requests imports call_from_email from this module.
+        from apiv1.review_requests import send_proposal_accepted_reviewer_mails
+
+        try:
+            send_proposal_accepted_reviewer_mails(self.object)
+        except BaseException as e:
+            logger.error("Failed to notify reviewers about acceptance: " + str(e), exc_info=e)
 
     @status.transition(
         source=Proposal.Status.SUBMITTED,

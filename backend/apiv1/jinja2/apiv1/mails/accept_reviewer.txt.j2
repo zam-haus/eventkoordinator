@@ -1,0 +1,30 @@
+{% set call_title = object.call.title if object.call else '' %}
+[Deutsch]
+
+Hi {{ reviewer.username }}!
+
+Die Einreichung "{{ object.title }}"{% if call_title %} für "{{ call_title }}"{% endif %}, für die du als Gutachter*in angefragt wurdest oder die du begutachtet hast, wurde von der Moderation angenommen.
+
+Diese Mail dient nur zur Information, du musst nichts weiter tun.
+
+Du kannst die Einreichung unter folgendem Link einsehen:
+
+{{ proposal_url }}
+
+{% include "apiv1/mails/_reply_hint_de.txt.j2" %}
+
+================================
+
+[English]
+
+Hi {{ reviewer.username }}!
+
+The submission "{{ object.title }}"{% if call_title %} for "{{ call_title }}"{% endif %}, which you were asked to review or have reviewed, has been accepted by a moderator.
+
+This mail is for your information only, no action is required.
+
+You can view the submission at the following link:
+
+{{ proposal_url }}
+
+{% include "apiv1/mails/_reply_hint_en.txt.j2" %}

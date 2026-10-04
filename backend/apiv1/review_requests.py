@@ -33,6 +33,48 @@ def send_review_requested_mail(proposal: Proposal, reviewer) -> None:
         logger.error("Failed to send review-requested notification: " + str(e), exc_info=e)
 
 
+def proposal_reviewers(proposal: Proposal) -> list:
+    """All users requested to review the proposal or who did review it, deduplicated.
+
+    Covers direct requests and votes (user reviews) as well as the current
+    members of every requested group. The system review has no reviewer.
+    """
+    reviews = list(ProposalReview.objects.filter(proposal=proposal).select_related("reviewer"))
+    users: dict[Any, Any] = {}
+    for review in reviews:
+        if review.kind == ProposalReview.KIND_USER and review.reviewer is not None:
+            users.setdefault(review.reviewer.pk, review.reviewer)
+    group_pks = [
+        int(r.group_code)
+        for r in reviews
+        if r.kind == ProposalReview.KIND_GROUP and r.group_code.isdigit()
+    ]
+    for group in Group.objects.filter(pk__in=group_pks):
+        for member in group.user_set.all():
+            users.setdefault(member.pk, member)
+    return list(users.values())
+
+
+def send_proposal_accepted_reviewer_mails(proposal: Proposal) -> None:
+    """Inform every requested and actual reviewer that the proposal was accepted."""
+    proposal_url = f"{settings.FRONTEND_BASE_URL}/proposal-editor/{proposal.pk}"
+    for reviewer in proposal_reviewers(proposal):
+        if not reviewer.email:
+            continue
+        ctx = dict(object=proposal, proposal_url=proposal_url, reviewer=reviewer)
+        try:
+            send_mail(
+                subject=f"Einreichung angenommen / Submission accepted: {proposal.title}",
+                message=render_to_string("apiv1/mails/accept_reviewer.txt.j2", ctx),
+                html_message=render_to_string("apiv1/mails/accept_reviewer.html.j2", ctx),
+                from_email=call_from_email(proposal.call),
+                recipient_list=[reviewer.email],
+                fail_silently=False,
+            )
+        except BaseException as e:
+            logger.error("Failed to send acceptance notification to reviewer: " + str(e), exc_info=e)
+
+
 def sync_group_review_links(proposal: Proposal, reviews: list[ProposalReview] | None = None) -> bool:
     """Link every user review to the requested groups its reviewer belongs to.
 

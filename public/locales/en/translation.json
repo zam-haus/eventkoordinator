@@ -642,7 +642,7 @@
     "confirm": {
       "proposal": {
         "revise": "Request a revision? An e-mail will be sent to the proposal owner asking them to revise their submission — it quotes all reviewer comments.",
-        "accept": "Accept this proposal? An e-mail will be sent to the proposal owner telling them their submission has been accepted.",
+        "accept": "Accept this proposal? An e-mail will be sent to the proposal owner telling them their submission has been accepted. All requested and actual reviewers will be informed as well.",
         "reject": "Reject this proposal? An e-mail will be sent to the proposal owner telling them their submission has been rejected.",
         "submit_on_behalf": "Submit this proposal on behalf of its owner? A confirmation e-mail (“Submission received”) will be sent to the proposal owner.",
         "resubmit_on_behalf": "Resubmit this proposal on behalf of its owner? A confirmation e-mail (“Submission received”) will be sent to the proposal owner."
