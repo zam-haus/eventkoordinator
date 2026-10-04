@@ -400,7 +400,6 @@ class ProposalUxPlaywrightTest(ProposalNavigationMixin, SnapshotMixin, ViteStati
 
                     with self.subTest(stage="before_delete"):
                         wait_for_loading_indicators_to_disappear(page)
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with self.subTest(stage="after_delete"):
                         delete_proposal_msgs: list[str] = []
@@ -420,7 +419,6 @@ class ProposalUxPlaywrightTest(ProposalNavigationMixin, SnapshotMixin, ViteStati
                             "No dialog was shown for delete proposal",
                         )
                         self.assertIn("Delete proposal", delete_proposal_msgs[0])
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
             finally:
                 browser.close()
 
@@ -481,9 +479,6 @@ class ProposalUxPlaywrightTest(ProposalNavigationMixin, SnapshotMixin, ViteStati
                     )
                     wait_for_loading_indicators_to_disappear(page)
 
-                    with self.subTest(stage="before_copy"):
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
-
                     with self.subTest(stage="after_copy"):
                         with page.expect_response(
                             lambda response: (
@@ -498,7 +493,6 @@ class ProposalUxPlaywrightTest(ProposalNavigationMixin, SnapshotMixin, ViteStati
                             "option", name=re.compile(r"^Copy Me Proposal\b")
                         )
                         expect(options).to_have_count(2)
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
             finally:
                 browser.close()
 

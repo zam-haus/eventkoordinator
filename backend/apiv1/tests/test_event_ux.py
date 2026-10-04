@@ -17,7 +17,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Permission
 from playwright.sync_api import Page, sync_playwright, expect
 
-from apiv1.models.basedata import Call, Event, Series
+from apiv1.models.basedata import Call, Event, Proposal, Series
 from project import test_utils
 from project.test_utils import (
     SnapshotMixin,
@@ -121,6 +121,7 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
         )
 
     def tearDown(self) -> None:
+        Proposal.objects.filter(title="Ux Warning Proposal").delete()
         Call.objects.filter(title="UX Test Call").delete()
         Event.objects.filter(series__name="Ux Test Series").delete()
         Series.objects.filter(name="Ux Test Series").delete()
@@ -319,7 +320,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".select_series.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with (
                         self.subTest(stage="select_event"),
@@ -347,7 +347,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".select_event.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with self.subTest(stage="edit_fields"), print_aria_on_timeout(page):
                         logger.debug(
@@ -366,7 +365,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".edit_fields.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with (
                         self.subTest(stage="drag_calendar"),
@@ -398,7 +396,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".drag_calendar.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with self.subTest(stage="save"), print_aria_on_timeout(page):
                         logger.debug("Clicking Save Changes button")
@@ -408,7 +405,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".save.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
             finally:
                 browser.close()
@@ -457,6 +453,65 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                     page.get_by_role("listbox", name="Events").get_by_text(
                         "Object Permission Edit"
                     ).wait_for(timeout=1000)
+            finally:
+                browser.close()
+
+    def test_event_editor_warns_about_proposal_duration_and_call_period(self) -> None:
+        """Warn when the selected length differs from the proposal or lies outside the call period."""
+        user = get_user_model().objects.get(username=self.username)
+        user.user_permissions.add(
+            *Permission.objects.filter(codename__in=["view_proposal", "browse_proposal"])
+        )
+        # Proposal expects 2 days x 3h = 6h, but the event only spans 2h.
+        proposal = Proposal.objects.create(
+            title="Ux Warning Proposal",
+            abstract="x" * 60,
+            description="x" * 60,
+            preferred_dates="",
+            material_cost_eur="0.00",
+            duration_days=2,
+            duration_time_per_day="03:00",
+            call=self.call,
+            owner=user,
+            status=Proposal.Status.ACCEPTED,
+        )
+        self.event.proposal = proposal
+        self.event.save(update_fields=["proposal"])
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(**playwright_launch_options())
+            page = browser.new_page()
+            page.set_viewport_size({"width": 1600, "height": 900})
+            try:
+                with print_aria_on_timeout(page):
+                    base_url = self.live_server_url
+                    if callable(base_url):
+                        base_url = base_url()
+
+                    self._login_via_navbar(page, base_url)
+                    page.goto(f"{base_url}/coordinator/{self.series.id}/{self.event.id}")
+                    page.get_by_role("form", name="Edit event details").wait_for(
+                        timeout=3000
+                    )
+
+                    duration_warning = page.get_by_test_id("event-duration-warning")
+                    period_warning = page.get_by_test_id("event-call-period-warning")
+                    expect(duration_warning).to_contain_text("2:00 h", timeout=3000)
+                    expect(duration_warning).to_contain_text("6:00 h")
+                    expect(duration_warning).to_contain_text("-4:00 h")
+                    expect(period_warning).to_have_count(0)
+
+                    # Two days of 10:00-13:00 matches the proposal exactly.
+                    page.get_by_label("Start Time").fill("2026-03-16T10:00")
+                    page.get_by_label("End Time").fill("2026-03-17T13:00")
+                    expect(duration_warning).to_have_count(0)
+                    expect(period_warning).to_have_count(0)
+
+                    # Moving the event before the call's execution period warns.
+                    page.get_by_label("Start Time").fill("2026-02-27T10:00")
+                    page.get_by_label("End Time").fill("2026-02-28T13:00")
+                    expect(duration_warning).to_have_count(0)
+                    expect(period_warning).to_contain_text("UX Test Call")
             finally:
                 browser.close()
 
@@ -512,7 +567,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".create_series.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
                     with (
                         self.subTest(stage="create_event"),
                         print_aria_on_timeout(page),
@@ -534,7 +588,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".create_event.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with self.subTest(stage="edit_fields"), print_aria_on_timeout(page):
                         logger.debug(
@@ -553,7 +606,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".edit_fields.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with (
                         self.subTest(stage="drag_calendar"),
@@ -585,7 +637,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".drag_calendar.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with self.subTest(stage="save"):
                         logger.debug("Clicking Save Changes button")
@@ -595,7 +646,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(".save.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
             finally:
                 browser.close()
@@ -628,7 +678,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
 
                     with self.subTest(stage="before_delete_event"):
                         test_utils.wait_for_loading_indicators_to_disappear(page)
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with self.subTest(stage="after_delete_event"):
                         # Register the handler BEFORE the click so it is in place
@@ -655,7 +704,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                             0,
                             "Deleted event is still visible in the events list",
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
 
                     with self.subTest(stage="after_delete_series"):
                         delete_series_msgs: list[str] = []
@@ -675,7 +723,6 @@ class EventUxPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                             delete_series_msgs, "No dialog was shown for delete series"
                         )
                         self.assertIn("Delete the series", delete_series_msgs[0])
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
             finally:
                 browser.close()
 

@@ -408,6 +408,8 @@
     "EventSchedule": "Event Schedule",
     "loading": "Loading...",
     "noPermission": "You do not have permission to view this event.",
+    "durationMismatchWarning": "The selected time ({{actual}} h) differs from the proposal's duration of {{days}} day(s) × {{perDay}} h = {{expected}} h (difference: {{difference}} h).",
+    "outsideCallPeriodWarning": "The selected dates lie outside the execution period of the call \"{{call}}\" ({{start}} – {{end}}).",
     "calendarNoAccess": "You don't have access to the shared calendar, so other events aren't shown here."
   },
   "series": {

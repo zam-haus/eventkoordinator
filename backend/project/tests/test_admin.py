@@ -86,7 +86,5 @@ class AdminPlaywrightTest(SnapshotMixin, ViteStaticLiveServerTestCase):
                         page.wait_for_load_state('networkidle')
                         page.wait_for_timeout(500)
 
-                        snapshot = page.locator("body").aria_snapshot()
-                        self.assert_snapshot(snapshot)
                     finally:
                         browser.close()

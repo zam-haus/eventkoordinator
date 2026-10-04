@@ -17,6 +17,7 @@ export interface EventItem extends SelectionItem {
   tag?: string
   status?: string
   useFullDays?: boolean
+  proposal_id?: string | null
 }
 
 export interface SeriesItem extends SelectionItem {
@@ -40,6 +41,7 @@ function toEventItem(event: ApiEvent): EventItem {
     tag: event.tag,
     status: toOptionalStatus(event.status),
     useFullDays: event.useFullDays,
+    proposal_id: event.proposal_id,
   }
 }
 

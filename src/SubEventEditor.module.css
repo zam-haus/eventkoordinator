@@ -280,6 +280,15 @@
   border-left: 4px solid #1565c0;
 }
 
+.warning {
+  padding: 12px;
+  background-color: #fff3e0;
+  color: #e65100;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  border-left: 4px solid #e65100;
+}
+
 .footer {
   margin-top: auto;
   padding-top: 15px;

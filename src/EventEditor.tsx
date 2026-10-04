@@ -16,7 +16,11 @@ import {
     deleteCalculatedPrices,
     getUserPermissions,
     checkObjectPermission,
+    fetchProposal,
+    fetchCall,
     type CalculatedPrices,
+    type CallOut,
+    type ProposalDetail,
     type EventSyncInfo,
     type SyncTarget,
 } from './api'
@@ -70,6 +74,28 @@ function toLocalDateTimeInputValue(date: Date | string): string {
     const hh = String(d.getHours()).padStart(2, '0')
     const mm = String(d.getMinutes()).padStart(2, '0')
     return `${y}-${m}-${day}T${hh}:${mm}`
+}
+
+function timeStringToMinutes(value: string | null | undefined): number {
+    // Mirrors backend time_string_to_minutes: "HH:MM" or plain minutes, 0 if invalid
+    if (!value) return 0
+    const parts = value.split(':')
+    const numbers = parts.length === 1 ? [0, Number(parts[0])] : [Number(parts[0]), Number(parts[1])]
+    if (parts.length > 2 || numbers.some((n) => !Number.isInteger(n))) return 0
+    return numbers[0] * 60 + numbers[1]
+}
+
+function formatMinutes(totalMinutes: number): string {
+    const sign = totalMinutes < 0 ? '-' : ''
+    const abs = Math.abs(Math.round(totalMinutes))
+    return `${sign}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`
+}
+
+function parseLocalDate(value: string): Date | null {
+    // Parse an ISO date (YYYY-MM-DD) as local midnight
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+    if (!match) return null
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
 }
 
 function toCalculatedPricesForm(values: CalculatedPrices): CalculatedPricesFormValues {
@@ -141,6 +167,10 @@ export function EventEditor({
     const [calendarError, setCalendarError] = useState<string | null>(null)
     const [calendarNoAccess, setCalendarNoAccess] = useState(false)
 
+    // Proposal and call the event belongs to, used for duration / period warnings
+    const [proposal, setProposal] = useState<ProposalDetail | null>(null)
+    const [call, setCall] = useState<CallOut | null>(null)
+
     // Track unsaved changes
     const hasChanges = changedFields.size > 0
     const {confirmNavigation} = useUnsavedChanges(hasChanges)
@@ -153,16 +183,7 @@ export function EventEditor({
         },
     ], [t])
 
-    const calendarEvents = useMemo<CalendarEvent[]>(() => {
-        const referenceEvents: CalendarEvent[] = externalEvents.map((reference) => ({
-            id: reference.id,
-            resourceId: 'event-editor-resource',
-            title: `${reference.title} (${reference.source})`,
-            startUtc: reference.startUtc,
-            endUtc: reference.endUtc,
-            color: '#90a4ae',
-        }))
-
+    const editedEvents = useMemo<CalendarEvent[]>(() => {
         const selectedStart = parseLocalDateTimeInput(startTime)
         const selectedEnd = parseLocalDateTimeInput(endTime)
         let editedEvents: CalendarEvent[] = []
@@ -232,8 +253,55 @@ export function EventEditor({
             }
         }
 
+        return editedEvents
+    }, [endTime, event.id, event.name, name, startTime, useFullDays])
+
+    const calendarEvents = useMemo<CalendarEvent[]>(() => {
+        const referenceEvents: CalendarEvent[] = externalEvents.map((reference) => ({
+            id: reference.id,
+            resourceId: 'event-editor-resource',
+            title: `${reference.title} (${reference.source})`,
+            startUtc: reference.startUtc,
+            endUtc: reference.endUtc,
+            color: '#90a4ae',
+        }))
         return [...referenceEvents, ...editedEvents]
-    }, [endTime, event.id, event.name, externalEvents, name, startTime, useFullDays])
+    }, [externalEvents, editedEvents])
+
+    const durationMismatch = useMemo(() => {
+        if (!proposal || editedEvents.length === 0) return null
+        const expected = timeStringToMinutes(proposal.duration_time_per_day) * proposal.duration_days
+        if (expected <= 0) return null
+        const actual = editedEvents.reduce(
+            (sum, block) => sum + (new Date(block.endUtc).getTime() - new Date(block.startUtc).getTime()) / 60_000,
+            0,
+        )
+        if (Math.round(actual) === expected) return null
+        return {
+            expected: formatMinutes(expected),
+            actual: formatMinutes(actual),
+            difference: formatMinutes(actual - expected),
+            days: proposal.duration_days,
+            perDay: formatMinutes(timeStringToMinutes(proposal.duration_time_per_day)),
+        }
+    }, [proposal, editedEvents])
+
+    const outsideCallPeriod = useMemo(() => {
+        if (!call) return null
+        const periodStart = parseLocalDate(call.execution_period_start)
+        const periodEndDay = parseLocalDate(call.execution_period_end)
+        if (!periodStart || !periodEndDay) return null
+        // The execution period end date is inclusive, so allow until midnight after it
+        const periodEnd = new Date(periodEndDay.getFullYear(), periodEndDay.getMonth(), periodEndDay.getDate() + 1)
+        const selected = [parseLocalDateTimeInput(startTime), parseLocalDateTimeInput(endTime)]
+            .filter((d): d is Date => d !== null)
+        if (!selected.some((d) => d < periodStart || d > periodEnd)) return null
+        return {
+            call: call.title,
+            start: periodStart.toLocaleDateString(),
+            end: periodEndDay.toLocaleDateString(),
+        }
+    }, [call, startTime, endTime])
 
     // Expose confirmation function to parent
     useEffect(() => {
@@ -308,6 +376,33 @@ export function EventEditor({
 
         loadExternalEvents()
     }, [calendarRange])
+
+    useEffect(() => {
+        let isMounted = true
+        setProposal(null)
+        setCall(null)
+        if (!event.proposal_id) return
+
+        const loadProposalAndCall = async () => {
+            try {
+                const proposalData = await fetchProposal(event.proposal_id as string)
+                if (!isMounted) return
+                setProposal(proposalData)
+                if (!proposalData.call_id) return
+                const callData = await fetchCall(proposalData.call_id)
+                if (!isMounted) return
+                setCall(callData)
+            } catch {
+                // Warnings are best-effort; ignore missing permissions or data
+            }
+        }
+
+        void loadProposalAndCall()
+
+        return () => {
+            isMounted = false
+        }
+    }, [event.proposal_id])
 
     useEffect(() => {
         let isMounted = true
@@ -767,6 +862,17 @@ export function EventEditor({
                             />
                         </div>
                     </div>
+
+                    {durationMismatch && (
+                        <div className={styles.warning} role="status" data-testid="event-duration-warning">
+                            {t('event.durationMismatchWarning', durationMismatch)}
+                        </div>
+                    )}
+                    {outsideCallPeriod && (
+                        <div className={styles.warning} role="status" data-testid="event-call-period-warning">
+                            {t('event.outsideCallPeriodWarning', outsideCallPeriod)}
+                        </div>
+                    )}
 
                     <div className={styles.formGroup}>
                         <label htmlFor="event-tag" className={styles.label}>

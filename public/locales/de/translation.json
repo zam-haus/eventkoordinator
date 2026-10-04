@@ -498,6 +498,8 @@
     "EventSchedule": "Veranstaltungsplan",
     "loading": "Lade...",
     "noPermission": "Du hast keine Berechtigung, diese Veranstaltung anzusehen.",
+    "durationMismatchWarning": "Die ausgewählte Zeit ({{actual}} h) weicht von der Dauer laut Vorschlag ab: {{days}} Tag(e) × {{perDay}} h = {{expected}} h (Differenz: {{difference}} h).",
+    "outsideCallPeriodWarning": "Die ausgewählten Termine liegen außerhalb des Durchführungszeitraums der Ausschreibung „{{call}}“ ({{start}} – {{end}}).",
     "calendarNoAccess": "Du hast keinen Zugriff auf den gemeinsamen Kalender, daher werden andere Veranstaltungen hier nicht angezeigt."
   },
   "syncDiff": {

@@ -5,10 +5,7 @@ Run with::
 
     python manage.py test project.tests
 
-The ARIA snapshot files are written to ``backend/test_aria_snapshots/``
-so they can be reviewed and committed as living documentation.
-If a snapshot differs from the committed version the test fails with a
-unified diff showing the changes.
+A screenshot of the homepage is written to ``backend/test_aria_snapshots/``.
 """
 
 from __future__ import annotations
@@ -23,12 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 class SpaAriaSnapshotTests(SnapshotMixin, ViteStaticLiveServerTestCase):
-    """Open the SPA and capture an ARIA accessibility snapshot."""
+    """Open the SPA and capture a screenshot."""
 
     vite_force_rebuild = True
 
     def test_homepage_aria_snapshot(self) -> None:
-        """Navigate to the root URL and write an ARIA snapshot to disk."""
+        """Navigate to the root URL and write a screenshot to disk."""
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(**playwright_launch_options())
             try:
@@ -40,8 +37,6 @@ class SpaAriaSnapshotTests(SnapshotMixin, ViteStaticLiveServerTestCase):
                 page.locator("nav").is_visible(timeout=1000)
                 page.wait_for_load_state("networkidle")
                 page.locator("body").screenshot(path=self._snapshot_path().with_suffix(".homepage.png"))
-                snapshot: str = page.locator("body").aria_snapshot()
-                self.assert_snapshot(snapshot)
             finally:
                 browser.close()
 

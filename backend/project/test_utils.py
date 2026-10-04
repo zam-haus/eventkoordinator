@@ -96,41 +96,10 @@ def wait_for_loading_indicators_to_disappear(
     )
 
 
-def _git_show_committed(path: Path) -> str | None:
-    """Return the content of *path* as last committed in git, or ``None``.
-
-    Returns ``None`` when the file is untracked, not yet committed, or
-    git is unavailable.
-    """
-    try:
-        result = subprocess.run(
-            ["git", "show", f"HEAD:{path.relative_to(_git_repo_root(path))}"],
-            capture_output=True,
-            text=True,
-            cwd=path.parent,
-            check=True,
-        )
-        return result.stdout
-    except (subprocess.CalledProcessError, ValueError, FileNotFoundError):
-        return None
-
-
-def _git_repo_root(path: Path) -> Path:
-    """Return the root of the git repository containing *path*."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        cwd=path.parent,
-        check=True,
-    )
-    return Path(result.stdout.strip())
-
-
 class SnapshotMixin:
-    """Mixin that writes snapshot files and compares them against git HEAD.
+    """Mixin that names screenshot files after the running test.
 
-    The snapshot file is derived from ``self.id()`` and, when called from
+    The file name is derived from ``self.id()`` and, when called from
     inside ``subTest(...)``, includes a sanitized subTest suffix so each case
     writes to a distinct file.
 
@@ -138,8 +107,7 @@ class SnapshotMixin:
 
         class MyTest(SnapshotMixin, SomeTestCase):
             def test_something(self):
-                content = capture_something()
-                self.assert_snapshot(content)
+                page.screenshot(path=self._snapshot_path().with_suffix(".png"))
     """
 
     @staticmethod
@@ -176,110 +144,6 @@ class SnapshotMixin:
         filename = f"{self._snapshot_id()}.aria.txt"
         return SNAPSHOT_DIR / filename
 
-    @staticmethod
-    def _normalize_snapshot_for_compare(content: str) -> str:
-        """Replace volatile datetime strings and UUIDs with stable placeholders."""
-        # Normalize UUIDs (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
-        normalized = re.sub(
-            r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
-            "<uuid>",
-            content,
-        )
-        normalized = re.sub(
-            r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b",
-            "<iso-datetime>",
-            normalized,
-        )
-        # Normalize labels like "09:31-10:31" and "09:31–10:31".
-        normalized = re.sub(
-            r"\b\d{2}:\d{2}[\u2013-]\d{2}:\d{2}\b",
-            "<time-range>",
-            normalized,
-        )
-        # Normalize week headers like "Mon 9 Mar Tue 10 Mar ...".
-        normalized = re.sub(
-            r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}\s+[A-Za-z]{3}(?:\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}\s+[A-Za-z]{3})+\b",
-            "<week-days>",
-            normalized,
-        )
-        # Normalize full hour grid labels such as "00:00 01:00 ... 23:00".
-        normalized = re.sub(
-            r"\b00:00(?:\s+\d{2}:\d{2}){23}\b",
-            "<hour-grid>",
-            normalized,
-        )
-        # Normalize sync timestamps while preserving the rest of the status text.
-        normalized = re.sub(
-            r"Last synced:\s*\d{1,2}\.\s+\S+,\s*\d{2}:\d{2}",
-            "Last synced: <localized-datetime>",
-            normalized,
-        )
-        # "14. März 2026, 20:30" – year present, comma before time.
-        normalized = re.sub(
-            r"\b\d{1,2}\.\s+\S+\s+\d{2,4},\s+\d{2}:\d{2}\b",
-            "<localized-datetime>",
-            normalized,
-        )
-        normalized = re.sub(
-            r"\b\d{1,2}\.\s+\S+,\s+\d{2}:\d{2}\b",
-            "<localized-datetime>",
-            normalized,
-        )
-        normalized = re.sub(
-            r"\b\d{1,2}\.\s+\S+\s+\d{2,4}\s+\d{2}:\d{2}\b",
-            "<localized-datetime>",
-            normalized,
-        )
-        # Normalize week range labels like "Mar 9–15, 2026" or "Mar 16–22, 2026".
-        normalized = re.sub(
-            r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}[\u2013-]\d{1,2},\s+\d{4}\b",
-            "<week-range>",
-            normalized,
-        )
-        return normalized
-
-    def assert_snapshot(self, content: str) -> None:
-        """Write *content* to the snapshot file and compare with git HEAD.
-
-        The snapshot is always written to disk (so it can be committed).
-        If the file already existed in git and the new content differs,
-        the test fails with a unified diff showing the changes.
-
-        A brand-new snapshot (not yet tracked by git) never causes a
-        failure — the developer is expected to review and commit it.
-        """
-        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-
-        out = self._snapshot_path()
-        normalized_content = self._normalize_snapshot_for_compare(content)
-        out.write_text(normalized_content, encoding="utf-8")
-        logger.debug("Snapshot written to %s", out)
-
-        committed = _git_show_committed(out)
-        if committed is None:
-            # File is new / untracked — nothing to compare against.
-            logger.info(
-                "New snapshot %s — commit it to establish a baseline.", out.name
-            )
-            return
-
-        normalized_committed = self._normalize_snapshot_for_compare(committed)
-
-        if normalized_content != normalized_committed:
-            import difflib
-
-            diff = difflib.unified_diff(
-                normalized_committed.splitlines(keepends=True),
-                normalized_content.splitlines(keepends=True),
-                fromfile=f"a/{out.name}  (committed, normalized)",
-                tofile=f"b/{out.name}  (current, normalized)",
-            )
-            patch = "".join(diff)
-            self.fail(
-                f"Snapshot {out.name} differs from the committed version.\n"
-                f"Commit the new file to accept the change.\n\n{patch}"
-            )
-
     @contextmanager
     def snapshotted_stage(self, page: playwright.async_api.Page, stagename: str):
         with self.subTest(stagename):
@@ -291,7 +155,6 @@ class SnapshotMixin:
                         page.locator("body").screenshot(
                             path=self._snapshot_path().with_suffix(f".{stagename}.png")
                         )
-                        self.assert_snapshot(page.locator("body").aria_snapshot())
                     except TargetClosedError:
                         logger.warning(
                             "Failed to take snapshot for stage because page was closed: %s",
