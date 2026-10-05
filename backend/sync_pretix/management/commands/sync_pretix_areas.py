@@ -122,6 +122,9 @@ class Command(BaseCommand):
             PretixSyncTargetAreaAssociation._meta.get_field(
                 "ticket_product_business_id"
             ).get_default(),
+            PretixSyncTargetAreaAssociation._meta.get_field(
+                "ticket_product_internal_training_id"
+            ).get_default(),
         ]
 
     def _ensure_default_ticket_products(

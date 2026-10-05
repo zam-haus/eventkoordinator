@@ -64,6 +64,7 @@ class PretixSyncTargetAreaAssociationInline(admin.TabularInline):
         "ticket_product_guest_regular_id",
         "ticket_product_guest_discounted_id",
         "ticket_product_business_id",
+        "ticket_product_internal_training_id",
     )
 
 

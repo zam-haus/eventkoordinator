@@ -15,6 +15,7 @@ class CalculatedPricesInline(admin.TabularInline):
 		"guest_regular_gross_eur",
 		"guest_discounted_gross_eur",
 		"business_net_eur",
+		"internal_training_eur",
 	)
 	readonly_fields = ("created_at", "updated_at")
 
@@ -31,6 +32,7 @@ class PretixSyncTargetAreaAssociationInline(admin.StackedInline):
 		"ticket_product_guest_regular_id",
 		"ticket_product_guest_discounted_id",
 		"ticket_product_business_id",
+		"ticket_product_internal_training_id",
 	)
 	raw_id_fields = ("area",)
 

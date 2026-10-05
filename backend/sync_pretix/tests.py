@@ -973,3 +973,45 @@ class PretixPricingConfigurationTests(TestCase):
 
 		with self.assertRaises(ValidationError):
 			prices.save()
+
+
+class PretixSyncItemInternalTrainingOverrideTest(_PretixSyncItemTestBase):
+    """The internal training price (material cost) is pushed to the configured product."""
+
+    def setUp(self):
+        super().setUp()
+        self.prices = CalculatedPrices.objects.create(
+            event=self.event,
+            member_regular_gross_eur=Decimal("20.00"),
+            member_discounted_gross_eur=Decimal("12.00"),
+            guest_regular_gross_eur=Decimal("25.00"),
+            guest_discounted_gross_eur=Decimal("20.00"),
+            business_net_eur=Decimal("40.00"),
+            internal_training_eur=Decimal("3.50"),
+        )
+
+    def test_internal_training_price_applied_to_item(self):
+        self.association.ticket_product_internal_training_id = "Interne Fortbildung"
+        items = [{"id": 201, "name": {"de": "Interne Fortbildung"}}]
+
+        item_overrides, variation_overrides = PretixSyncItem._build_item_overrides(
+            self.association, self.prices, items
+        )
+
+        self.assertIn({"item": 201, "price": "3.50"}, item_overrides)
+        self.assertEqual(variation_overrides, [])
+
+    def test_internal_training_price_applied_to_variation(self):
+        self.association.ticket_product_internal_training_id = "Materialkosten"
+        items = [{
+            "id": 300,
+            "name": {"de": "Ticket"},
+            "variations": [{"id": 31, "value": {"de": "Materialkosten"}}],
+        }]
+
+        item_overrides, variation_overrides = PretixSyncItem._build_item_overrides(
+            self.association, self.prices, items
+        )
+
+        self.assertEqual(item_overrides, [])
+        self.assertEqual(variation_overrides, [{"variation": 31, "price": "3.50"}])

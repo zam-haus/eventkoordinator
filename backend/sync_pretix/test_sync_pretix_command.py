@@ -125,7 +125,7 @@ class SyncPretixAreasCommandTests(TestCase):
         association = PretixSyncTargetAreaAssociation.objects.get(area__code="metal")
         self.assertEqual(association.event_slug, "area-metal")
         self.assertEqual(association.sync_target_id, target.id)
-        self.assertEqual(len(fake_client.created_items), 5)
+        self.assertEqual(len(fake_client.created_items), 6)
         created_names = {
             item["payload"]["name"]["en"] for item in fake_client.created_items
         }
@@ -137,6 +137,7 @@ class SyncPretixAreasCommandTests(TestCase):
                 "Regular Guest Ticket",
                 "Discounted Guest Ticket",
                 "Business Ticket",
+                "Interne Fortbildung",
             },
         )
 
@@ -166,7 +167,7 @@ class SyncPretixAreasCommandTests(TestCase):
         association = PretixSyncTargetAreaAssociation.objects.get(area__code="laser")
         self.assertEqual(association.event_slug, "area-laser")
         self.assertIsNotNone(association.sync_target_id)
-        self.assertEqual(len(fake_client.created_items), 4)
+        self.assertEqual(len(fake_client.created_items), 5)
 
     def test_enables_subevents_for_existing_event(self):
         ProposalArea.objects.create(code="stage", label="Main Stage")
