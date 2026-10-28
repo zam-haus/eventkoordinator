@@ -1068,6 +1068,8 @@ export interface ProposalListItem {
   title: string
   status: string
   submission_type?: string | null
+  area?: string | null
+  language?: string | null
   owner?: UserBasic | null
   speakers: string[]
   occurrence_count: number

@@ -506,3 +506,79 @@ class ProposalUxPlaywrightTest(ProposalNavigationMixin, SnapshotMixin, ViteStati
             list(copy.speakers.values_list("display_name", flat=True)), ["Copy Speaker"]
         )
         logger.info("=== Completed test_copy_proposal_via_ui ===")
+
+    def test_dashboard_area_language_columns_and_expand_all(self) -> None:
+        logger.info("=== Starting test_dashboard_area_language_columns_and_expand_all ===")
+        user = OpenIDUser.objects.get(username=self.username)
+        for title in ("Dashboard Proposal A", "Dashboard Proposal B"):
+            Proposal.objects.create(
+                title=title,
+                status=Proposal.Status.DRAFT,
+                submission_type=SubmissionType.objects.get(code="workshop"),
+                area=ProposalArea.objects.get(code="woodworking"),
+                language=ProposalLanguage.objects.get(code="de"),
+                occurrence_count=1,
+                material_cost_eur="0.00",
+                owner=user,
+            )
+        Proposal.objects.create(
+            title="Dashboard Proposal No Area",
+            status=Proposal.Status.DRAFT,
+            submission_type=SubmissionType.objects.get(code="workshop"),
+            language=ProposalLanguage.objects.get(code="de"),
+            occurrence_count=1,
+            material_cost_eur="0.00",
+            owner=user,
+        )
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(**playwright_launch_options())
+            page = browser.new_page()
+            try:
+                with print_aria_on_timeout(page):
+                    base_url = self.live_server_url
+                    if callable(base_url):
+                        base_url = base_url()
+
+                    self._login_via_navbar(page, base_url)
+                    page.goto(base_url + "/proposal-dashboard")
+                    page.get_by_role("link", name="Dashboard Proposal A").wait_for(timeout=5000)
+
+                    with self.subTest(stage="columns"):
+                        expect(page.get_by_role("columnheader", name="Area")).to_be_visible()
+                        expect(page.get_by_role("columnheader", name="Language")).to_be_visible()
+                        expect(page.get_by_role("cell", name="Woodworking", exact=True)).to_have_count(2)
+                        expect(page.get_by_role("cell", name="German", exact=True)).to_have_count(3)
+
+                    with self.subTest(stage="filter_empty_area"):
+                        area_filter = page.get_by_role("columnheader", name="Area").locator(".p-multiselect")
+                        area_filter.click()
+                        page.get_by_role("option", name="(empty)").click()
+                        page.keyboard.press("Escape")
+                        expect(page.get_by_role("link", name="Dashboard Proposal No Area")).to_be_visible()
+                        expect(page.get_by_role("link", name="Dashboard Proposal A")).to_have_count(0)
+
+                    with self.subTest(stage="filter_survives_reload"):
+                        self.assertIn("area=__empty__", page.url)
+                        page.reload()
+                        page.get_by_role("link", name="Dashboard Proposal No Area").wait_for(timeout=5000)
+                        expect(page.get_by_role("link", name="Dashboard Proposal A")).to_have_count(0)
+
+                    with self.subTest(stage="clear_area_filter"):
+                        area_filter = page.get_by_role("columnheader", name="Area").locator(".p-multiselect")
+                        area_filter.click()
+                        page.get_by_role("option", name="(empty)").click()
+                        page.keyboard.press("Escape")
+                        expect(page.get_by_role("link", name="Dashboard Proposal A")).to_be_visible()
+
+                    with self.subTest(stage="expand_all"):
+                        page.get_by_role("button", name="Expand all").click()
+                        expect(page.get_by_text("No linked events")).to_have_count(3, timeout=5000)
+
+                    with self.subTest(stage="collapse_all"):
+                        page.get_by_role("button", name="Collapse all").click()
+                        expect(page.get_by_text("No linked events")).to_have_count(0)
+                        expect(page.get_by_role("button", name="Expand all")).to_be_visible()
+            finally:
+                browser.close()
+        logger.info("=== Completed test_dashboard_area_language_columns_and_expand_all ===")

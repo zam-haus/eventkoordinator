@@ -416,7 +416,7 @@ def _compute_review_stats(reviews: list, current_user_id) -> tuple[ReviewStats, 
 def list_proposals(request) -> list[ProposalListItem]:
     """List all proposals visible to the current user."""
     proposals_qs = (
-        ProposalModel.objects.select_related("submission_type", "owner", "call")
+        ProposalModel.objects.select_related("submission_type", "area", "language", "owner", "call")
         .prefetch_related("speakers", "events", "reviews__reviewer")
         .order_by("title")
     )
@@ -433,6 +433,8 @@ def list_proposals(request) -> list[ProposalListItem]:
                 title=p.title,
                 status=p.status,
                 submission_type=p.submission_type.code if p.submission_type else None,
+                area=p.area.label if p.area else None,
+                language=p.language.label if p.language else None,
                 owner=UserBasic(id=p.owner.pk, username=p.owner.username) if p.owner else None,
                 speakers=[s.display_name for s in sorted(p.speakers.all(), key=lambda s: s.sort_order)],
                 occurrence_count=p.occurrence_count,

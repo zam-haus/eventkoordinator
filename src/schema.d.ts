@@ -1972,6 +1972,8 @@ export interface components {
         ProposalListItem: {
             /** Accepted Event Count */
             accepted_event_count: number;
+            /** Area */
+            area?: string | null;
             /** Call Title */
             call_title?: string | null;
             /**
@@ -1979,6 +1981,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Language */
+            language?: string | null;
             /** My Review Status */
             my_review_status?: string | null;
             /** Occurrence Count */

@@ -163,6 +163,8 @@ class ProposalListItem(Schema):
     title: str
     status: str
     submission_type: Optional[str] = None
+    area: Optional[str] = None
+    language: Optional[str] = None
     owner: Optional[UserBasic] = None
     speakers: list[str]
     occurrence_count: int

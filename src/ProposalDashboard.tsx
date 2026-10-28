@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { DataTable, type DataTableExpandedRows, type DataTableRowEvent } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -134,30 +134,49 @@ function FilterableHeader({ label, options, value, onChange }: {
 
 // ── filter state ──────────────────────────────────────────────────────────────
 
+/** Filter option value matching proposals without a value in that column. */
+const EMPTY_VALUE = '__empty__'
+
 interface FilterValues {
   callTitles: string[]
   creators: string[]
   types: string[]
+  areas: string[]
+  languages: string[]
   statuses: string[]
 }
 
-const EMPTY_FILTERS: FilterValues = { callTitles: [], creators: [], types: [], statuses: [] }
+/** URL query parameter name for each filter; values are repeated, e.g. `?status=submitted&status=revise`. */
+const FILTER_PARAMS: Record<keyof FilterValues, string> = {
+  callTitles: 'call',
+  creators: 'creator',
+  types: 'type',
+  areas: 'area',
+  languages: 'language',
+  statuses: 'status',
+}
+
+function filtersFromSearchParams(params: URLSearchParams): FilterValues {
+  return Object.fromEntries(
+    (Object.keys(FILTER_PARAMS) as (keyof FilterValues)[]).map(k => [k, params.getAll(FILTER_PARAMS[k])])
+  ) as unknown as FilterValues
+}
 
 // ── column toggle config ──────────────────────────────────────────────────────
 
 type ColKey =
-  | 'call' | 'creator' | 'speakers' | 'type' | 'status' | 'agreedDates'
+  | 'call' | 'creator' | 'speakers' | 'type' | 'area' | 'language' | 'status' | 'agreedDates'
   | 'eventDatetime' | 'eventStatus' | 'eventSync'
   | 'reviews' | 'myReview'
 
 const ALL_COLUMN_KEYS: ColKey[] = [
-  'call', 'creator', 'speakers', 'type', 'status', 'agreedDates',
+  'call', 'creator', 'speakers', 'type', 'area', 'language', 'status', 'agreedDates',
   'eventDatetime', 'eventStatus', 'eventSync',
   'reviews', 'myReview',
 ]
 
 const DEFAULT_VISIBLE: Record<ColKey, boolean> = {
-  call: true, creator: true, speakers: true, type: true, status: true, agreedDates: true,
+  call: true, creator: true, speakers: true, type: true, area: true, language: true, status: true, agreedDates: true,
   eventDatetime: true, eventStatus: true, eventSync: true,
   reviews: true, myReview: true,
 }
@@ -195,7 +214,8 @@ export function ProposalDashboard() {
   const [expandedRows, setExpandedRows] = useState<DataTableExpandedRows>({})
   const [expandedData, setExpandedData] = useState<Record<string, ExpandedData>>({})
   const [visibleColumns, setVisibleColumns] = useState<Record<ColKey, boolean>>(DEFAULT_VISIBLE)
-  const [filterValues, setFilterValues] = useState<FilterValues>(EMPTY_FILTERS)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filterValues = useMemo(() => filtersFromSearchParams(searchParams), [searchParams])
 
   useEffect(() => {
     fetchProposalsList()
@@ -218,6 +238,16 @@ export function ProposalDashboard() {
     [...new Set(proposals.map(p => p.submission_type).filter((v): v is string => !!v))].sort()
       .map(v => ({ label: v, value: v })), [proposals])
 
+  const areaOptions = useMemo(() => [
+    { label: t('proposalDashboard.filterEmpty'), value: EMPTY_VALUE },
+    ...[...new Set(proposals.map(p => p.area).filter((v): v is string => !!v))].sort()
+      .map(v => ({ label: v, value: v })),
+  ], [proposals, t])
+
+  const languageOptions = useMemo(() =>
+    [...new Set(proposals.map(p => p.language).filter((v): v is string => !!v))].sort()
+      .map(v => ({ label: v, value: v })), [proposals])
+
   const statusOptions = useMemo(() => [
     { label: t('proposal.statusValues.draft'),     value: 'draft' },
     { label: t('proposal.statusValues.submitted'), value: 'submitted' },
@@ -230,6 +260,8 @@ export function ProposalDashboard() {
     if (filterValues.callTitles.length > 0 && !filterValues.callTitles.includes(p.call_title ?? '')) return false
     if (filterValues.creators.length > 0 && !filterValues.creators.includes(p.owner?.username ?? '')) return false
     if (filterValues.types.length > 0 && !filterValues.types.includes(p.submission_type ?? '')) return false
+    if (filterValues.areas.length > 0 && !filterValues.areas.includes(p.area || EMPTY_VALUE)) return false
+    if (filterValues.languages.length > 0 && !filterValues.languages.includes(p.language ?? '')) return false
     if (filterValues.statuses.length > 0 && !filterValues.statuses.includes(p.status)) return false
     return true
   }), [proposals, filterValues])
@@ -248,15 +280,25 @@ export function ProposalDashboard() {
 
   // ── filter onChange handlers (stable references) ──────────────────────────
 
-  const setCallFilter    = useCallback((v: string[]) => setFilterValues(f => ({ ...f, callTitles: v })), [])
-  const setCreatorFilter = useCallback((v: string[]) => setFilterValues(f => ({ ...f, creators: v })), [])
-  const setTypeFilter    = useCallback((v: string[]) => setFilterValues(f => ({ ...f, types: v })), [])
-  const setStatusFilter  = useCallback((v: string[]) => setFilterValues(f => ({ ...f, statuses: v })), [])
+  const setFilter = useCallback((key: keyof FilterValues, values: string[]) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete(FILTER_PARAMS[key])
+      values.forEach(v => next.append(FILTER_PARAMS[key], v))
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const setCallFilter     = useCallback((v: string[]) => setFilter('callTitles', v), [setFilter])
+  const setCreatorFilter  = useCallback((v: string[]) => setFilter('creators', v), [setFilter])
+  const setTypeFilter     = useCallback((v: string[]) => setFilter('types', v), [setFilter])
+  const setAreaFilter     = useCallback((v: string[]) => setFilter('areas', v), [setFilter])
+  const setLanguageFilter = useCallback((v: string[]) => setFilter('languages', v), [setFilter])
+  const setStatusFilter   = useCallback((v: string[]) => setFilter('statuses', v), [setFilter])
 
   // ── row expansion ─────────────────────────────────────────────────────────
 
-  const onRowExpand = useCallback(async (e: DataTableRowEvent) => {
-    const proposal = e.data as ProposalListItem
+  const loadExpandedData = useCallback(async (proposal: ProposalListItem) => {
     if (expandedData[proposal.id]) return
 
     setExpandedData(prev => ({ ...prev, [proposal.id]: { events: [], syncStatus: {}, loading: true } }))
@@ -273,6 +315,25 @@ export function ProposalDashboard() {
       setExpandedData(prev => ({ ...prev, [proposal.id]: { events: [], syncStatus: {}, loading: false } }))
     }
   }, [expandedData])
+
+  const onRowExpand = useCallback((e: DataTableRowEvent) => {
+    void loadExpandedData(e.data as ProposalListItem)
+  }, [loadExpandedData])
+
+  const allExpanded = filteredProposals.length > 0 && filteredProposals.every(p => expandedRows[p.id])
+
+  const toggleExpandAll = useCallback(() => {
+    if (allExpanded) {
+      setExpandedRows({})
+      return
+    }
+    const next: DataTableExpandedRows = {}
+    for (const p of filteredProposals) {
+      next[p.id] = true
+      void loadExpandedData(p)
+    }
+    setExpandedRows(next)
+  }, [allExpanded, filteredProposals, loadExpandedData])
 
   const rowExpansionTemplate = useCallback((data: ProposalListItem) => {
     const loaded = expandedData[data.id]
@@ -332,6 +393,8 @@ export function ProposalDashboard() {
         { key: 'creator',     label: t('proposalDashboard.columns.creator') },
         { key: 'speakers',    label: t('proposalDashboard.columns.speakers') },
         { key: 'type',        label: t('proposalDashboard.columns.type') },
+        { key: 'area',        label: t('proposalDashboard.columns.area') },
+        { key: 'language',    label: t('proposalDashboard.columns.language') },
         { key: 'status',      label: t('proposalDashboard.columns.status') },
         { key: 'agreedDates', label: t('proposalDashboard.columns.agreedDates') },
         { key: 'reviews',     label: t('proposalDashboard.columns.reviews') },
@@ -436,7 +499,22 @@ export function ProposalDashboard() {
         showGridlines
         dataKey="id"
       >
-        <Column expander style={{ width: '3rem' }} />
+        <Column
+          expander
+          style={{ width: '3rem' }}
+          header={
+            <button
+              type="button"
+              className={styles.expandAllButton}
+              onClick={toggleExpandAll}
+              disabled={filteredProposals.length === 0}
+              title={allExpanded ? t('proposalDashboard.collapseAll') : t('proposalDashboard.expandAll')}
+              aria-label={allExpanded ? t('proposalDashboard.collapseAll') : t('proposalDashboard.expandAll')}
+            >
+              <i className={allExpanded ? 'pi pi-angle-double-up' : 'pi pi-angle-double-down'} />
+            </button>
+          }
+        />
         <Column
           field="title"
           header={t('proposalDashboard.columns.title')}
@@ -498,6 +576,36 @@ export function ProposalDashboard() {
             }
             sortable
             body={(p: ProposalListItem) => p.submission_type ?? '—'}
+          />
+        )}
+        {visibleColumns.area && (
+          <Column
+            field="area"
+            header={
+              <FilterableHeader
+                label={t('proposalDashboard.columns.area')}
+                options={areaOptions}
+                value={filterValues.areas}
+                onChange={setAreaFilter}
+              />
+            }
+            sortable
+            body={(p: ProposalListItem) => p.area ?? '—'}
+          />
+        )}
+        {visibleColumns.language && (
+          <Column
+            field="language"
+            header={
+              <FilterableHeader
+                label={t('proposalDashboard.columns.language')}
+                options={languageOptions}
+                value={filterValues.languages}
+                onChange={setLanguageFilter}
+              />
+            }
+            sortable
+            body={(p: ProposalListItem) => p.language ?? '—'}
           />
         )}
         {visibleColumns.status && (
